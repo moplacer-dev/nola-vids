@@ -31,6 +31,52 @@ export default function App() {
     getTemplates
   } = useApi(accessKey);
 
+  const loadJobs = useCallback(async () => {
+    if (!accessKey) return;
+    try {
+      const data = await getJobs();
+      setJobs(data);
+
+      // Update selected job if it exists
+      setSelectedJob(prev => {
+        if (prev) {
+          const updated = data.find(j => j.id === prev.id);
+          return updated || prev;
+        }
+        return null;
+      });
+    } catch (err) {
+      console.error('Failed to load jobs:', err);
+    }
+  }, [accessKey, getJobs]);
+
+  const loadTemplates = useCallback(async () => {
+    if (!accessKey) return;
+    try {
+      const data = await getTemplates();
+      setTemplates(data);
+    } catch (err) {
+      console.error('Failed to load templates:', err);
+    }
+  }, [accessKey, getTemplates]);
+
+  // Load jobs and templates on mount and after login
+  useEffect(() => {
+    if (accessKey) {
+      loadJobs();
+      loadTemplates();
+    }
+  }, [accessKey, loadJobs, loadTemplates]);
+
+  // Poll for job updates
+  useEffect(() => {
+    const hasProcessingJobs = jobs.some(j => j.status === 'processing' || j.status === 'pending');
+    if (!hasProcessingJobs) return;
+
+    const interval = setInterval(loadJobs, 5000);
+    return () => clearInterval(interval);
+  }, [jobs, loadJobs]);
+
   const handleLogin = (key) => {
     sessionStorage.setItem(STORAGE_KEY, key);
     setAccessKey(key);
@@ -45,47 +91,6 @@ export default function App() {
   if (!accessKey) {
     return <Login onLogin={handleLogin} />;
   }
-
-  // Load jobs and templates on mount and after login
-  useEffect(() => {
-    if (accessKey) {
-      loadJobs();
-      loadTemplates();
-    }
-  }, [accessKey]);
-
-  // Poll for job updates
-  useEffect(() => {
-    const hasProcessingJobs = jobs.some(j => j.status === 'processing' || j.status === 'pending');
-    if (!hasProcessingJobs) return;
-
-    const interval = setInterval(loadJobs, 5000);
-    return () => clearInterval(interval);
-  }, [jobs]);
-
-  const loadJobs = async () => {
-    try {
-      const data = await getJobs();
-      setJobs(data);
-
-      // Update selected job if it exists
-      if (selectedJob) {
-        const updated = data.find(j => j.id === selectedJob.id);
-        if (updated) setSelectedJob(updated);
-      }
-    } catch (err) {
-      console.error('Failed to load jobs:', err);
-    }
-  };
-
-  const loadTemplates = async () => {
-    try {
-      const data = await getTemplates();
-      setTemplates(data);
-    } catch (err) {
-      console.error('Failed to load templates:', err);
-    }
-  };
 
   const handleGenerate = async (mode, params) => {
     setGenerating(true);
