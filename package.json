@@ -12,7 +12,7 @@
     "install:all": "npm install && cd client && npm install"
   },
   "dependencies": {
-    "@google/genai": "^0.7.0",
+    "@google/genai": "^1.31.0",
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

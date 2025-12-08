@@ -99,12 +99,16 @@ export default function GenerationForm({
         onGenerate('reference', formData);
       } else if (mode === 'extend') {
         if (prefillVideoInfo) {
-          // Use the video from library
-          formData.append('videoPath', prefillVideoInfo.path);
+          // Use the video from library - send as JSON, not FormData
+          onGenerate('extend', {
+            videoPath: prefillVideoInfo.path,
+            prompt,
+            negativePrompt
+          });
         } else {
-          formData.append('video', files.video);
+          setError('Please select a video from the library to extend');
+          return;
         }
-        onGenerate('extend', formData);
       }
     }
   };

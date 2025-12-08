@@ -137,32 +137,33 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Video extension
-  router.post('/generate/extend', upload.single('video'), async (req, res) => {
+  // Video extension - requires a Veo-generated video with stored source URI
+  router.post('/generate/extend', async (req, res) => {
     try {
       const { prompt, videoPath } = req.body;
 
-      // Either file upload or videoPath from library is required
-      let videoFile;
-      if (req.file) {
-        videoFile = req.file.path;
-      } else if (videoPath) {
-        // Convert /videos/filename.mp4 to absolute path
-        const filename = videoPath.replace('/videos/', '');
-        videoFile = path.join(STORAGE_DIR, filename);
-        if (!fs.existsSync(videoFile)) {
-          return res.status(400).json({ error: 'Video file not found' });
-        }
-      } else {
-        return res.status(400).json({ error: 'Video file is required' });
+      if (!videoPath) {
+        return res.status(400).json({ error: 'Video path is required' });
       }
 
       if (!prompt) {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
+      // Look up the video in the database to get its source URI
+      const video = videoDb.getByPath(videoPath);
+      if (!video) {
+        return res.status(400).json({ error: 'Video not found in library' });
+      }
+
+      if (!video.source_uri) {
+        return res.status(400).json({
+          error: 'This video cannot be extended. Video extension only works with Veo-generated videos that have a stored source URI. Note: Google only retains video URIs for 2 days after generation.'
+        });
+      }
+
       const job = jobManager.createJob('video-extension', {
-        videoFile,
+        videoUri: video.source_uri,
         prompt
       });
 

@@ -65,10 +65,11 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
-  const extendVideo = useCallback(async (formData) => {
+  const extendVideo = useCallback(async (params) => {
     return request('/generate/extend', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
     });
   }, [request]);
 

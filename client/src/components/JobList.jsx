@@ -53,25 +53,18 @@ export default function JobList({ jobs, onDelete, onSelect, selectedJobId, onVie
                   {job.status === 'processing' && <span className="spinner" />}
                   {status.label}
                 </span>
-              </div>
-              <p className="job-prompt">{job.params?.prompt?.slice(0, 100)}...</p>
-              <div className="job-footer">
-                <span className="job-time">
-                  {new Date(job.createdAt).toLocaleTimeString()}
-                </span>
-                {job.status === 'completed' && job.videos?.length > 0 && (
-                  <span className="job-videos">{job.videos.length} video(s)</span>
-                )}
                 <button
                   className="job-delete"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(job.id);
                   }}
+                  title="Delete job"
                 >
-                  Delete
+                  ✕
                 </button>
               </div>
+              <p className="job-prompt">{job.params?.prompt || 'Imported video'}</p>
               {job.error && (
                 <p className="job-error">{job.error}</p>
               )}

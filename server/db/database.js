@@ -40,6 +40,7 @@ function initDatabase() {
       mime_type TEXT,
       title TEXT,
       folder TEXT,
+      source_uri TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
     );
@@ -55,6 +56,14 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_videos_job_id ON videos(job_id);
     CREATE INDEX IF NOT EXISTS idx_videos_folder ON videos(folder);
   `);
+
+  // Migration: Add source_uri column if it doesn't exist (for existing databases)
+  const columns = db.prepare("PRAGMA table_info(videos)").all();
+  const hasSourceUri = columns.some(col => col.name === 'source_uri');
+  if (!hasSourceUri) {
+    db.exec('ALTER TABLE videos ADD COLUMN source_uri TEXT');
+    console.log('Migration: Added source_uri column to videos table');
+  }
 
   // Import any orphaned video files
   importOrphanedVideos();
@@ -170,8 +179,8 @@ const jobQueries = {
 const videoQueries = {
   create: (video) => {
     const stmt = db.prepare(`
-      INSERT INTO videos (id, job_id, filename, path, mime_type, title, folder, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO videos (id, job_id, filename, path, mime_type, title, folder, source_uri, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       video.id,
@@ -181,6 +190,7 @@ const videoQueries = {
       video.mimeType,
       video.title,
       video.folder,
+      video.sourceUri,
       video.createdAt
     );
     return video;
@@ -192,6 +202,10 @@ const videoQueries = {
 
   getById: (id) => {
     return db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+  },
+
+  getByPath: (path) => {
+    return db.prepare('SELECT * FROM videos WHERE path = ?').get(path);
   },
 
   getAll: (options = {}) => {

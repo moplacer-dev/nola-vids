@@ -12,11 +12,11 @@ class VeoService {
   }
 
   // Text-to-video generation
-  async generateFromText({ prompt, negativePrompt, aspectRatio = '16:9', durationSeconds = '8', resolution = '720p' }) {
+  async generateFromText({ prompt, negativePrompt, aspectRatio = '16:9', durationSeconds = 8, resolution = '720p' }) {
     const config = {
       aspectRatio,
       numberOfVideos: 1,
-      durationSeconds: String(durationSeconds),
+      durationSeconds: Number(durationSeconds),
       resolution
     };
 
@@ -28,13 +28,13 @@ class VeoService {
   }
 
   // Image-to-video generation
-  async generateFromImage({ image, prompt, negativePrompt, aspectRatio = '16:9', durationSeconds = '8', resolution = '720p' }) {
+  async generateFromImage({ image, prompt, negativePrompt, aspectRatio = '16:9', durationSeconds = 8, resolution = '720p' }) {
     const imageData = await this._prepareImage(image);
 
     const config = {
       aspectRatio,
       numberOfVideos: 1,
-      durationSeconds: String(durationSeconds),
+      durationSeconds: Number(durationSeconds),
       resolution
     };
 
@@ -53,15 +53,16 @@ class VeoService {
     const config = {
       aspectRatio,
       numberOfVideos: 1,
-      durationSeconds: '8',
-      resolution
+      durationSeconds: 8,
+      resolution,
+      lastFrame: lastFrameData
     };
 
     if (negativePrompt) {
       config.negativePrompt = negativePrompt;
     }
 
-    return this._startOperation({ prompt, image: firstFrameData, lastFrame: lastFrameData, config });
+    return this._startOperation({ prompt, image: firstFrameData, config });
   }
 
   // Reference-guided generation (up to 3 reference images)
@@ -70,7 +71,7 @@ class VeoService {
       referenceImages.slice(0, 3).map(async (img) => {
         const imageData = await this._prepareImage(img);
         return {
-          ...imageData,
+          image: imageData,
           referenceType: 'asset'
         };
       })
@@ -79,7 +80,7 @@ class VeoService {
     const config = {
       aspectRatio,
       numberOfVideos: 1,
-      durationSeconds: '8',
+      durationSeconds: 8,
       resolution,
       referenceImages: refs
     };
@@ -91,18 +92,26 @@ class VeoService {
     return this._startOperation({ prompt, config });
   }
 
-  // Video extension
-  async extendVideo({ videoFile, prompt }) {
-    const videoData = await this._prepareVideo(videoFile);
+  // Video extension - requires URI from a previous Veo generation
+  async extendVideo({ videoUri, prompt }) {
+    if (!videoUri) {
+      throw new Error('Video extension requires a source URI from a previous Veo generation');
+    }
 
     const config = {
-      numberOfVideos: 1
+      numberOfVideos: 1,
+      resolution: '720p'  // Video extension only supports 720p
     };
 
-    return this._startOperation({ prompt, video: videoData, config });
+    // Pass the video as a URI reference
+    return this._startOperation({
+      prompt,
+      video: { uri: videoUri },
+      config
+    });
   }
 
-  // Start a generation operation and return operation object (serialized)
+  // Start a generation operation and return operation name for polling
   async _startOperation(params) {
     const operation = await this.client.models.generateVideos({
       model: MODEL,
@@ -112,21 +121,27 @@ class VeoService {
     // Debug: log the operation structure
     console.log('Operation response:', JSON.stringify(operation, null, 2));
 
-    // Store the entire operation object as JSON string for later polling
+    // Return operation name for polling
     return {
-      operationData: JSON.stringify(operation),
       operationName: operation.name,
       status: 'pending'
     };
   }
 
-  // Poll operation status - takes the serialized operation data
-  async checkOperation(operationData) {
-    // Parse the stored operation object
-    const operationObj = JSON.parse(operationData);
+  // Poll operation status - takes the operation name string
+  async checkOperation(operationName) {
+    console.log('checkOperation called with:', operationName);
 
-    // The SDK expects: ai.operations.get({operation: operationObject})
-    const operation = await this.client.operations.get({ operation: operationObj });
+    // Use REST API directly since SDK's getVideosOperation requires the full operation object
+    const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${this.apiKey}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to poll operation: ${response.status} ${errorText}`);
+    }
+
+    const operation = await response.json();
 
     // Debug: log polling response
     console.log('Poll response:', JSON.stringify(operation, null, 2));
@@ -140,17 +155,20 @@ class VeoService {
       }
 
       // Check for content filtered responses
-      const result = operation.result || operation.response?.generateVideoResponse;
-      if (result?.raiMediaFilteredReasons?.length > 0) {
+      const generateVideoResponse = operation.response?.generateVideoResponse;
+      if (generateVideoResponse?.raiMediaFilteredReasons?.length > 0) {
         return {
           status: 'failed',
-          error: result.raiMediaFilteredReasons.join('; ')
+          error: generateVideoResponse.raiMediaFilteredReasons.join('; ')
         };
       }
 
       // Check various possible locations for generated videos
-      const videos = operation.result?.generatedVideos ||
+      // REST API returns: response.generateVideoResponse.generatedSamples
+      // SDK might return: response.generatedVideos or result.generatedVideos
+      const videos = generateVideoResponse?.generatedSamples ||
                      operation.response?.generatedVideos ||
+                     operation.result?.generatedVideos ||
                      operation.generatedVideos ||
                      [];
 
@@ -172,8 +190,8 @@ class VeoService {
 
     return {
       status: 'processing',
-      // Return updated operation data for next poll
-      operationData: JSON.stringify(operation)
+      // Return operation name for next poll
+      operationName: operation.name
     };
   }
 
@@ -212,16 +230,6 @@ class VeoService {
     };
   }
 
-  // Prepare video for API (extension)
-  async _prepareVideo(videoPath) {
-    const videoBuffer = fs.readFileSync(videoPath);
-    const base64 = videoBuffer.toString('base64');
-
-    return {
-      videoBytes: base64,
-      mimeType: 'video/mp4'
-    };
-  }
 }
 
 module.exports = VeoService;

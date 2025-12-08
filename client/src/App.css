@@ -163,6 +163,7 @@
   top: 32px;
   height: fit-content;
   animation: panelSlide 0.6s ease-out 0.2s backwards;
+  min-width: 0;
 }
 
 @keyframes panelSlide {

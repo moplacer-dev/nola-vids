@@ -19,7 +19,7 @@ class JobManager {
   _resumeProcessingJobs() {
     const processingJobs = jobDb.getByStatus('processing');
     for (const job of processingJobs) {
-      if (job.operationData) {
+      if (job.operationName) {
         console.log(`Resuming polling for job ${job.id}`);
         this._startPolling(job.id);
       }
@@ -35,7 +35,6 @@ class JobManager {
       type,
       params,
       status: 'pending',
-      operationData: null,
       operationName: null,
       error: null,
       createdAt: now,
@@ -74,7 +73,6 @@ class JobManager {
           throw new Error(`Unknown job type: ${job.type}`);
       }
 
-      job.operationData = result.operationData;
       job.operationName = result.operationName;
       job.status = 'processing';
       job.updatedAt = new Date().toISOString();
@@ -98,18 +96,18 @@ class JobManager {
   _startPolling(jobId) {
     const poller = setInterval(async () => {
       const job = jobDb.getById(jobId);
-      if (!job || !job.operationData) {
+      if (!job || !job.operationName) {
         clearInterval(poller);
         this.activePollers.delete(jobId);
         return;
       }
 
       try {
-        const status = await this.veoService.checkOperation(job.operationData);
+        const status = await this.veoService.checkOperation(job.operationName);
 
-        // Update operation data if returned (for next poll)
-        if (status.operationData) {
-          job.operationData = status.operationData;
+        // Update operation name if returned (for next poll)
+        if (status.operationName) {
+          job.operationName = status.operationName;
         }
 
         if (status.status === 'completed') {
@@ -124,7 +122,7 @@ class JobManager {
               const outputPath = path.join(STORAGE_DIR, filename);
               await this.veoService.downloadVideo(video.uri, outputPath);
 
-              // Create video record in database
+              // Create video record in database (store source URI for video extension)
               videoDb.create({
                 id: uuidv4(),
                 jobId: jobId,
@@ -133,6 +131,7 @@ class JobManager {
                 mimeType: video.mimeType || 'video/mp4',
                 title: null,
                 folder: null,
+                sourceUri: video.uri,
                 createdAt: new Date().toISOString()
               });
             }

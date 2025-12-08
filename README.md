@@ -107,7 +107,7 @@ nola.vids/
 | POST | `/api/generate/image` | Image-to-video (multipart form) |
 | POST | `/api/generate/frames` | Frame interpolation (multipart form) |
 | POST | `/api/generate/reference` | Reference-guided generation (multipart form) |
-| POST | `/api/generate/extend` | Video extension (multipart form) |
+| POST | `/api/generate/extend` | Video extension (JSON: videoPath, prompt) |
 
 ### Jobs
 
@@ -183,6 +183,7 @@ no blur, not cartoon, don't make it low quality
 |------|-------|
 | Max Duration | 8 seconds |
 | Frame Rate | 24 fps |
+| Resolution | 720p (default), 1080p (8s only) |
 | Aspect Ratios | 16:9 (landscape), 9:16 (portrait) |
 | Processing Time | 11 seconds to 6 minutes |
 | Video Retention | 2 days on Google servers |
@@ -204,7 +205,7 @@ If a generation fails due to filtering, the error message will be displayed in t
 - **Backend**: Node.js, Express, better-sqlite3
 - **Frontend**: React 18, Vite
 - **Database**: SQLite
-- **API Client**: @google/genai SDK
+- **API Client**: @google/genai SDK v1.31.0+
 - **Styling**: CSS custom properties with cinematic noir theme
 
 ### Running in Development
@@ -225,3 +226,20 @@ npm start       # Runs the Express server (serves client from dist/)
 - Database and videos persist in `server/storage/`
 - Processing jobs resume automatically on server restart
 - Videos are auto-downloaded since Google only retains them for 2 days
+
+### SDK Notes (@google/genai v1.31.0+)
+
+The Veo integration uses a hybrid approach:
+
+- **Video generation**: Uses the SDK's `client.models.generateVideos()` method
+- **Operation polling**: Uses the REST API directly for polling operation status, as the SDK's `getVideosOperation()` method requires the full operation object which can't be easily serialized/persisted
+
+Key parameter requirements for v1.31.0+:
+- `durationSeconds` must be a number (not a string)
+- `resolution` is supported: `"720p"` (default) or `"1080p"` (8s duration only)
+- Frame interpolation: `lastFrame` goes inside the `config` object
+- Reference images: Each item needs an `image` wrapper with `referenceType: "asset"`
+
+### Known Limitations
+
+- **Video Extension**: Currently requires the original Veo-generated video URI. Extending arbitrary uploaded videos may not work as expected since the API expects a URI from a previous Veo generation.
