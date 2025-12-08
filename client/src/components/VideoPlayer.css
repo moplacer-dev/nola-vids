@@ -1,0 +1,311 @@
+.video-player {
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Empty state - noir */
+.video-player-empty,
+.video-player-processing,
+.video-player-error {
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  padding: 72px 48px;
+  text-align: center;
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* Decorative film frame corners */
+.video-player-empty::before,
+.video-player-empty::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  opacity: 0.5;
+}
+
+.video-player-empty::before {
+  top: 24px;
+  left: 24px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.video-player-empty::after {
+  bottom: 24px;
+  right: 24px;
+  border-left: none;
+  border-top: none;
+}
+
+.empty-icon,
+.error-icon {
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 400;
+  margin-bottom: 20px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.error-icon {
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--error);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--error);
+}
+
+.video-player-empty p,
+.video-player-processing p,
+.video-player-error p {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-style: italic;
+  max-width: 280px;
+}
+
+.video-player-processing h3,
+.video-player-error h3 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+/* Error state */
+.video-player-error {
+  background: var(--bg-secondary);
+}
+
+.video-player-error h3 {
+  color: var(--text-secondary);
+}
+
+/* Processing animation - noir projector */
+.processing-animation {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 28px;
+}
+
+.pulse-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--text-secondary);
+  border-radius: 50%;
+  animation: pulse 2.5s ease-out infinite;
+}
+
+.pulse-ring:nth-child(2) {
+  animation-delay: 0.8s;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.processing-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-body);
+  font-size: 36px;
+  color: var(--text-secondary);
+  animation: iconFloat 3s ease-in-out infinite;
+}
+
+@keyframes iconFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.processing-details {
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  max-width: 320px;
+  border: 1px solid var(--border);
+}
+
+.processing-details span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Video container - theatrical frame */
+.video-container {
+  background: #000;
+  padding: 20px;
+  position: relative;
+}
+
+.video-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 20%);
+  pointer-events: none;
+}
+
+.video-item {
+  margin-bottom: 20px;
+  animation: videoReveal 0.6s ease-out;
+}
+
+@keyframes videoReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.video-item:last-child {
+  margin-bottom: 0;
+}
+
+.video-element {
+  width: 100%;
+  max-height: 520px;
+  border-radius: 2px;
+  background: #000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+}
+
+/* Video actions */
+.video-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  gap: 12px;
+}
+
+.download-btn {
+  padding: 12px 24px;
+  background: var(--text-primary);
+  border-radius: 2px;
+  color: var(--bg-deep);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-btn:hover {
+  background: var(--text-secondary);
+}
+
+/* Video info panel */
+.video-info {
+  padding: 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.video-info h4 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 18px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Info grid - metadata display */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  border: 1px solid var(--border-subtle);
+}
+
+.info-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.info-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Prompt display */
+.prompt-display {
+  margin-top: 16px;
+}
+
+.prompt-display .info-label {
+  margin-bottom: 8px;
+  display: block;
+}
+
+.prompt-display p {
+  margin-top: 0;
+  padding: 16px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.65;
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--text-secondary);
+}

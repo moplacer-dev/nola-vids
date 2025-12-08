@@ -1,0 +1,242 @@
+.job-list {
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+.job-list-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.job-list-title::before {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 18px;
+  background: var(--text-primary);
+}
+
+/* Empty state */
+.job-list-empty {
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  padding: 48px 32px;
+  text-align: center;
+  border: 1px dashed var(--border);
+}
+
+.job-list-empty p {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.job-list-empty span {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Jobs container */
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Individual job card */
+.job-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  padding: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.job-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+
+.job-card:hover {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+.job-card:hover::before {
+  background: var(--text-secondary);
+}
+
+.job-card.selected {
+  border-color: var(--text-secondary);
+}
+
+.job-card.selected::before {
+  background: var(--text-primary);
+}
+
+/* Job header */
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.job-type {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+}
+
+/* Status indicators */
+.job-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.job-status.pending {
+  color: var(--text-muted);
+}
+
+.job-status.processing {
+  color: var(--processing);
+}
+
+.job-status.completed {
+  color: var(--success);
+}
+
+.job-status.failed {
+  color: var(--error);
+}
+
+/* Spinner - film reel inspired */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Job prompt preview */
+.job-prompt {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Job footer */
+.job-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+}
+
+.job-time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.job-videos {
+  color: var(--success);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.job-videos::before {
+  content: '●';
+  font-size: 8px;
+}
+
+/* Delete button */
+.job-delete {
+  margin-left: auto;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0;
+  transform: translateX(8px);
+  transition: all 0.2s ease;
+}
+
+.job-card:hover .job-delete {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.job-delete:hover {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-deep);
+}
+
+/* Job error message */
+.job-error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  border-left: 2px solid var(--error);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}

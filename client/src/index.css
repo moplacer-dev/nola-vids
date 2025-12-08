@@ -1,0 +1,99 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Classic film noir - deep blacks and cool grays */
+  --bg-deep: #000000;
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --bg-elevated: #222222;
+
+  /* Crisp white and silver tones */
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --text-muted: #5a5a5a;
+
+  /* Signature accent - silver/platinum */
+  --accent: #c0c0c0;
+  --accent-glow: #e0e0e0;
+  --accent-deep: #888888;
+  --accent-subtle: rgba(192, 192, 192, 0.1);
+
+  /* Supporting accents - cool tones */
+  --teal: #6a8a8a;
+  --teal-glow: #8aafaf;
+  --rose: #8a6a6a;
+
+  /* Status colors - desaturated noir */
+  --success: #6a8a6a;
+  --warning: #8a8a6a;
+  --error: #8a5a5a;
+  --processing: #6a7a8a;
+
+  /* Borders and dividers */
+  --border: #2a2a2a;
+  --border-subtle: #1a1a1a;
+
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+
+  /* Noir vignette effect */
+  background-image:
+    radial-gradient(ellipse at 50% 50%, transparent 0%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-primary) 100%);
+  background-attachment: fixed;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+/* Custom scrollbar - subtle and warm */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Selection styling */
+::selection {
+  background: var(--accent);
+  color: var(--bg-deep);
+}
