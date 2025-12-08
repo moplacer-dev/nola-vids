@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './GenerationForm.css';
 
 const MODES = [
@@ -25,7 +25,14 @@ const RESOLUTIONS = [
   { value: '1080p', label: '1080p (8s only)' }
 ];
 
-export default function GenerationForm({ onGenerate, templates, disabled }) {
+export default function GenerationForm({
+  onGenerate,
+  templates,
+  disabled,
+  prefillPrompt,
+  prefillVideo,
+  onPrefillConsumed
+}) {
   const [mode, setMode] = useState('text');
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -33,6 +40,27 @@ export default function GenerationForm({ onGenerate, templates, disabled }) {
   const [durationSeconds, setDurationSeconds] = useState('8');
   const [resolution, setResolution] = useState('720p');
   const [files, setFiles] = useState({});
+  const [prefillVideoInfo, setPrefillVideoInfo] = useState(null);
+
+  // Handle prefill from library "Re-use" action
+  useEffect(() => {
+    if (prefillPrompt) {
+      setPrompt(prefillPrompt.prompt || '');
+      setNegativePrompt(prefillPrompt.negativePrompt || '');
+      setMode('text');
+      onPrefillConsumed?.();
+    }
+  }, [prefillPrompt, onPrefillConsumed]);
+
+  // Handle prefill from library "Extend" action
+  useEffect(() => {
+    if (prefillVideo) {
+      setMode('extend');
+      setPrefillVideoInfo(prefillVideo);
+      setPrompt('');
+      onPrefillConsumed?.();
+    }
+  }, [prefillVideo, onPrefillConsumed]);
 
   const handleFileChange = (key, e) => {
     const fileList = e.target.files;
@@ -70,7 +98,12 @@ export default function GenerationForm({ onGenerate, templates, disabled }) {
         files.referenceImages?.forEach(f => formData.append('referenceImages', f));
         onGenerate('reference', formData);
       } else if (mode === 'extend') {
-        formData.append('video', files.video);
+        if (prefillVideoInfo) {
+          // Use the video from library
+          formData.append('videoPath', prefillVideoInfo.path);
+        } else {
+          formData.append('video', files.video);
+        }
         onGenerate('extend', formData);
       }
     }
@@ -231,13 +264,31 @@ export default function GenerationForm({ onGenerate, templates, disabled }) {
             Video to Extend
             <span className="label-hint">Must be a Veo-generated video</span>
           </label>
-          <input
-            type="file"
-            accept="video/mp4"
-            onChange={(e) => handleFileChange('video', e)}
-            required
-            className="file-input"
-          />
+          {prefillVideoInfo ? (
+            <div className="prefill-video-preview">
+              <video src={prefillVideoInfo.path} muted className="prefill-video" />
+              <div className="prefill-video-info">
+                <span className="prefill-video-name">
+                  {prefillVideoInfo.title || prefillVideoInfo.filename}
+                </span>
+                <button
+                  type="button"
+                  className="prefill-video-clear"
+                  onClick={() => setPrefillVideoInfo(null)}
+                >
+                  Change
+                </button>
+              </div>
+            </div>
+          ) : (
+            <input
+              type="file"
+              accept="video/mp4"
+              onChange={(e) => handleFileChange('video', e)}
+              required
+              className="file-input"
+            />
+          )}
         </div>
       )}
 

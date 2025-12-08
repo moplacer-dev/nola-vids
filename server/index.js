@@ -5,9 +5,13 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 
+const { initDatabase } = require('./db/database');
 const VeoService = require('./services/veo');
 const JobManager = require('./jobs/jobManager');
 const createRoutes = require('./api/routes');
+
+// Initialize database before anything else
+initDatabase();
 
 const app = express();
 const PORT = process.env.PORT || 3001;

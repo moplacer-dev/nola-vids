@@ -88,6 +88,46 @@ export function useApi(accessKey) {
     return request('/templates');
   }, [request]);
 
+  // Library endpoints
+  const getLibrary = useCallback(async (options = {}) => {
+    const params = new URLSearchParams();
+    if (options.folder) params.set('folder', options.folder);
+    if (options.search) params.set('search', options.search);
+    if (options.limit) params.set('limit', options.limit);
+    if (options.offset) params.set('offset', options.offset);
+
+    const query = params.toString();
+    return request(`/library${query ? `?${query}` : ''}`);
+  }, [request]);
+
+  const getFolders = useCallback(async () => {
+    return request('/library/folders');
+  }, [request]);
+
+  const createFolder = useCallback(async (name) => {
+    return request('/library/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+  }, [request]);
+
+  const deleteFolder = useCallback(async (folderId) => {
+    return request(`/library/folders/${folderId}`, { method: 'DELETE' });
+  }, [request]);
+
+  const updateVideo = useCallback(async (videoId, updates) => {
+    return request(`/videos/${videoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  }, [request]);
+
+  const deleteVideo = useCallback(async (videoId) => {
+    return request(`/videos/${videoId}`, { method: 'DELETE' });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -99,6 +139,12 @@ export function useApi(accessKey) {
     getJobs,
     getJob,
     deleteJob,
-    getTemplates
+    getTemplates,
+    getLibrary,
+    getFolders,
+    createFolder,
+    deleteFolder,
+    updateVideo,
+    deleteVideo
   };
 }

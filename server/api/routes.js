@@ -3,7 +3,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const { videos: videoDb, folders: folderDb } = require('../db/database');
+
 const router = express.Router();
+const STORAGE_DIR = path.join(__dirname, '..', 'storage');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -137,17 +140,29 @@ module.exports = (jobManager) => {
   // Video extension
   router.post('/generate/extend', upload.single('video'), async (req, res) => {
     try {
-      const { prompt } = req.body;
+      const { prompt, videoPath } = req.body;
 
-      if (!req.file) {
+      // Either file upload or videoPath from library is required
+      let videoFile;
+      if (req.file) {
+        videoFile = req.file.path;
+      } else if (videoPath) {
+        // Convert /videos/filename.mp4 to absolute path
+        const filename = videoPath.replace('/videos/', '');
+        videoFile = path.join(STORAGE_DIR, filename);
+        if (!fs.existsSync(videoFile)) {
+          return res.status(400).json({ error: 'Video file not found' });
+        }
+      } else {
         return res.status(400).json({ error: 'Video file is required' });
       }
+
       if (!prompt) {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
       const job = jobManager.createJob('video-extension', {
-        videoFile: req.file.path,
+        videoFile,
         prompt
       });
 
@@ -186,6 +201,102 @@ module.exports = (jobManager) => {
   // Get prompt templates
   router.get('/templates', (req, res) => {
     res.json(promptTemplates);
+  });
+
+  // ==========================================
+  // Library endpoints
+  // ==========================================
+
+  // Get all videos for library
+  router.get('/library', (req, res) => {
+    try {
+      const { folder, search, limit, offset } = req.query;
+      const videos = videoDb.getAll({
+        folder,
+        search,
+        limit: limit ? parseInt(limit) : undefined,
+        offset: offset ? parseInt(offset) : undefined
+      });
+      res.json(videos);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all folders
+  router.get('/library/folders', (req, res) => {
+    try {
+      const folders = folderDb.getAll();
+      res.json(folders);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a folder
+  router.post('/library/folders', (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Folder name is required' });
+      }
+
+      const folder = folderDb.create(name.trim());
+      if (!folder) {
+        return res.status(409).json({ error: 'Folder already exists' });
+      }
+
+      res.json(folder);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a folder
+  router.delete('/library/folders/:folderId', (req, res) => {
+    try {
+      const deleted = folderDb.delete(req.params.folderId);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update a video (title, folder)
+  router.patch('/videos/:videoId', (req, res) => {
+    try {
+      const { title, folder } = req.body;
+      const updated = videoDb.update(req.params.videoId, { title, folder });
+      if (!updated) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a single video
+  router.delete('/videos/:videoId', (req, res) => {
+    try {
+      const video = videoDb.delete(req.params.videoId);
+      if (!video) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
+      // Delete the file from disk
+      const filePath = path.join(STORAGE_DIR, video.filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   return router;

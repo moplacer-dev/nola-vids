@@ -14,11 +14,14 @@ Internal media team video generation app powered by Google's Veo 3.1 API.
 
 ### Additional Features
 
-- **Star Academy Templates** - Pre-built templates for STEM educational content (Characters, Visualizations, Concepts, Environments)
+- **Video Library** - Browse, search, and organize all generated videos
+- **Folders** - Organize videos into custom folders
+- **Persistent Storage** - Videos and job history survive server restarts (SQLite)
+- **Star Academy Templates** - Pre-built templates for STEM educational content
 - **Negative Prompt Presets** - Quick filters for quality, style, and content control
 - **Job Queue** - Track generation progress with real-time status updates
-- **Video Gallery** - Preview and download completed videos
 - **Native Audio** - Veo 3.1 generates synchronized audio (dialogue, SFX, ambient sounds)
+- **Re-use Prompts** - Quickly re-use prompts from previous generations
 - **Veo 3.1 Tips** - Collapsible prompting guidance built into the UI
 
 ## Setup
@@ -63,20 +66,28 @@ nola.vids/
 │   ├── index.js              # Express server entry point
 │   ├── api/
 │   │   └── routes.js         # API endpoints & prompt templates
+│   ├── db/
+│   │   └── database.js       # SQLite database initialization & queries
 │   ├── services/
 │   │   └── veo.js            # Veo 3.1 API integration
 │   ├── jobs/
 │   │   └── jobManager.js     # Async job queue & polling
-│   └── storage/              # Downloaded videos (gitignored)
+│   └── storage/
+│       ├── nola.db           # SQLite database (auto-created)
+│       ├── uploads/          # Temporary upload directory
+│       └── *.mp4             # Generated videos
 ├── client/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── src/
-│       ├── App.jsx           # Main application
+│       ├── App.jsx           # Main application with routing
 │       ├── components/
 │       │   ├── GenerationForm.jsx/css   # Video generation UI
 │       │   ├── JobList.jsx/css          # Job queue display
 │       │   ├── VideoPlayer.jsx/css      # Video preview & download
+│       │   ├── Library.jsx/css          # Video library page
+│       │   ├── VideoCard.jsx/css        # Video card component
+│       │   ├── FolderSidebar.jsx/css    # Folder navigation
 │       │   ├── Login.jsx/css            # Access key login screen
 │       │   └── Tips.jsx/css             # Veo 3.1 prompting tips
 │       └── hooks/
@@ -88,6 +99,8 @@ nola.vids/
 
 ## API Endpoints
 
+### Generation
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/generate/text` | Text-to-video generation |
@@ -95,15 +108,47 @@ nola.vids/
 | POST | `/api/generate/frames` | Frame interpolation (multipart form) |
 | POST | `/api/generate/reference` | Reference-guided generation (multipart form) |
 | POST | `/api/generate/extend` | Video extension (multipart form) |
+
+### Jobs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/api/jobs` | List all jobs |
 | GET | `/api/jobs/:id` | Get job status |
 | DELETE | `/api/jobs/:id` | Delete job and video files |
+
+### Library
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/library` | List all videos (supports `?folder=`, `?search=`) |
+| GET | `/api/library/folders` | List all folders with video counts |
+| POST | `/api/library/folders` | Create a new folder |
+| DELETE | `/api/library/folders/:id` | Delete a folder |
+| PATCH | `/api/videos/:id` | Update video title or folder |
+| DELETE | `/api/videos/:id` | Delete a single video |
+
+### Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/api/templates` | Get prompt templates |
 | POST | `/auth/verify` | Verify access key |
 
 ## Authentication
 
 The app requires an access key to use. Set the `ACCESS_KEY` environment variable and users will be prompted to enter it on first visit. The key is stored in session storage (cleared when the browser tab closes).
+
+## Data Persistence
+
+NOLA.vids uses SQLite for persistent storage:
+
+- **Jobs** - Generation history persists across server restarts
+- **Videos** - Video metadata (title, folder) is stored in the database
+- **Folders** - Custom folders for organizing videos
+- **Auto-import** - Existing video files are automatically imported on startup
+
+The database is stored at `server/storage/nola.db`.
 
 ## Prompt Tips
 
@@ -156,10 +201,11 @@ If a generation fails due to filtering, the error message will be displayed in t
 
 ### Tech Stack
 
-- **Backend**: Node.js, Express
+- **Backend**: Node.js, Express, better-sqlite3
 - **Frontend**: React 18, Vite
+- **Database**: SQLite
 - **API Client**: @google/genai SDK
-- **Styling**: CSS custom properties with cinematic theme
+- **Styling**: CSS custom properties with cinematic noir theme
 
 ### Running in Development
 
@@ -167,8 +213,15 @@ The `npm run dev` command runs both server and client concurrently:
 - Server: http://localhost:3001
 - Client: http://localhost:5173 (proxies API requests to server)
 
+### Production Build
+
+```bash
+npm run build   # Builds the React client
+npm start       # Runs the Express server (serves client from dist/)
+```
+
 ### Notes
 
-- Jobs are stored in memory (restart clears queue)
-- Downloaded videos persist in `server/storage/`
+- Database and videos persist in `server/storage/`
+- Processing jobs resume automatically on server restart
 - Videos are auto-downloaded since Google only retains them for 2 days

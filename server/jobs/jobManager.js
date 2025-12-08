@@ -1,42 +1,54 @@
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const { jobs: jobDb, videos: videoDb } = require('../db/database');
 
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
-
-// In-memory job storage (in production, use Redis or a database)
-const jobs = new Map();
 
 class JobManager {
   constructor(veoService) {
     this.veoService = veoService;
     this.pollInterval = 10000; // 10 seconds
     this.activePollers = new Map();
+
+    // Resume polling for any processing jobs on startup
+    this._resumeProcessingJobs();
+  }
+
+  // Resume polling for jobs that were processing when server stopped
+  _resumeProcessingJobs() {
+    const processingJobs = jobDb.getByStatus('processing');
+    for (const job of processingJobs) {
+      if (job.operationData) {
+        console.log(`Resuming polling for job ${job.id}`);
+        this._startPolling(job.id);
+      }
+    }
   }
 
   // Create a new job
   createJob(type, params) {
     const jobId = uuidv4();
+    const now = new Date().toISOString();
     const job = {
       id: jobId,
       type,
       params,
       status: 'pending',
-      operationData: null,  // Store full operation object for polling
-      operationName: null,  // Human-readable operation name
-      videos: [],
+      operationData: null,
+      operationName: null,
       error: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
 
-    jobs.set(jobId, job);
+    jobDb.create(job);
     return job;
   }
 
   // Start a generation job
   async startJob(jobId) {
-    const job = jobs.get(jobId);
+    const job = jobDb.getById(jobId);
     if (!job) throw new Error('Job not found');
 
     try {
@@ -67,6 +79,8 @@ class JobManager {
       job.status = 'processing';
       job.updatedAt = new Date().toISOString();
 
+      jobDb.update(job);
+
       // Start polling for completion
       this._startPolling(jobId);
 
@@ -75,6 +89,7 @@ class JobManager {
       job.status = 'failed';
       job.error = error.message;
       job.updatedAt = new Date().toISOString();
+      jobDb.update(job);
       throw error;
     }
   }
@@ -82,7 +97,7 @@ class JobManager {
   // Poll for job completion
   _startPolling(jobId) {
     const poller = setInterval(async () => {
-      const job = jobs.get(jobId);
+      const job = jobDb.getById(jobId);
       if (!job || !job.operationData) {
         clearInterval(poller);
         this.activePollers.delete(jobId);
@@ -101,25 +116,31 @@ class JobManager {
           clearInterval(poller);
           this.activePollers.delete(jobId);
 
-          // Download videos
-          const downloadedVideos = [];
+          // Download videos and create video records
           for (let i = 0; i < status.videos.length; i++) {
             const video = status.videos[i];
             if (video.uri) {
               const filename = `${jobId}_${i}.mp4`;
               const outputPath = path.join(STORAGE_DIR, filename);
               await this.veoService.downloadVideo(video.uri, outputPath);
-              downloadedVideos.push({
-                filename,
+
+              // Create video record in database
+              videoDb.create({
+                id: uuidv4(),
+                jobId: jobId,
+                filename: filename,
                 path: `/videos/${filename}`,
-                mimeType: video.mimeType
+                mimeType: video.mimeType || 'video/mp4',
+                title: null,
+                folder: null,
+                createdAt: new Date().toISOString()
               });
             }
           }
 
-          job.videos = downloadedVideos;
           job.status = 'completed';
           job.updatedAt = new Date().toISOString();
+          jobDb.update(job);
         } else if (status.status === 'failed') {
           clearInterval(poller);
           this.activePollers.delete(jobId);
@@ -127,6 +148,11 @@ class JobManager {
           job.status = 'failed';
           job.error = status.error;
           job.updatedAt = new Date().toISOString();
+          jobDb.update(job);
+        } else {
+          // Still processing, just update operation data
+          job.updatedAt = new Date().toISOString();
+          jobDb.update(job);
         }
       } catch (error) {
         console.error(`Polling error for job ${jobId}:`, error.message);
@@ -136,40 +162,70 @@ class JobManager {
     this.activePollers.set(jobId, poller);
   }
 
-  // Get job by ID
+  // Get job by ID (includes videos)
   getJob(jobId) {
-    return jobs.get(jobId) || null;
+    const job = jobDb.getById(jobId);
+    if (!job) return null;
+
+    // Attach videos to job
+    const videos = videoDb.getByJobId(jobId);
+    job.videos = videos.map(v => ({
+      id: v.id,
+      filename: v.filename,
+      path: v.path,
+      mimeType: v.mime_type,
+      title: v.title,
+      folder: v.folder
+    }));
+
+    return job;
   }
 
-  // Get all jobs
+  // Get all jobs (includes videos)
   getAllJobs() {
-    return Array.from(jobs.values()).sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-    );
+    const jobs = jobDb.getAll();
+
+    // Attach videos to each job
+    for (const job of jobs) {
+      const videos = videoDb.getByJobId(job.id);
+      job.videos = videos.map(v => ({
+        id: v.id,
+        filename: v.filename,
+        path: v.path,
+        mimeType: v.mime_type,
+        title: v.title,
+        folder: v.folder
+      }));
+    }
+
+    return jobs;
   }
 
-  // Delete a job
+  // Delete a job and its videos
   deleteJob(jobId) {
-    const job = jobs.get(jobId);
-    if (job) {
-      // Stop polling if active
-      if (this.activePollers.has(jobId)) {
-        clearInterval(this.activePollers.get(jobId));
-        this.activePollers.delete(jobId);
-      }
+    const job = jobDb.getById(jobId);
+    if (!job) return false;
 
-      // Delete video files
-      for (const video of job.videos) {
-        const filePath = path.join(STORAGE_DIR, video.filename);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      }
-
-      jobs.delete(jobId);
-      return true;
+    // Stop polling if active
+    if (this.activePollers.has(jobId)) {
+      clearInterval(this.activePollers.get(jobId));
+      this.activePollers.delete(jobId);
     }
-    return false;
+
+    // Get videos before deleting
+    const videos = videoDb.getByJobId(jobId);
+
+    // Delete video files from disk
+    for (const video of videos) {
+      const filePath = path.join(STORAGE_DIR, video.filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    // Delete from database (cascades to videos)
+    jobDb.delete(jobId);
+    return true;
   }
 }
 

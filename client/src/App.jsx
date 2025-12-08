@@ -4,6 +4,7 @@ import JobList from './components/JobList';
 import VideoPlayer from './components/VideoPlayer';
 import Login from './components/Login';
 import Tips from './components/Tips';
+import Library from './components/Library';
 import { useApi } from './hooks/useApi';
 import './App.css';
 
@@ -17,6 +18,11 @@ export default function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [templates, setTemplates] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'library'
+
+  // State for pre-filling the form from library actions
+  const [prefillPrompt, setPrefillPrompt] = useState(null);
+  const [prefillVideo, setPrefillVideo] = useState(null);
 
   const {
     loading,
@@ -28,7 +34,13 @@ export default function App() {
     extendVideo,
     getJobs,
     deleteJob,
-    getTemplates
+    getTemplates,
+    getLibrary,
+    getFolders,
+    createFolder,
+    deleteFolder,
+    updateVideo,
+    deleteVideo
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -119,6 +131,10 @@ export default function App() {
       const newJobs = await getJobs();
       const newJob = newJobs.find(j => j.id === result.jobId);
       if (newJob) setSelectedJob(newJob);
+
+      // Clear any prefill state
+      setPrefillPrompt(null);
+      setPrefillVideo(null);
     } catch (err) {
       console.error('Generation failed:', err);
     } finally {
@@ -138,34 +154,90 @@ export default function App() {
     }
   };
 
+  // Handlers for library actions
+  const handleReusePrompt = (prompt, negativePrompt) => {
+    setPrefillPrompt({ prompt, negativePrompt });
+    setPrefillVideo(null);
+    setCurrentView('generator');
+  };
+
+  const handleExtendVideo = (video) => {
+    setPrefillVideo(video);
+    setPrefillPrompt(null);
+    setCurrentView('generator');
+  };
+
+  const handleViewLibrary = () => {
+    setCurrentView('library');
+  };
+
   return (
     <div className="app">
       <header className="header">
         <h1 className="logo">NOLA.vids</h1>
         <span className="tagline">Powered by Veo 3.1</span>
+
+        <nav className="nav">
+          <button
+            className={`nav-btn ${currentView === 'generator' ? 'active' : ''}`}
+            onClick={() => setCurrentView('generator')}
+          >
+            Generator
+          </button>
+          <button
+            className={`nav-btn ${currentView === 'library' ? 'active' : ''}`}
+            onClick={() => setCurrentView('library')}
+          >
+            Library
+          </button>
+        </nav>
+
         <button className="logout-btn" onClick={handleLogout}>Logout</button>
       </header>
 
-      <main className="main">
-        <div className="left-panel">
-          <GenerationForm
-            onGenerate={handleGenerate}
-            templates={templates}
-            disabled={generating || loading}
-          />
-        </div>
+      {currentView === 'generator' ? (
+        <main className="main">
+          <div className="left-panel">
+            <GenerationForm
+              onGenerate={handleGenerate}
+              templates={templates}
+              disabled={generating || loading}
+              prefillPrompt={prefillPrompt}
+              prefillVideo={prefillVideo}
+              onPrefillConsumed={() => {
+                setPrefillPrompt(null);
+                setPrefillVideo(null);
+              }}
+            />
+          </div>
 
-        <div className="right-panel">
-          <VideoPlayer job={selectedJob} />
-          <JobList
-            jobs={jobs}
-            onDelete={handleDelete}
-            onSelect={setSelectedJob}
-            selectedJobId={selectedJob?.id}
+          <div className="right-panel">
+            <VideoPlayer job={selectedJob} />
+            <JobList
+              jobs={jobs}
+              onDelete={handleDelete}
+              onSelect={setSelectedJob}
+              selectedJobId={selectedJob?.id}
+              onViewLibrary={handleViewLibrary}
+            />
+            <Tips />
+          </div>
+        </main>
+      ) : (
+        <main className="main-library">
+          <Library
+            accessKey={accessKey}
+            getLibrary={getLibrary}
+            getFolders={getFolders}
+            createFolder={createFolder}
+            deleteFolder={deleteFolder}
+            updateVideo={updateVideo}
+            deleteVideo={deleteVideo}
+            onReusePrompt={handleReusePrompt}
+            onExtendVideo={handleExtendVideo}
           />
-          <Tips />
-        </div>
-      </main>
+        </main>
+      )}
 
       {error && (
         <div className="error-toast">

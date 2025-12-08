@@ -15,7 +15,7 @@ const TYPE_LABELS = {
   'video-extension': 'Video Extension'
 };
 
-export default function JobList({ jobs, onDelete, onSelect, selectedJobId }) {
+export default function JobList({ jobs, onDelete, onSelect, selectedJobId, onViewLibrary }) {
   if (jobs.length === 0) {
     return (
       <div className="job-list-empty">
@@ -27,7 +27,14 @@ export default function JobList({ jobs, onDelete, onSelect, selectedJobId }) {
 
   return (
     <div className="job-list">
-      <h3 className="job-list-title">Generation Queue</h3>
+      <div className="job-list-header">
+        <h3 className="job-list-title">Generation Queue</h3>
+        {onViewLibrary && (
+          <button className="job-list-view-all" onClick={onViewLibrary}>
+            View All
+          </button>
+        )}
+      </div>
       <div className="jobs">
         {jobs.map(job => {
           const status = STATUS_CONFIG[job.status];

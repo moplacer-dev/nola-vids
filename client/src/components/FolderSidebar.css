@@ -1,0 +1,185 @@
+.folder-sidebar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 20px;
+  min-width: 200px;
+}
+
+.folder-sidebar-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.folder-sidebar-title::before {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 16px;
+  background: var(--text-primary);
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.folder-item-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.folder-item {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.folder-item:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-subtle);
+}
+
+.folder-item.active {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+
+.folder-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 20px;
+  background: var(--text-primary);
+}
+
+.folder-item-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-item.active .folder-item-name {
+  color: var(--text-primary);
+}
+
+.folder-item-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+}
+
+.folder-item-delete {
+  position: absolute;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.folder-item-wrapper:hover .folder-item-delete {
+  opacity: 1;
+}
+
+.folder-item-delete:hover {
+  color: var(--error);
+}
+
+/* New folder form */
+.folder-create-form {
+  display: flex;
+  gap: 8px;
+}
+
+.folder-create-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.folder-create-input:focus {
+  outline: none;
+  border-color: var(--text-secondary);
+}
+
+.folder-create-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.folder-create-btn {
+  padding: 8px 12px;
+  background: var(--text-primary);
+  border: none;
+  border-radius: 2px;
+  color: var(--bg-deep);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.folder-create-btn:hover {
+  background: var(--text-secondary);
+}
+
+.folder-add-btn {
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.folder-add-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
