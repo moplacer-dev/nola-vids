@@ -82,10 +82,10 @@ export default function App() {
 
   // Poll for job updates
   useEffect(() => {
-    const hasProcessingJobs = jobs.some(j => j.status === 'processing' || j.status === 'pending');
-    if (!hasProcessingJobs) return;
+    const hasActiveJobs = jobs.some(j => j.status === 'processing' || j.status === 'pending' || j.status === 'queued');
+    if (!hasActiveJobs) return;
 
-    const interval = setInterval(loadJobs, 5000);
+    const interval = setInterval(loadJobs, 15000);
     return () => clearInterval(interval);
   }, [jobs, loadJobs]);
 

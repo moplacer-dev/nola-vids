@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 const fs = require('fs');
 const path = require('path');
+const { fetchWithTimeout, TIMEOUTS } = require('../utils/fetchWithTimeout');
 
 const MODEL = 'veo-3.1-generate-preview';
 const POLL_INTERVAL = 10000; // 10 seconds
@@ -133,8 +134,11 @@ class VeoService {
     console.log('checkOperation called with:', operationName);
 
     // Use REST API directly since SDK's getVideosOperation requires the full operation object
-    const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${this.apiKey}`;
-    const response = await fetch(url);
+    // API key in header instead of URL for security
+    const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}`;
+    const response = await fetchWithTimeout(url, {
+      headers: { 'x-goog-api-key': this.apiKey }
+    }, TIMEOUTS.API);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -197,11 +201,10 @@ class VeoService {
 
   // Download video to local storage
   async downloadVideo(videoUri, outputPath) {
-    // The URI is a direct download URL - fetch it with the API key
-    const url = new URL(videoUri);
-    url.searchParams.set('key', this.apiKey);
-
-    const response = await fetch(url.toString());
+    // The URI is a direct download URL - fetch it with the API key in header
+    const response = await fetchWithTimeout(videoUri, {
+      headers: { 'x-goog-api-key': this.apiKey }
+    }, TIMEOUTS.DOWNLOAD);
     if (!response.ok) {
       throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
     }

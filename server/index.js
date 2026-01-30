@@ -22,8 +22,12 @@ const uploadsDir = path.join(storageDir, 'uploads');
 if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Middleware
-app.use(cors());
+// CORS configuration - defaults to permissive, can be restricted via CORS_ORIGINS env var
+const corsOrigins = process.env.CORS_ORIGINS;
+app.use(cors(corsOrigins && corsOrigins !== '*'
+  ? { origin: corsOrigins.split(',').map(o => o.trim()) }
+  : {}
+));
 app.use(express.json());
 
 // Access key authentication
