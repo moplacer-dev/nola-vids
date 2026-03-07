@@ -2,5 +2,6 @@ node_modules/
 .env
 server/storage/*
 !server/storage/.gitkeep
+!server/storage/defaults/
 client/dist/
 .DS_Store
