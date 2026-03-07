@@ -7,7 +7,8 @@ export default function VideoCard({
   onUpdateVideo,
   onDeleteVideo,
   onReusePrompt,
-  onExtendVideo
+  onExtendVideo,
+  onClick
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(video.title || '');
@@ -71,6 +72,8 @@ export default function VideoCard({
         className="video-card-preview"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onClick={onClick}
+        style={{ cursor: onClick ? 'pointer' : 'default' }}
       >
         <video
           ref={videoRef}
@@ -83,7 +86,7 @@ export default function VideoCard({
         {video.folder && (
           <span className="video-card-folder-badge">{video.folder}</span>
         )}
-        <div className={`video-card-buttons ${showActions ? 'visible' : ''}`}>
+        <div className={`video-card-buttons ${showActions ? 'visible' : ''}`} onClick={(e) => e.stopPropagation()}>
           <button
             className="video-card-btn"
             onClick={handleDownload}

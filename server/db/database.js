@@ -55,6 +55,68 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
     CREATE INDEX IF NOT EXISTS idx_videos_job_id ON videos(job_id);
     CREATE INDEX IF NOT EXISTS idx_videos_folder ON videos(folder);
+
+    -- Image Generation Tables --
+
+    -- Characters with anchor images for consistency
+    CREATE TABLE IF NOT EXISTS characters (
+      id TEXT PRIMARY KEY,
+      module_name TEXT NOT NULL,
+      character_name TEXT NOT NULL,
+      career TEXT,
+      appearance_description TEXT,
+      anchor_image_path TEXT,
+      reference_images TEXT,
+      appears_on_slides TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(module_name, character_name)
+    );
+
+    -- Asset lists from Carl v7
+    CREATE TABLE IF NOT EXISTS asset_lists (
+      id TEXT PRIMARY KEY,
+      module_name TEXT NOT NULL,
+      session_number INTEGER,
+      session_title TEXT,
+      assets_json TEXT NOT NULL,
+      slides_json TEXT,
+      career_character_json TEXT,
+      imported_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Generated images
+    CREATE TABLE IF NOT EXISTS generated_images (
+      id TEXT PRIMARY KEY,
+      asset_list_id TEXT REFERENCES asset_lists(id),
+      slide_number INTEGER,
+      asset_type TEXT,
+      asset_number INTEGER DEFAULT 1,
+      cms_filename TEXT,
+      original_prompt TEXT,
+      modified_prompt TEXT,
+      character_id TEXT REFERENCES characters(id),
+      image_path TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- Generation history for regeneration tracking
+    CREATE TABLE IF NOT EXISTS generation_history (
+      id TEXT PRIMARY KEY,
+      generated_image_id TEXT REFERENCES generated_images(id) ON DELETE CASCADE,
+      prompt TEXT,
+      image_path TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_characters_module ON characters(module_name);
+    CREATE INDEX IF NOT EXISTS idx_asset_lists_module ON asset_lists(module_name);
+    CREATE INDEX IF NOT EXISTS idx_asset_lists_session ON asset_lists(module_name, session_number);
+    CREATE INDEX IF NOT EXISTS idx_generated_images_asset_list ON generated_images(asset_list_id);
+    CREATE INDEX IF NOT EXISTS idx_generated_images_status ON generated_images(status);
+    CREATE INDEX IF NOT EXISTS idx_generation_history_image ON generation_history(generated_image_id);
   `);
 
   // Migration: Add source_uri column if it doesn't exist (for existing databases)
@@ -63,6 +125,29 @@ function initDatabase() {
   if (!hasSourceUri) {
     db.exec('ALTER TABLE videos ADD COLUMN source_uri TEXT');
     console.log('Migration: Added source_uri column to videos table');
+  }
+
+  // Migration: Add module_name column to videos if it doesn't exist
+  const hasModuleName = columns.some(col => col.name === 'module_name');
+  if (!hasModuleName) {
+    db.exec('ALTER TABLE videos ADD COLUMN module_name TEXT');
+    console.log('Migration: Added module_name column to videos table');
+  }
+
+  // Migration: Add slides_json column to asset_lists if it doesn't exist
+  const assetListColumns = db.prepare("PRAGMA table_info(asset_lists)").all();
+  const hasSlidesJson = assetListColumns.some(col => col.name === 'slides_json');
+  if (!hasSlidesJson) {
+    db.exec('ALTER TABLE asset_lists ADD COLUMN slides_json TEXT');
+    console.log('Migration: Added slides_json column to asset_lists table');
+  }
+
+  // Migration: Add asset_number column to generated_images if it doesn't exist
+  const genImageColumns = db.prepare("PRAGMA table_info(generated_images)").all();
+  const hasAssetNumber = genImageColumns.some(col => col.name === 'asset_number');
+  if (!hasAssetNumber) {
+    db.exec('ALTER TABLE generated_images ADD COLUMN asset_number INTEGER DEFAULT 1');
+    console.log('Migration: Added asset_number column to generated_images table');
   }
 
   // Import any orphaned video files
@@ -242,7 +327,8 @@ const videoQueries = {
 
     return db.prepare(query).all(...params).map(row => ({
       ...row,
-      params: row.params ? JSON.parse(row.params) : null
+      params: row.params ? JSON.parse(row.params) : null,
+      moduleName: row.module_name || null
     }));
   },
 
@@ -257,6 +343,10 @@ const videoQueries = {
     if (updates.folder !== undefined) {
       fields.push('folder = ?');
       values.push(updates.folder);
+    }
+    if (updates.moduleName !== undefined) {
+      fields.push('module_name = ?');
+      values.push(updates.moduleName);
     }
 
     if (fields.length === 0) return false;
@@ -328,6 +418,378 @@ const folderQueries = {
   }
 };
 
+// Character operations (for image generation consistency)
+const characterQueries = {
+  create: (character) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    try {
+      db.prepare(`
+        INSERT INTO characters (id, module_name, character_name, career, appearance_description, anchor_image_path, reference_images, appears_on_slides, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        character.moduleName,
+        character.characterName,
+        character.career || null,
+        character.appearanceDescription || null,
+        character.anchorImagePath || null,
+        character.referenceImages ? JSON.stringify(character.referenceImages) : null,
+        character.appearsOnSlides ? JSON.stringify(character.appearsOnSlides) : null,
+        now,
+        now
+      );
+      return { id, ...character, createdAt: now, updatedAt: now };
+    } catch (err) {
+      if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        return null; // Character already exists for this module
+      }
+      throw err;
+    }
+  },
+
+  getById: (id) => {
+    const row = db.prepare('SELECT * FROM characters WHERE id = ?').get(id);
+    return row ? parseCharacterRow(row) : null;
+  },
+
+  getByModule: (moduleName) => {
+    const rows = db.prepare('SELECT * FROM characters WHERE module_name = ? ORDER BY character_name').all(moduleName);
+    return rows.map(parseCharacterRow);
+  },
+
+  getByModuleAndName: (moduleName, characterName) => {
+    const row = db.prepare('SELECT * FROM characters WHERE module_name = ? AND character_name = ?').get(moduleName, characterName);
+    return row ? parseCharacterRow(row) : null;
+  },
+
+  update: (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    if (updates.career !== undefined) {
+      fields.push('career = ?');
+      values.push(updates.career);
+    }
+    if (updates.appearanceDescription !== undefined) {
+      fields.push('appearance_description = ?');
+      values.push(updates.appearanceDescription);
+    }
+    if (updates.anchorImagePath !== undefined) {
+      fields.push('anchor_image_path = ?');
+      values.push(updates.anchorImagePath);
+    }
+    if (updates.referenceImages !== undefined) {
+      fields.push('reference_images = ?');
+      values.push(JSON.stringify(updates.referenceImages));
+    }
+    if (updates.appearsOnSlides !== undefined) {
+      fields.push('appears_on_slides = ?');
+      values.push(JSON.stringify(updates.appearsOnSlides));
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    const result = db.prepare(`UPDATE characters SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return result.changes > 0;
+  },
+
+  setAnchorImage: (id, imagePath) => {
+    const now = new Date().toISOString();
+    const result = db.prepare('UPDATE characters SET anchor_image_path = ?, updated_at = ? WHERE id = ?').run(imagePath, now, id);
+    return result.changes > 0;
+  },
+
+  delete: (id) => {
+    const result = db.prepare('DELETE FROM characters WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+};
+
+// Asset list operations (from Carl v7)
+const assetListQueries = {
+  create: (assetList) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO asset_lists (id, module_name, session_number, session_title, assets_json, slides_json, career_character_json, imported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      assetList.moduleName,
+      assetList.sessionNumber || null,
+      assetList.sessionTitle || null,
+      JSON.stringify(assetList.assets),
+      assetList.slides ? JSON.stringify(assetList.slides) : null,
+      assetList.careerCharacter ? JSON.stringify(assetList.careerCharacter) : null,
+      now
+    );
+    return { id, ...assetList, importedAt: now };
+  },
+
+  getById: (id) => {
+    const row = db.prepare('SELECT * FROM asset_lists WHERE id = ?').get(id);
+    return row ? parseAssetListRow(row) : null;
+  },
+
+  getAll: () => {
+    const rows = db.prepare('SELECT * FROM asset_lists ORDER BY imported_at DESC').all();
+    return rows.map(parseAssetListRow);
+  },
+
+  getByModule: (moduleName) => {
+    const rows = db.prepare('SELECT * FROM asset_lists WHERE module_name = ? ORDER BY session_number, imported_at DESC').all(moduleName);
+    return rows.map(parseAssetListRow);
+  },
+
+  getByModuleAndSession: (moduleName, sessionNumber) => {
+    const row = db.prepare('SELECT * FROM asset_lists WHERE module_name = ? AND session_number = ? ORDER BY imported_at DESC LIMIT 1').get(moduleName, sessionNumber);
+    return row ? parseAssetListRow(row) : null;
+  },
+
+  update: (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    if (updates.sessionTitle !== undefined) {
+      fields.push('session_title = ?');
+      values.push(updates.sessionTitle);
+    }
+    if (updates.assets !== undefined) {
+      fields.push('assets_json = ?');
+      values.push(JSON.stringify(updates.assets));
+    }
+    if (updates.slides !== undefined) {
+      fields.push('slides_json = ?');
+      values.push(updates.slides ? JSON.stringify(updates.slides) : null);
+    }
+    if (updates.careerCharacter !== undefined) {
+      fields.push('career_character_json = ?');
+      values.push(updates.careerCharacter ? JSON.stringify(updates.careerCharacter) : null);
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('imported_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    const result = db.prepare(`UPDATE asset_lists SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return result.changes > 0;
+  },
+
+  delete: (id) => {
+    const result = db.prepare('DELETE FROM asset_lists WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+};
+
+// Generated image operations
+const generatedImageQueries = {
+  create: (image) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO generated_images (id, asset_list_id, slide_number, asset_type, asset_number, cms_filename, original_prompt, modified_prompt, character_id, image_path, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      image.assetListId || null,
+      image.slideNumber || null,
+      image.assetType || null,
+      image.assetNumber || 1,
+      image.cmsFilename || null,
+      image.originalPrompt || null,
+      image.modifiedPrompt || null,
+      image.characterId || null,
+      image.imagePath || null,
+      image.status || 'pending',
+      now,
+      now
+    );
+    return { id, ...image, assetNumber: image.assetNumber || 1, createdAt: now, updatedAt: now };
+  },
+
+  getById: (id) => {
+    const row = db.prepare('SELECT * FROM generated_images WHERE id = ?').get(id);
+    return row ? parseGeneratedImageRow(row) : null;
+  },
+
+  getByAssetList: (assetListId) => {
+    const rows = db.prepare('SELECT * FROM generated_images WHERE asset_list_id = ? ORDER BY slide_number').all(assetListId);
+    return rows.map(parseGeneratedImageRow);
+  },
+
+  getAll: (options = {}) => {
+    let query = `
+      SELECT gi.*, al.module_name, al.session_number
+      FROM generated_images gi
+      LEFT JOIN asset_lists al ON gi.asset_list_id = al.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (options.moduleName) {
+      query += ' AND al.module_name = ?';
+      params.push(options.moduleName);
+    }
+
+    if (options.sessionNumber) {
+      query += ' AND al.session_number = ?';
+      params.push(options.sessionNumber);
+    }
+
+    // Support single status (string) or multiple statuses (array)
+    if (options.statuses && Array.isArray(options.statuses) && options.statuses.length > 0) {
+      const placeholders = options.statuses.map(() => '?').join(', ');
+      query += ` AND gi.status IN (${placeholders})`;
+      params.push(...options.statuses);
+    } else if (options.status) {
+      query += ' AND gi.status = ?';
+      params.push(options.status);
+    }
+
+    query += ' ORDER BY gi.created_at DESC';
+
+    if (options.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+    }
+
+    if (options.offset) {
+      query += ' OFFSET ?';
+      params.push(options.offset);
+    }
+
+    return db.prepare(query).all(...params).map(row => ({
+      ...parseGeneratedImageRow(row),
+      moduleName: row.module_name,
+      sessionNumber: row.session_number
+    }));
+  },
+
+  update: (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    if (updates.modifiedPrompt !== undefined) {
+      fields.push('modified_prompt = ?');
+      values.push(updates.modifiedPrompt);
+    }
+    if (updates.imagePath !== undefined) {
+      fields.push('image_path = ?');
+      values.push(updates.imagePath);
+    }
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.characterId !== undefined) {
+      fields.push('character_id = ?');
+      values.push(updates.characterId);
+    }
+    if (updates.assetType !== undefined) {
+      fields.push('asset_type = ?');
+      values.push(updates.assetType);
+    }
+    if (updates.cmsFilename !== undefined) {
+      fields.push('cms_filename = ?');
+      values.push(updates.cmsFilename);
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    const result = db.prepare(`UPDATE generated_images SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return result.changes > 0;
+  },
+
+  delete: (id) => {
+    const image = db.prepare('SELECT * FROM generated_images WHERE id = ?').get(id);
+    if (!image) return null;
+    db.prepare('DELETE FROM generated_images WHERE id = ?').run(id);
+    return parseGeneratedImageRow(image);
+  },
+
+  deleteByIds: (ids) => {
+    if (!ids || ids.length === 0) return 0;
+    const placeholders = ids.map(() => '?').join(', ');
+    const result = db.prepare(`DELETE FROM generated_images WHERE id IN (${placeholders})`).run(...ids);
+    return result.changes;
+  }
+};
+
+// Generation history operations
+const generationHistoryQueries = {
+  create: (entry) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO generation_history (id, generated_image_id, prompt, image_path, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, entry.generatedImageId, entry.prompt, entry.imagePath, now);
+    return { id, ...entry, createdAt: now };
+  },
+
+  getByImageId: (generatedImageId) => {
+    return db.prepare('SELECT * FROM generation_history WHERE generated_image_id = ? ORDER BY created_at DESC').all(generatedImageId);
+  }
+};
+
+// Parse helper functions
+function parseCharacterRow(row) {
+  return {
+    id: row.id,
+    moduleName: row.module_name,
+    characterName: row.character_name,
+    career: row.career,
+    appearanceDescription: row.appearance_description,
+    anchorImagePath: row.anchor_image_path,
+    referenceImages: row.reference_images ? JSON.parse(row.reference_images) : [],
+    appearsOnSlides: row.appears_on_slides ? JSON.parse(row.appears_on_slides) : [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function parseAssetListRow(row) {
+  return {
+    id: row.id,
+    moduleName: row.module_name,
+    sessionNumber: row.session_number,
+    sessionTitle: row.session_title,
+    assets: JSON.parse(row.assets_json),
+    slides: row.slides_json ? JSON.parse(row.slides_json) : null,
+    careerCharacter: row.career_character_json ? JSON.parse(row.career_character_json) : null,
+    importedAt: row.imported_at
+  };
+}
+
+function parseGeneratedImageRow(row) {
+  return {
+    id: row.id,
+    assetListId: row.asset_list_id,
+    slideNumber: row.slide_number,
+    assetType: row.asset_type,
+    assetNumber: row.asset_number || 1,
+    cmsFilename: row.cms_filename,
+    originalPrompt: row.original_prompt,
+    modifiedPrompt: row.modified_prompt,
+    characterId: row.character_id,
+    imagePath: row.image_path,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function parseJobRow(row) {
   return {
     id: row.id,
@@ -347,5 +809,9 @@ module.exports = {
   getDb,
   jobs: jobQueries,
   videos: videoQueries,
-  folders: folderQueries
+  folders: folderQueries,
+  characters: characterQueries,
+  assetLists: assetListQueries,
+  generatedImages: generatedImageQueries,
+  generationHistory: generationHistoryQueries
 };

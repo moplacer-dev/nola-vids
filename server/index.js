@@ -7,6 +7,7 @@ const fs = require('fs');
 
 const { initDatabase } = require('./db/database');
 const VeoService = require('./services/veo');
+const ImageGenService = require('./services/imageGen');
 const JobManager = require('./jobs/jobManager');
 const createRoutes = require('./api/routes');
 
@@ -19,8 +20,12 @@ const PORT = process.env.PORT || 3001;
 // Ensure storage directories exist
 const storageDir = path.join(__dirname, 'storage');
 const uploadsDir = path.join(storageDir, 'uploads');
+const imagesDir = path.join(storageDir, 'images');
+const anchorsDir = path.join(storageDir, 'anchors');
 if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+if (!fs.existsSync(anchorsDir)) fs.mkdirSync(anchorsDir, { recursive: true });
 
 // CORS configuration - defaults to permissive, can be restricted via CORS_ORIGINS env var
 const corsOrigins = process.env.CORS_ORIGINS;
@@ -67,7 +72,17 @@ if (!apiKey) {
 }
 
 const veoService = new VeoService(apiKey);
+const imageGenService = new ImageGenService(apiKey);
 const jobManager = new JobManager(veoService);
+
+// Make imageGenService available to routes
+app.set('imageGenService', imageGenService);
+
+// Serve generated images
+app.use('/images', express.static(imagesDir));
+
+// Serve character anchor images
+app.use('/anchors', express.static(anchorsDir));
 
 // API routes (protected by auth middleware)
 app.use('/api', authMiddleware, createRoutes(jobManager));
@@ -96,7 +111,9 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`NOLA.vids server running on http://localhost:${PORT}`);
-  console.log('API endpoints:');
+  console.log('Powered by VEO 3.1 + Nano Banana 2');
+  console.log('');
+  console.log('Video Generation:');
   console.log('  POST /api/generate/text     - Text-to-video');
   console.log('  POST /api/generate/image    - Image-to-video');
   console.log('  POST /api/generate/frames   - Frame interpolation');
@@ -104,5 +121,19 @@ app.listen(PORT, () => {
   console.log('  POST /api/generate/extend   - Video extension');
   console.log('  GET  /api/jobs              - List all jobs');
   console.log('  GET  /api/jobs/:id          - Get job status');
+  console.log('');
+  console.log('Image Generation:');
+  console.log('  POST /api/asset-lists       - Import asset list from Carl v7');
+  console.log('  GET  /api/asset-lists       - List asset lists');
+  console.log('  GET  /api/asset-lists/:id   - Get asset list with images');
+  console.log('  POST /api/images/generate   - Generate single image');
+  console.log('  GET  /api/images            - List generated images');
+  console.log('  PUT  /api/images/:id/regenerate - Regenerate image');
+  console.log('');
+  console.log('Characters:');
+  console.log('  GET  /api/characters/:module - Get characters for module');
+  console.log('  POST /api/characters         - Create/update character');
+  console.log('  PUT  /api/characters/:id/anchor - Set anchor image');
+  console.log('');
   console.log('  GET  /api/templates         - Get prompt templates');
 });

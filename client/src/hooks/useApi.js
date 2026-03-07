@@ -129,9 +129,143 @@ export function useApi(accessKey) {
     return request(`/videos/${videoId}`, { method: 'DELETE' });
   }, [request]);
 
+  // Image Generation endpoints
+  const getAssetLists = useCallback(async (moduleName) => {
+    const params = moduleName ? `?moduleName=${encodeURIComponent(moduleName)}` : '';
+    return request(`/asset-lists${params}`);
+  }, [request]);
+
+  const getAssetList = useCallback(async (id) => {
+    return request(`/asset-lists/${id}`);
+  }, [request]);
+
+  const importAssetList = useCallback(async (data) => {
+    return request('/asset-lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  }, [request]);
+
+  const deleteAssetList = useCallback(async (id) => {
+    return request(`/asset-lists/${id}`, { method: 'DELETE' });
+  }, [request]);
+
+  const getCharacters = useCallback(async (moduleName) => {
+    return request(`/characters/${encodeURIComponent(moduleName)}`);
+  }, [request]);
+
+  const createCharacter = useCallback(async (data) => {
+    return request('/characters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  }, [request]);
+
+  const setCharacterAnchor = useCallback(async (characterId, formData) => {
+    return request(`/characters/${characterId}/anchor`, {
+      method: 'PUT',
+      body: formData
+    });
+  }, [request]);
+
+  const getGeneratedImages = useCallback(async (options = {}) => {
+    const params = new URLSearchParams();
+    if (options.moduleName) params.set('moduleName', options.moduleName);
+    if (options.sessionNumber) params.set('sessionNumber', options.sessionNumber);
+    if (options.status) params.set('status', options.status);
+    if (options.limit) params.set('limit', options.limit);
+    if (options.offset) params.set('offset', options.offset);
+
+    const query = params.toString();
+    return request(`/images${query ? `?${query}` : ''}`);
+  }, [request]);
+
+  const getGeneratedImage = useCallback(async (id) => {
+    return request(`/images/${id}`);
+  }, [request]);
+
+  const generateImage = useCallback(async (generatedImageId, options = {}) => {
+    return request('/images/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        generatedImageId,
+        prompt: options.prompt,
+        useCharacterAnchor: options.useCharacterAnchor
+      })
+    });
+  }, [request]);
+
+  const generateStandaloneImage = useCallback(async ({ prompt, referenceImage, moduleName, sessionNumber, pageNumber }) => {
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    if (referenceImage) {
+      formData.append('referenceImage', referenceImage);
+    }
+    if (moduleName) {
+      formData.append('moduleName', moduleName);
+    }
+    if (sessionNumber) {
+      formData.append('sessionNumber', sessionNumber.toString());
+    }
+    if (pageNumber) {
+      formData.append('pageNumber', pageNumber.toString());
+    }
+
+    return request('/images/generate-standalone', {
+      method: 'POST',
+      body: formData
+    });
+  }, [request]);
+
+  const regenerateImage = useCallback(async (id, options = {}) => {
+    return request(`/images/${id}/regenerate`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: options.prompt,
+        useCharacterAnchor: options.useCharacterAnchor
+      })
+    });
+  }, [request]);
+
+  const updateGeneratedImage = useCallback(async (id, updates) => {
+    return request(`/images/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  }, [request]);
+
+  const uploadGeneratedImage = useCallback(async (id, file) => {
+    if (!id) {
+      throw new Error('Image ID is required for upload');
+    }
+    const formData = new FormData();
+    formData.append('image', file);
+    return request(`/images/${encodeURIComponent(String(id))}/upload`, {
+      method: 'POST',
+      body: formData
+    });
+  }, [request]);
+
+  const importFromLibrary = useCallback(async (generatedImageId, sourceId, sourceType) => {
+    if (!generatedImageId || !sourceId || !sourceType) {
+      throw new Error('generatedImageId, sourceId, and sourceType are required');
+    }
+    return request(`/images/${encodeURIComponent(String(generatedImageId))}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId, sourceType })
+    });
+  }, [request]);
+
   return {
     loading,
     error,
+    // Video generation
     generateTextToVideo,
     generateImageToVideo,
     generateFrameInterpolation,
@@ -141,11 +275,28 @@ export function useApi(accessKey) {
     getJob,
     deleteJob,
     getTemplates,
+    // Video library
     getLibrary,
     getFolders,
     createFolder,
     deleteFolder,
     updateVideo,
-    deleteVideo
+    deleteVideo,
+    // Image generation
+    getAssetLists,
+    getAssetList,
+    importAssetList,
+    deleteAssetList,
+    getCharacters,
+    createCharacter,
+    setCharacterAnchor,
+    getGeneratedImages,
+    getGeneratedImage,
+    generateImage,
+    generateStandaloneImage,
+    regenerateImage,
+    updateGeneratedImage,
+    uploadGeneratedImage,
+    importFromLibrary
   };
 }

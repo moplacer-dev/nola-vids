@@ -5,6 +5,8 @@ import VideoPlayer from './components/VideoPlayer';
 import Login from './components/Login';
 import Tips from './components/Tips';
 import Library from './components/Library';
+import ImageGenerator from './components/ImageGenerator';
+import ImageGenForm from './components/ImageGenForm';
 import { useApi } from './hooks/useApi';
 import './App.css';
 
@@ -18,7 +20,9 @@ export default function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [templates, setTemplates] = useState(null);
   const [generating, setGenerating] = useState(false);
-  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'library'
+  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen' | 'library'
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [imageGenerating, setImageGenerating] = useState(false);
 
   // State for pre-filling the form from library actions
   const [prefillPrompt, setPrefillPrompt] = useState(null);
@@ -40,7 +44,19 @@ export default function App() {
     createFolder,
     deleteFolder,
     updateVideo,
-    deleteVideo
+    deleteVideo,
+    // Image generation
+    getAssetLists,
+    getAssetList,
+    getCharacters,
+    setCharacterAnchor,
+    generateImage,
+    generateStandaloneImage,
+    regenerateImage,
+    updateGeneratedImage,
+    uploadGeneratedImage,
+    importFromLibrary,
+    getGeneratedImages
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -175,14 +191,26 @@ export default function App() {
     <div className="app">
       <header className="header">
         <h1 className="logo">NOLA.vids</h1>
-        <span className="tagline">Powered by Veo 3.1</span>
+        <span className="tagline">Powered by Veo 3.1 + Nano Banana 2</span>
 
         <nav className="nav">
           <button
             className={`nav-btn ${currentView === 'generator' ? 'active' : ''}`}
             onClick={() => setCurrentView('generator')}
           >
-            Generator
+            Video Gen
+          </button>
+          <button
+            className={`nav-btn ${currentView === 'image-gen' ? 'active' : ''}`}
+            onClick={() => setCurrentView('image-gen')}
+          >
+            Image Gen
+          </button>
+          <button
+            className={`nav-btn ${currentView === 'carl-gen' ? 'active' : ''}`}
+            onClick={() => setCurrentView('carl-gen')}
+          >
+            Carl Gen
           </button>
           <button
             className={`nav-btn ${currentView === 'library' ? 'active' : ''}`}
@@ -223,6 +251,69 @@ export default function App() {
             <Tips />
           </div>
         </main>
+      ) : currentView === 'image-gen' ? (
+        <main className="main">
+          <div className="left-panel">
+            <ImageGenForm
+              onGenerate={async (params) => {
+                setImageGenerating(true);
+                setGeneratedImage(null);
+                try {
+                  const result = await generateStandaloneImage(params);
+                  setGeneratedImage(result);
+                } catch (err) {
+                  console.error('Image generation failed:', err);
+                } finally {
+                  setImageGenerating(false);
+                }
+              }}
+              disabled={imageGenerating || loading}
+            />
+          </div>
+
+          <div className="right-panel">
+            <div className="image-result-panel">
+              <h3>Generated Image</h3>
+              {imageGenerating ? (
+                <div className="image-result-placeholder">Generating image...</div>
+              ) : generatedImage ? (
+                <div className="image-result">
+                  <img src={generatedImage.path} alt="Generated" className="generated-image" />
+                  <div className="image-result-filename">{generatedImage.filename}</div>
+                  <div className="image-result-actions">
+                    <a
+                      href={generatedImage.path}
+                      download={generatedImage.filename}
+                      className="btn-download-image"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="image-result-placeholder">
+                  Enter a prompt and click Generate to create an image
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      ) : currentView === 'carl-gen' ? (
+        <main className="main-library">
+          <ImageGenerator
+            getAssetLists={getAssetLists}
+            getAssetList={getAssetList}
+            getCharacters={getCharacters}
+            setCharacterAnchor={setCharacterAnchor}
+            generateImage={generateImage}
+            regenerateImage={regenerateImage}
+            updateGeneratedImage={updateGeneratedImage}
+            uploadGeneratedImage={uploadGeneratedImage}
+            importFromLibrary={importFromLibrary}
+            getGeneratedImages={getGeneratedImages}
+            getLibrary={getLibrary}
+          />
+        </main>
       ) : (
         <main className="main-library">
           <Library
@@ -233,6 +324,7 @@ export default function App() {
             deleteFolder={deleteFolder}
             updateVideo={updateVideo}
             deleteVideo={deleteVideo}
+            getGeneratedImages={getGeneratedImages}
             onReusePrompt={handleReusePrompt}
             onExtendVideo={handleExtendVideo}
           />

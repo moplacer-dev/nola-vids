@@ -1,8 +1,10 @@
 # NOLA.vids
 
-Internal media team video generation app powered by Google's Veo 3.1 API.
+Internal media team video and image generation app powered by Google's Veo 3.1 and Imagen APIs.
 
 ## Features
+
+### Video Generation
 
 | Mode | Description |
 |------|-------------|
@@ -12,11 +14,58 @@ Internal media team video generation app powered by Google's Veo 3.1 API.
 | **Reference Guided** | Use up to 3 reference images for subject consistency |
 | **Video Extension** | Extend Veo-generated videos by ~7 seconds |
 
+### Image Generation
+
+| Mode | Description |
+|------|-------------|
+| **Image Gen** | Standalone image generation with optional reference image |
+| **Carl Gen** | Batch image generation from Carl v7 asset lists |
+
+### Carl Gen Features
+
+Carl Gen integrates with Carl v7 to manage and generate images for Star Academy educational content:
+
+- **Asset List Import** - Receive asset lists pushed from Carl v7
+- **Slide-based Organization** - Assets grouped by slide number with titles
+- **Multi-Asset Support** - Multiple assets per slide with automatic numbering
+- **Career Characters** - Anchor image support for consistent character generation
+- **Character Toggle** - Control whether to include character in each generation
+- **Three Fulfillment Methods:**
+  - **Generate** - AI generation with 3:2 aspect ratio
+  - **Upload** - Direct file upload (PNG, JPG, WebP)
+  - **Import** - Select from existing Library items
+- **Default Images** - Auto-apply standard images for "Clean Up" and "Lab Safety" slides
+- **Prompt Editing** - Full prompt editing with pedagogical context
+- **Asset Type Selector** - Change image/diagram/video types with auto-updated filenames
+- **Status Tracking** - Real-time generation status (pending, generating, completed, failed, uploaded, imported, default)
+- **CMS Naming** - Automatic filename convention for bulk CMS import
+
+### Media Library
+
+The unified Media Library provides a complete view of all generated content:
+
+- **Combined View** - Videos and images displayed together or filtered separately
+- **Module Filtering** - Filter content by module (Reactions, Energy, Matter, etc.)
+  - Images get module association from their asset list
+  - Videos get module association when imported into Carl Gen
+- **Folder Organization** - Organize videos into custom folders
+- **Search** - Search by title or prompt
+- **Sort Options** - Newest or oldest first
+- **Full-Screen Viewer** - Click any item to view in full-screen with keyboard navigation
+- **Quick Actions** - Download, delete, re-use prompts, extend videos
+
+### Media Viewer
+
+Full-screen viewer for videos and images:
+
+- **Keyboard Navigation** - Arrow keys to navigate, Escape to close
+- **Video Playback** - Full controls with native audio
+- **Quick Actions** - Download, delete, re-use prompt
+- **Metadata Display** - View prompts, dates, and file information
+
 ### Additional Features
 
-- **Video Library** - Browse, search, and organize all generated videos
-- **Folders** - Organize videos into custom folders
-- **Persistent Storage** - Videos and job history survive server restarts (SQLite)
+- **Persistent Storage** - Videos, images, and job history survive server restarts (SQLite)
 - **Star Academy Templates** - Pre-built templates for STEM educational content
 - **Negative Prompt Presets** - Quick filters for quality, style, and content control
 - **Job Queue** - Track generation progress with real-time status updates
@@ -26,9 +75,10 @@ Internal media team video generation app powered by Google's Veo 3.1 API.
 
 ## Setup
 
-### 1. Get a Veo API Key
+### 1. Get API Keys
 
-You'll need a Google AI API key with access to Veo 3.1. Get one from [Google AI Studio](https://aistudio.google.com/).
+You'll need:
+- **Google AI API key** with access to Veo 3.1 and Imagen - Get one from [Google AI Studio](https://aistudio.google.com/)
 
 ### 2. Configure Environment
 
@@ -69,29 +119,49 @@ nola.vids/
 │   ├── db/
 │   │   └── database.js       # SQLite database initialization & queries
 │   ├── services/
-│   │   └── veo.js            # Veo 3.1 API integration
+│   │   ├── veo.js            # Veo 3.1 API integration
+│   │   └── imageGen.js       # Imagen API integration
 │   ├── jobs/
 │   │   └── jobManager.js     # Async job queue & polling
 │   └── storage/
 │       ├── nola.db           # SQLite database (auto-created)
 │       ├── uploads/          # Temporary upload directory
+│       ├── images/           # Generated images
+│       ├── anchors/          # Character anchor images
+│       ├── defaults/         # Default slide images (cleanup.png, lab_safety.png)
 │       └── *.mp4             # Generated videos
 ├── client/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── src/
-│       ├── App.jsx           # Main application with routing
+│       ├── App.jsx           # Main application with tab routing
+│       ├── App.css           # Global styles
+│       ├── index.css         # CSS variables & theme
 │       ├── components/
 │       │   ├── GenerationForm.jsx/css   # Video generation UI
 │       │   ├── JobList.jsx/css          # Job queue display
 │       │   ├── VideoPlayer.jsx/css      # Video preview & download
-│       │   ├── Library.jsx/css          # Video library page
+│       │   ├── Library.jsx/css          # Media library (videos + images)
 │       │   ├── VideoCard.jsx/css        # Video card component
+│       │   ├── ImageCard.jsx/css        # Image card component
+│       │   ├── MediaViewer.jsx/css      # Full-screen media viewer
 │       │   ├── FolderSidebar.jsx/css    # Folder navigation
 │       │   ├── Login.jsx/css            # Access key login screen
-│       │   └── Tips.jsx/css             # Veo 3.1 prompting tips
+│       │   ├── Tips.jsx/css             # Veo 3.1 prompting tips
+│       │   ├── ImageGenForm/            # Standalone image generation
+│       │   │   ├── index.jsx            # Image gen form component
+│       │   │   └── ImageGenForm.css     # Styles
+│       │   └── ImageGenerator/          # Carl Gen components
+│       │       ├── index.jsx            # Main Carl Gen page
+│       │       ├── AssetList.jsx        # Slide/asset list display
+│       │       ├── CharacterPanel.jsx   # Career character management
+│       │       ├── PromptEditor.jsx     # Prompt editing modal
+│       │       ├── ImagePreview.jsx     # Generated image preview
+│       │       ├── LibraryPicker.jsx    # Import from Library modal
+│       │       └── ImageGenerator.css   # Carl Gen styles
 │       └── hooks/
 │           └── useApi.js     # API client hooks
+├── PLAN.md                   # Carl Gen feature documentation
 ├── .env                      # API key & access key (not committed)
 ├── .env.example              # Environment template
 └── package.json
@@ -99,7 +169,7 @@ nola.vids/
 
 ## API Endpoints
 
-### Generation
+### Video Generation
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -108,6 +178,36 @@ nola.vids/
 | POST | `/api/generate/frames` | Frame interpolation (multipart form) |
 | POST | `/api/generate/reference` | Reference-guided generation (multipart form) |
 | POST | `/api/generate/extend` | Video extension (JSON: videoPath, prompt) |
+
+### Image Generation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/images/generate-standalone` | Generate standalone image (multipart form) |
+| POST | `/api/images/generate` | Generate image from asset list |
+| GET | `/api/images` | List generated images (supports `?moduleName=`, `?status=`) |
+| GET | `/api/images/:id` | Get single image with history |
+| PATCH | `/api/images/:id` | Update image prompt or asset type |
+| PUT | `/api/images/:id/regenerate` | Regenerate an image |
+| POST | `/api/images/:id/upload` | Upload file to fulfill asset |
+| POST | `/api/images/:id/import` | Import from Library to fulfill asset |
+
+### Asset Lists (Carl Gen)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/asset-lists` | Receive asset list from Carl v7 |
+| GET | `/api/asset-lists` | List all asset lists (supports `?moduleName=`) |
+| GET | `/api/asset-lists/:id` | Get asset list with generated images |
+| DELETE | `/api/asset-lists/:id` | Delete an asset list |
+
+### Characters
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/characters/:moduleName` | Get characters for a module |
+| POST | `/api/characters` | Create or update character |
+| PUT | `/api/characters/:id/anchor` | Set character anchor image |
 
 ### Jobs
 
@@ -121,11 +221,11 @@ nola.vids/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/library` | List all videos (supports `?folder=`, `?search=`) |
+| GET | `/api/library` | List all videos with `moduleName` (supports `?folder=`, `?search=`) |
 | GET | `/api/library/folders` | List all folders with video counts |
 | POST | `/api/library/folders` | Create a new folder |
 | DELETE | `/api/library/folders/:id` | Delete a folder |
-| PATCH | `/api/videos/:id` | Update video title or folder |
+| PATCH | `/api/videos/:id` | Update video title, folder, or moduleName |
 | DELETE | `/api/videos/:id` | Delete a single video |
 
 ### Other
@@ -134,6 +234,93 @@ nola.vids/
 |--------|----------|-------------|
 | GET | `/api/templates` | Get prompt templates |
 | POST | `/auth/verify` | Verify access key |
+
+## Carl v7 Integration
+
+### Sending Asset Lists to NOLA.vids
+
+Carl v7 can push asset lists to NOLA.vids via POST to `/api/asset-lists`:
+
+```json
+{
+  "moduleName": "Reactions",
+  "sessionNumber": 1,
+  "sessionTitle": "Session 1",
+  "slides": [
+    {
+      "slideNumber": 1,
+      "slideTitle": "Introduction",
+      "slideType": "content"
+    }
+  ],
+  "assets": [
+    {
+      "slideNumber": 1,
+      "assetNumber": 1,
+      "type": "ai_generated_image",
+      "prompt": "A scientist in a lab coat explaining chemical reactions",
+      "priority": "required",
+      "productionNotes": "Notes for the production team",
+      "mediaTeamNotes": "Guidance for media creators",
+      "pedagogicalRationale": "Why this asset supports learning"
+    }
+  ],
+  "careerCharacter": {
+    "name": "Dr. Malik Carter",
+    "career": "Food Scientist",
+    "appearance": "African American male, 30s, friendly expression",
+    "appearsOn": [1, 3, 5]
+  }
+}
+```
+
+### Asset Fields
+
+| Field | Description |
+|-------|-------------|
+| `slideNumber` | Slide number the asset belongs to |
+| `assetNumber` | Asset number within the slide (1, 2, 3...) |
+| `type` | Asset type (ai_generated_image, real_world_photo, labeled_diagram, etc.) |
+| `prompt` | Image generation prompt / description |
+| `priority` | "required" or "optional" |
+| `productionNotes` | General production guidance |
+| `mediaTeamNotes` | Specific notes for the media team |
+| `pedagogicalRationale` | Why this asset supports learning (displayed as "Why:") |
+
+### CMS Filename Convention
+
+Generated images follow the naming pattern:
+```
+MOD.{MODULE}.{SESSION}.{SLIDE}.{TYPE}{NUM}.png
+```
+
+Examples:
+- `MOD.REAC.1.5.IMG1.png` - Reactions, Session 1, Slide 5, Image 1
+- `MOD.REAC.1.5.IMG2.png` - Reactions, Session 1, Slide 5, Image 2
+- `MOD.MATT.2.12.DIA1.png` - Matter, Session 2, Slide 12, Diagram 1
+
+### Asset Statuses
+
+| Status | Meaning | UI Color |
+|--------|---------|----------|
+| `pending` | No image yet | Gray |
+| `generating` | AI generation in progress | Yellow |
+| `completed` | AI generation finished | Green |
+| `uploaded` | User uploaded file | Blue |
+| `imported` | Imported from Library | Purple |
+| `default` | Auto-applied default image | Gold |
+| `failed` | Generation error | Red |
+
+### Default Slide Images
+
+Certain slide types automatically receive default images:
+
+| Slide Title Contains | Default Image |
+|---------------------|---------------|
+| "Clean Up" | `server/storage/defaults/cleanup.png` |
+| "Lab Safety" | `server/storage/defaults/lab_safety.png` |
+
+Users can override defaults by uploading, importing, or generating a new image.
 
 ## Authentication
 
@@ -144,15 +331,19 @@ The app requires an access key to use. Set the `ACCESS_KEY` environment variable
 NOLA.vids uses SQLite for persistent storage:
 
 - **Jobs** - Generation history persists across server restarts
-- **Videos** - Video metadata (title, folder) is stored in the database
+- **Videos** - Video metadata (title, folder, module) is stored in the database
 - **Folders** - Custom folders for organizing videos
+- **Asset Lists** - Imported asset lists from Carl v7
+- **Generated Images** - Image metadata and generation history
+- **Characters** - Career characters with anchor images
 - **Auto-import** - Existing video files are automatically imported on startup
+- **Module Tagging** - Videos imported into Carl Gen are tagged with the module
 
 The database is stored at `server/storage/nola.db`.
 
 ## Prompt Tips
 
-### Audio Cues
+### Audio Cues (Video)
 Veo 3.1 generates synchronized audio. Include audio cues in your prompts:
 
 - **Dialogue**: Use quotes - `"Hello there!" she says`
@@ -189,9 +380,18 @@ no blur, not cartoon, don't make it low quality
 | Video Retention | 2 days on Google servers |
 | Output | MP4 with native audio |
 
+## Imagen Specifications
+
+| Spec | Value |
+|------|-------|
+| Model | Gemini 3.1 Flash |
+| Aspect Ratio | 3:2 (default for CMS compatibility) |
+| Output | PNG |
+| Reference Images | Optional anchor image for character consistency |
+
 ## Content Filtering
 
-Veo 3.1 includes safety filters that may reject:
+Veo 3.1 and Imagen include safety filters that may reject:
 - Real people's names or likenesses
 - Violent or inappropriate content
 - Copyrighted characters
