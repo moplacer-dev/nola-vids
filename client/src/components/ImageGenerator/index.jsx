@@ -279,7 +279,7 @@ export default function ImageGenerator({
               <option value="">Select Session...</option>
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>
-                  Session {s.number}{s.title ? ` - ${s.title}` : ''}
+                  Session {s.number}
                 </option>
               ))}
             </select>

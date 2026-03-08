@@ -4,6 +4,7 @@ export default function MotionGraphicsGroup({
   slideNumber,
   slideTitle,
   scenes = [],  // Default to empty array
+  assets = [],  // Raw assets with context fields
   mgVideo,
   onGenerate,
   onUpload,
@@ -34,6 +35,32 @@ export default function MotionGraphicsGroup({
       onUploadVideo(slideNumber, file);
       e.target.value = '';
     }
+  };
+
+  // Find matching raw asset for a scene to get context fields
+  const getAssetForScene = (scene) => {
+    const sceneAssetNum = scene.assetNumber || 1;
+    return assets.find(a =>
+      (a.assetNumber ?? a.asset_number ?? 1) === sceneAssetNum
+    );
+  };
+
+  // Build edit data with context from raw asset
+  const handleEditScene = (scene) => {
+    const asset = getAssetForScene(scene);
+    const productionNotes = asset?.productionNotes || asset?.production_notes || '';
+    const mediaTeamNotes = asset?.mediaTeamNotes || asset?.media_team_notes || asset?.notes_for_media_team || '';
+    const pedagogicalRationale = asset?.pedagogicalRationale || asset?.pedagogical_rationale || '';
+
+    onEditPrompt({
+      ...scene,
+      asset: {
+        prompt: asset?.prompt || asset?.description || '',
+        pedagogicalRationale,
+        productionNotes,
+        mediaTeamNotes
+      }
+    });
   };
 
   return (
@@ -163,7 +190,7 @@ export default function MotionGraphicsGroup({
                         className="btn-sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onEditPrompt(scene);
+                          handleEditScene(scene);
                         }}
                       >
                         Edit

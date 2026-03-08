@@ -122,6 +122,7 @@ export default function AssetList({
                 slideNumber={slide.slideNumber}
                 slideTitle={slide.slideTitle}
                 scenes={mgScenes}
+                assets={slide.assets}
                 mgVideo={mgVideo}
                 onGenerate={onGenerate}
                 onUpload={onUpload}
