@@ -169,6 +169,9 @@ export default function AssetList({
               // Get current toggle state, defaulting based on asset type
               const useCharacter = characterToggles[key] ?? defaultUseCharacter;
 
+              // Check if this is a video asset (not motion graphics - those are handled separately)
+              const isVideoAsset = type.toLowerCase() === 'video';
+
               return (
                 <div
                   key={i}
@@ -274,16 +277,18 @@ export default function AssetList({
                         <span className="toggle-label">Character</span>
                       </label>
                     )}
-                    <button
-                      className="btn-primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (img) onGenerate(img.id, { useCharacterAnchor: hasCharacter && useCharacter });
-                      }}
-                      disabled={!img || img?.status === 'generating' || loading}
-                    >
-                      Generate
-                    </button>
+                    {!isVideoAsset && (
+                      <button
+                        className="btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (img) onGenerate(img.id, { useCharacterAnchor: hasCharacter && useCharacter });
+                        }}
+                        disabled={!img || img?.status === 'generating' || loading}
+                      >
+                        Generate
+                      </button>
+                    )}
                   </div>
                 </div>
               );
