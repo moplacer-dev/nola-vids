@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 export default function CharacterPanel({ characters, onSetAnchor }) {
   const fileInputRef = useRef({});
+  const [viewingCharacter, setViewingCharacter] = useState(null);
 
   const handleFileSelect = (characterId, e) => {
     const file = e.target.files?.[0];
@@ -44,17 +45,66 @@ export default function CharacterPanel({ characters, onSetAnchor }) {
                 className="btn-set-anchor"
                 onClick={() => fileInputRef.current[char.id]?.click()}
               >
-                {char.anchorImagePath ? 'Update Anchor' : 'Set Anchor'}
+                {char.anchorImagePath ? 'Update Reference' : 'Set Reference'}
               </button>
-              {char.anchorImagePath && (
-                <button className="btn-view-anchor">
-                  View
-                </button>
-              )}
+              <button
+                className="btn-view-anchor"
+                onClick={() => setViewingCharacter(char)}
+              >
+                View
+              </button>
             </div>
           </div>
         </div>
       ))}
+
+      {/* Character Details Modal */}
+      {viewingCharacter && (
+        <div className="prompt-editor-overlay" onClick={() => setViewingCharacter(null)}>
+          <div className="prompt-editor character-modal" onClick={e => e.stopPropagation()}>
+            <div className="prompt-editor-header">
+              <h2>{viewingCharacter.characterName}</h2>
+              <button className="prompt-editor-close" onClick={() => setViewingCharacter(null)}>×</button>
+            </div>
+
+            <div className="character-modal-body">
+              {viewingCharacter.anchorImagePath && (
+                <div className="character-modal-image">
+                  <img
+                    src={`/anchors/${viewingCharacter.anchorImagePath.split('/').pop()}`}
+                    alt={viewingCharacter.characterName}
+                  />
+                </div>
+              )}
+
+              <div className="character-modal-details">
+                {viewingCharacter.career && (
+                  <div className="character-detail">
+                    <span className="detail-label">Career:</span>
+                    <span className="detail-value">{viewingCharacter.career}</span>
+                  </div>
+                )}
+
+                {viewingCharacter.appearanceDescription && (
+                  <div className="character-detail">
+                    <span className="detail-label">Appearance:</span>
+                    <p className="detail-value">{viewingCharacter.appearanceDescription}</p>
+                  </div>
+                )}
+
+                {viewingCharacter.appearsOnSlides && viewingCharacter.appearsOnSlides.length > 0 && (
+                  <div className="character-detail">
+                    <span className="detail-label">Appears on:</span>
+                    <span className="detail-value">
+                      {viewingCharacter.appearsOnSlides.join(', ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
