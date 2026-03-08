@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 export default function MotionGraphicsGroup({
   slideNumber,
   slideTitle,
-  scenes,
+  scenes = [],  // Default to empty array
   mgVideo,
   onGenerate,
   onUpload,
@@ -19,10 +19,13 @@ export default function MotionGraphicsGroup({
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
 
-  const scenesReady = scenes.filter(s =>
-    ['completed', 'uploaded', 'imported', 'default'].includes(s.status)
+  // Ensure scenes is always an array
+  const safeScenes = Array.isArray(scenes) ? scenes : [];
+
+  const scenesReady = safeScenes.filter(s =>
+    s && ['completed', 'uploaded', 'imported', 'default'].includes(s.status)
   ).length;
-  const totalScenes = scenes.length;
+  const totalScenes = safeScenes.length;
   const hasVideo = mgVideo?.status === 'uploaded' && mgVideo?.videoPath;
 
   const handleVideoUpload = (e) => {
@@ -131,11 +134,12 @@ export default function MotionGraphicsGroup({
               </span>
             </div>
             <div className="mg-scenes-grid">
-              {scenes.map((scene, index) => {
+              {safeScenes.map((scene, index) => {
+                if (!scene) return null;  // Skip null/undefined scenes
                 const sceneNum = scene.assetNumber || (index + 1);
                 return (
                   <div
-                    key={scene.id}
+                    key={scene.id || `scene-${index}`}
                     className={`mg-scene-card ${scene.id === selectedImageId ? 'selected' : ''} status-${scene.status}`}
                     onClick={() => onSelectImage(scene)}
                   >

@@ -80,17 +80,20 @@ export default function AssetList({
       ((img.assetType || '').toLowerCase().includes('motion_graphics'))
     ) || [];
 
-    // If no scenes found, fall back to finding via assets + imageByKey
+    // If no scenes found, fall back to finding via assets + generatedImages by slideNumber/assetNumber
     if (scenes.length === 0) {
       const slideAssets = assetsBySlide[String(slideNumber)] || [];
       const mgAssets = slideAssets.filter(a =>
         (a.type || '').toLowerCase().includes('motion_graphics')
       );
 
+      // Find generatedImages by slideNumber + assetNumber (avoiding type mismatch)
       scenes = mgAssets.map(asset => {
         const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-        const key = `${slideNumber}-${asset.type}-${assetNum}`;
-        return imageByKey[key];
+        return generatedImages?.find(img =>
+          img.slideNumber === parseInt(slideNumber) &&
+          (img.assetNumber || 1) === assetNum
+        );
       }).filter(Boolean);
     }
 
@@ -108,8 +111,9 @@ export default function AssetList({
       <div className="asset-items">
         {slides.map((slide) => {
           // Render Motion Graphics slides with special component
-          if (slide.isMotionGraphics && slide.assets.length > 0) {
-            const mgScenes = getMGScenes(slide.slideNumber);
+          const mgScenes = slide.isMotionGraphics ? getMGScenes(slide.slideNumber) : [];
+
+          if (slide.isMotionGraphics && (slide.assets.length > 0 || mgScenes.length > 0)) {
             const mgVideo = mgVideoBySlide[parseInt(slide.slideNumber)];
 
             return (

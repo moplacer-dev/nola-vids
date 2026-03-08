@@ -958,7 +958,7 @@
   border: 1px solid #3a4a3a;
   border-radius: 6px;
   background: #0a0a0a;
-  overflow: hidden;
+  /* Note: overflow:hidden was removed - it caused content to be clipped */
 }
 
 .mg-group.has-video {
