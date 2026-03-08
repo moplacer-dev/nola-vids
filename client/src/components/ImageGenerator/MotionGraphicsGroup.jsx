@@ -13,6 +13,8 @@ export default function MotionGraphicsGroup({
   onSelectImage,
   onUploadVideo,
   onDeleteVideo,
+  onAddScene,
+  onDeleteScene,
   selectedImageId,
   loading
 }) {
@@ -170,6 +172,17 @@ export default function MotionGraphicsGroup({
                     className={`mg-scene-card ${scene.id === selectedImageId ? 'selected' : ''} status-${scene.status}`}
                     onClick={() => onSelectImage(scene)}
                   >
+                    {/* Delete button */}
+                    <button
+                      className="mg-scene-delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteScene(scene);
+                      }}
+                      title="Delete scene"
+                    >
+                      ×
+                    </button>
                     <div className="mg-scene-thumbnail">
                       {scene.imagePath ? (
                         <img
@@ -232,6 +245,18 @@ export default function MotionGraphicsGroup({
                   </div>
                 );
               })}
+
+              {/* Add Scene Card */}
+              <div
+                className="mg-scene-card mg-scene-add"
+                onClick={() => onAddScene(slideNumber)}
+              >
+                <div className="mg-scene-thumbnail">
+                  <div className="mg-scene-placeholder mg-add-placeholder">
+                    + Add Scene
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

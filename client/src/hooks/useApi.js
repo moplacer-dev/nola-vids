@@ -282,6 +282,20 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const addMGScene = useCallback(async (assetListId, slideNumber, { prompt, assetType = 'motion_graphics' }) => {
+    return request(`/motion-graphics/${encodeURIComponent(String(assetListId))}/${encodeURIComponent(String(slideNumber))}/scenes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, assetType })
+    });
+  }, [request]);
+
+  const deleteMGScene = useCallback(async (sceneId) => {
+    return request(`/motion-graphics/scenes/${encodeURIComponent(sceneId)}`, {
+      method: 'DELETE'
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -321,6 +335,9 @@ export function useApi(accessKey) {
     // Motion graphics videos
     getMotionGraphicsSlide,
     uploadMotionGraphicsVideo,
-    deleteMotionGraphicsVideo
+    deleteMotionGraphicsVideo,
+    // Motion graphics scenes
+    addMGScene,
+    deleteMGScene
   };
 }

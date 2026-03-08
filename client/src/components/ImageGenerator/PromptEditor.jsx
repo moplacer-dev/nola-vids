@@ -21,23 +21,29 @@ const MEDIA_TYPES = [
   { value: 'interactive_element', label: 'Interactive Element' },
 ];
 
-export default function PromptEditor({ image, onSave, onClose }) {
+export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) {
+  const isAddMode = mode === 'add';
   const [prompt, setPrompt] = useState(
-    image.modifiedPrompt || image.originalPrompt || ''
+    isAddMode ? '' : (image.modifiedPrompt || image.originalPrompt || '')
   );
-  const [assetType, setAssetType] = useState(image.assetType || '');
+  const [assetType, setAssetType] = useState(
+    isAddMode ? 'motion_graphics' : (image.assetType || '')
+  );
 
-  const hasRecord = !!image.id;
+  const hasRecord = isAddMode || !!image.id;
   const asset = image.asset || {};
 
-  // Check if there's additional context available
-  const hasContext = asset.pedagogicalRationale || asset.productionNotes || asset.mediaTeamNotes;
+  // Check if there's additional context available (hide in add mode)
+  const hasContext = !isAddMode && (asset.pedagogicalRationale || asset.productionNotes || asset.mediaTeamNotes);
 
   // Check if asset type changed
   const assetTypeChanged = assetType !== (image.assetType || '');
 
   const handleSave = () => {
-    if (hasRecord) {
+    if (isAddMode) {
+      // In add mode, pass the prompt to create a new scene
+      onSave(image.id, prompt);
+    } else if (hasRecord) {
       onSave(image.id, prompt, assetTypeChanged ? assetType : undefined);
     } else {
       onClose();
@@ -84,43 +90,45 @@ export default function PromptEditor({ image, onSave, onClose }) {
       >
         <div className="prompt-editor-header">
           <h3>
-            Edit Prompt - Slide {image.slideNumber}
-            {image.assetType && <span className="prompt-asset-type"> ({image.assetType.replace(/_/g, ' ')}{image.assetNumber > 1 ? ` #${image.assetNumber}` : ''})</span>}
+            {isAddMode ? 'Add Scene' : 'Edit Prompt'} - Slide {image.slideNumber}
+            {!isAddMode && image.assetType && <span className="prompt-asset-type"> ({image.assetType.replace(/_/g, ' ')}{image.assetNumber > 1 ? ` #${image.assetNumber}` : ''})</span>}
           </h3>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
 
-        {!hasRecord && (
+        {!hasRecord && !isAddMode && (
           <div className="prompt-editor-warning">
             No database record for this asset. Restart the server and resend from Carl to create records for all assets.
           </div>
         )}
 
-        {/* Asset Type Selector */}
-        <div className="prompt-editor-type">
-          <label>Media Type</label>
-          <select
-            value={assetType}
-            onChange={(e) => setAssetType(e.target.value)}
-            className={assetTypeChanged ? 'type-changed' : ''}
-          >
-            <option value="">-- Select Type --</option>
-            {MEDIA_TYPES.map(type => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-            {/* Include current type if not in list */}
-            {assetType && !MEDIA_TYPES.find(t => t.value === assetType) && (
-              <option value={assetType}>
-                {assetType.replace(/_/g, ' ')}
-              </option>
+        {/* Asset Type Selector - hide in add mode */}
+        {!isAddMode && (
+          <div className="prompt-editor-type">
+            <label>Media Type</label>
+            <select
+              value={assetType}
+              onChange={(e) => setAssetType(e.target.value)}
+              className={assetTypeChanged ? 'type-changed' : ''}
+            >
+              <option value="">-- Select Type --</option>
+              {MEDIA_TYPES.map(type => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+              {/* Include current type if not in list */}
+              {assetType && !MEDIA_TYPES.find(t => t.value === assetType) && (
+                <option value={assetType}>
+                  {assetType.replace(/_/g, ' ')}
+                </option>
+              )}
+            </select>
+            {assetTypeChanged && (
+              <span className="type-change-indicator">Changed</span>
             )}
-          </select>
-          {assetTypeChanged && (
-            <span className="type-change-indicator">Changed</span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Context Reference Section */}
         {hasContext && (
@@ -201,7 +209,7 @@ export default function PromptEditor({ image, onSave, onClose }) {
             Cancel
           </button>
           <button className="btn-save" onClick={handleSave} disabled={!hasRecord}>
-            Save {assetTypeChanged ? 'Changes' : 'Prompt'}
+            {isAddMode ? 'Add Scene' : (assetTypeChanged ? 'Save Changes' : 'Save Prompt')}
           </button>
         </div>
       </div>

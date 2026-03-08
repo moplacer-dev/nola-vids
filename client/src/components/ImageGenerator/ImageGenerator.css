@@ -1272,6 +1272,139 @@
   cursor: not-allowed;
 }
 
+/* Add Scene Card */
+.mg-scene-add {
+  border: 2px dashed #3a3a3a;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mg-scene-add:hover {
+  border-color: #5a8a5a;
+  background: rgba(106, 154, 106, 0.05);
+}
+
+.mg-scene-add .mg-scene-thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mg-add-placeholder {
+  font-family: monospace;
+  font-size: 10px;
+  color: #3a3a3a;
+}
+
+.mg-scene-add:hover .mg-add-placeholder {
+  color: #5a5a5a;
+}
+
+/* Scene Delete Button */
+.mg-scene-card {
+  position: relative;
+}
+
+.mg-scene-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid #5a3a3a;
+  border-radius: 3px;
+  color: #aa6a6a;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.mg-scene-card:hover .mg-scene-delete {
+  opacity: 1;
+}
+
+.mg-scene-delete:hover {
+  background: #5a2a2a;
+  border-color: #8a4a4a;
+  color: #ff8a8a;
+}
+
+/* Delete Confirmation Dialog */
+.delete-confirm-dialog {
+  width: 90%;
+  max-width: 400px;
+  background: #141414;
+  border: 1px solid #3a2a2a;
+  border-radius: 6px;
+}
+
+.delete-confirm-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.delete-confirm-header h3 {
+  font-family: monospace;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ca6a6a;
+  margin: 0;
+}
+
+.delete-confirm-body {
+  padding: 20px;
+}
+
+.delete-confirm-body p {
+  color: #a0a0a0;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 12px 0;
+}
+
+.delete-confirm-body p:last-child {
+  margin-bottom: 0;
+}
+
+.delete-warning {
+  color: #ca8a6a;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.delete-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.btn-danger-confirm {
+  padding: 10px 20px;
+  font-family: monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  cursor: pointer;
+  background: #6a3a3a;
+  border: 1px solid #8a4a4a;
+  color: #ffffff;
+}
+
+.btn-danger-confirm:hover {
+  background: #8a4a4a;
+  border-color: #aa6a6a;
+}
+
 .btn-danger {
   border-color: #5a3a3a;
   color: #aa6a6a;

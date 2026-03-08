@@ -59,7 +59,10 @@ export default function App() {
     getGeneratedImages,
     // Motion graphics videos
     uploadMotionGraphicsVideo,
-    deleteMotionGraphicsVideo
+    deleteMotionGraphicsVideo,
+    // Motion graphics scenes
+    addMGScene,
+    deleteMGScene
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -317,6 +320,8 @@ export default function App() {
             getLibrary={getLibrary}
             uploadMotionGraphicsVideo={uploadMotionGraphicsVideo}
             deleteMotionGraphicsVideo={deleteMotionGraphicsVideo}
+            addMGScene={addMGScene}
+            deleteMGScene={deleteMGScene}
           />
         </main>
       ) : (

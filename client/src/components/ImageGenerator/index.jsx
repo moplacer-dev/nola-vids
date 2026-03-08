@@ -19,7 +19,9 @@ export default function ImageGenerator({
   getGeneratedImages,
   getLibrary,
   uploadMotionGraphicsVideo,
-  deleteMotionGraphicsVideo
+  deleteMotionGraphicsVideo,
+  addMGScene,
+  deleteMGScene
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -30,6 +32,8 @@ export default function ImageGenerator({
   const [editingImage, setEditingImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [importingForImage, setImportingForImage] = useState(null); // image ID we're importing for
+  const [deletingScene, setDeletingScene] = useState(null); // scene being deleted (confirmation)
+  const [addingSceneForSlide, setAddingSceneForSlide] = useState(null); // slideNumber when adding scene
 
   // Module/Session filters
   const [selectedModule, setSelectedModule] = useState('');
@@ -226,6 +230,49 @@ export default function ImageGenerator({
     }
   };
 
+  const handleAddScene = (slideNumber) => {
+    setAddingSceneForSlide(slideNumber);
+  };
+
+  const handleSaveNewScene = async (slideNumber, prompt) => {
+    if (!selectedAssetList?.id || !slideNumber) {
+      console.error('Add scene failed: missing required data');
+      return;
+    }
+    try {
+      const slideNum = parseInt(slideNumber, 10);
+      if (isNaN(slideNum)) {
+        console.error('Add scene failed: invalid slide number');
+        return;
+      }
+      await addMGScene(selectedAssetList.id, slideNum, { prompt });
+      setAddingSceneForSlide(null);
+      await loadAssetListDetails(selectedAssetList.id);
+    } catch (err) {
+      console.error('Failed to add scene:', err);
+    }
+  };
+
+  const handleDeleteScene = (scene) => {
+    setDeletingScene(scene);
+  };
+
+  const handleConfirmDeleteScene = async () => {
+    if (!deletingScene?.id) {
+      console.error('Delete scene failed: missing scene ID');
+      return;
+    }
+    try {
+      await deleteMGScene(deletingScene.id);
+      setDeletingScene(null);
+      if (selectedAssetList) {
+        await loadAssetListDetails(selectedAssetList.id);
+      }
+    } catch (err) {
+      console.error('Failed to delete scene:', err);
+    }
+  };
+
   // Get unique modules and sessions from asset lists
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
@@ -308,6 +355,8 @@ export default function ImageGenerator({
             onSelectImage={setSelectedImage}
             onUploadMGVideo={handleUploadMGVideo}
             onDeleteMGVideo={handleDeleteMGVideo}
+            onAddScene={handleAddScene}
+            onDeleteScene={handleDeleteScene}
             selectedImageId={selectedImage?.id}
             loading={loading}
           />
@@ -365,6 +414,41 @@ export default function ImageGenerator({
           getGeneratedImages={getGeneratedImages}
           mediaType="all"
         />
+      )}
+
+      {/* Add Scene Modal */}
+      {addingSceneForSlide && (
+        <PromptEditor
+          mode="add"
+          image={{ slideNumber: addingSceneForSlide, assetType: 'motion_graphics' }}
+          onSave={(_, prompt) => handleSaveNewScene(addingSceneForSlide, prompt)}
+          onClose={() => setAddingSceneForSlide(null)}
+        />
+      )}
+
+      {/* Delete Scene Confirmation Dialog */}
+      {deletingScene && (
+        <div className="prompt-editor-overlay" onClick={() => setDeletingScene(null)}>
+          <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-confirm-header">
+              <h3>Delete Scene</h3>
+            </div>
+            <div className="delete-confirm-body">
+              <p>Are you sure you want to delete Scene {deletingScene.assetNumber || 1} from Slide {deletingScene.slideNumber}?</p>
+              {deletingScene.imagePath && (
+                <p className="delete-warning">This will also delete the generated image.</p>
+              )}
+            </div>
+            <div className="delete-confirm-footer">
+              <button className="btn-cancel" onClick={() => setDeletingScene(null)}>
+                Cancel
+              </button>
+              <button className="btn-danger-confirm" onClick={handleConfirmDeleteScene}>
+                Delete Scene
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

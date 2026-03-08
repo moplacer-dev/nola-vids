@@ -13,6 +13,8 @@ export default function AssetList({
   onSelectImage,
   onUploadMGVideo,
   onDeleteMGVideo,
+  onAddScene,
+  onDeleteScene,
   selectedImageId,
   loading
 }) {
@@ -131,6 +133,8 @@ export default function AssetList({
                 onSelectImage={onSelectImage}
                 onUploadVideo={onUploadMGVideo}
                 onDeleteVideo={onDeleteMGVideo}
+                onAddScene={onAddScene}
+                onDeleteScene={onDeleteScene}
                 selectedImageId={selectedImageId}
                 loading={loading}
               />

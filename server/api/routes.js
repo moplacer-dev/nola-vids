@@ -1353,6 +1353,88 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Add a new scene to a motion graphics slide
+  router.post('/motion-graphics/:assetListId/:slideNumber/scenes', (req, res) => {
+    try {
+      const { assetListId, slideNumber } = req.params;
+      const { prompt, assetType = 'motion_graphics' } = req.body;
+
+      const assetList = assetListDb.getById(assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Get existing scenes for this slide to determine next assetNumber
+      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const slideScenes = allImages.filter(img =>
+        img.slideNumber === parseInt(slideNumber) &&
+        (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
+      );
+
+      // Calculate next asset number
+      const maxAssetNum = slideScenes.reduce((max, scene) => {
+        return Math.max(max, scene.assetNumber || 1);
+      }, 0);
+      const newAssetNumber = maxAssetNum + 1;
+
+      // Generate CMS filename following MG pattern
+      const cmsFilename = generateMGSceneFilename(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        parseInt(slideNumber),
+        newAssetNumber
+      );
+
+      // Create the new scene record
+      const newScene = generatedImageDb.create({
+        assetListId,
+        slideNumber: parseInt(slideNumber),
+        assetType,
+        assetNumber: newAssetNumber,
+        cmsFilename,
+        originalPrompt: prompt || '',
+        characterId: null,
+        status: 'pending'
+      });
+
+      res.json({
+        success: true,
+        scene: newScene,
+        message: `Added scene ${newAssetNumber} to slide ${slideNumber}`
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a motion graphics scene
+  router.delete('/motion-graphics/scenes/:sceneId', (req, res) => {
+    try {
+      const { sceneId } = req.params;
+
+      const scene = generatedImageDb.getById(sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: 'Scene not found' });
+      }
+
+      // Delete the image file if it exists
+      if (scene.imagePath && fs.existsSync(scene.imagePath)) {
+        fs.unlinkSync(scene.imagePath);
+      }
+
+      // Delete the database record
+      generatedImageDb.deleteByIds([sceneId]);
+
+      res.json({
+        success: true,
+        deletedScene: scene,
+        message: `Deleted scene from slide ${scene.slideNumber}`
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
@@ -1370,6 +1452,22 @@ function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
 
   const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.VID1.mp4`;
+}
+
+// Helper function to generate CMS filename for motion graphics scene images
+// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.MG.{SCENE}.png
+function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNumber) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.MG.${sceneNumber}.png`;
 }
 
 // Helper function to extract unique slides from assets array
