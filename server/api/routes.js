@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const { videos: videoDb, folders: folderDb, characters: characterDb, assetLists: assetListDb, generatedImages: generatedImageDb, generationHistory: generationHistoryDb } = require('../db/database');
+const { videos: videoDb, folders: folderDb, characters: characterDb, assetLists: assetListDb, generatedImages: generatedImageDb, generationHistory: generationHistoryDb, motionGraphicsVideos: mgVideoDb } = require('../db/database');
 
 const router = express.Router();
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
@@ -586,7 +586,7 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Get single asset list with its generated images
+  // Get single asset list with its generated images and motion graphics videos
   router.get('/asset-lists/:id', (req, res) => {
     try {
       const assetList = assetListDb.getById(req.params.id);
@@ -595,10 +595,12 @@ module.exports = (jobManager) => {
       }
 
       const generatedImages = generatedImageDb.getByAssetList(assetList.id);
+      const motionGraphicsVideos = mgVideoDb.getByAssetList(assetList.id);
 
       res.json({
         ...assetList,
-        generatedImages
+        generatedImages,
+        motionGraphicsVideos
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1207,8 +1209,168 @@ module.exports = (jobManager) => {
     }
   });
 
+  // ==========================================
+  // Motion Graphics Video endpoints
+  // ==========================================
+
+  // Get motion graphics video + scenes for a specific slide
+  router.get('/motion-graphics/:assetListId/:slideNumber', (req, res) => {
+    try {
+      const { assetListId, slideNumber } = req.params;
+
+      const assetList = assetListDb.getById(assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Get the MG video record for this slide
+      const mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+
+      // Get all scene images for this slide (motion_graphics_scene type)
+      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const scenes = allImages.filter(img =>
+        img.slideNumber === parseInt(slideNumber) &&
+        (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
+      );
+
+      res.json({
+        slideNumber: parseInt(slideNumber),
+        video: mgVideo,
+        scenes,
+        sceneCount: scenes.length,
+        scenesReady: scenes.filter(s => ['completed', 'uploaded', 'imported', 'default'].includes(s.status)).length
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload final video for a motion graphics slide
+  router.post('/motion-graphics/:assetListId/:slideNumber/video', upload.single('video'), async (req, res) => {
+    try {
+      const { assetListId, slideNumber } = req.params;
+
+      const assetList = assetListDb.getById(assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'Video file is required' });
+      }
+
+      // Generate CMS filename for the video (VID pattern)
+      const cmsFilename = generateMGVideoFilename(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        parseInt(slideNumber)
+      );
+
+      const outputPath = path.join(STORAGE_DIR, 'mg-videos', cmsFilename);
+
+      // Ensure mg-videos directory exists
+      const mgVideosDir = path.join(STORAGE_DIR, 'mg-videos');
+      if (!fs.existsSync(mgVideosDir)) {
+        fs.mkdirSync(mgVideosDir, { recursive: true });
+      }
+
+      // Move uploaded file to permanent location
+      fs.renameSync(req.file.path, outputPath);
+
+      // Count scenes for this slide
+      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const sceneCount = allImages.filter(img =>
+        img.slideNumber === parseInt(slideNumber) &&
+        (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
+      ).length;
+
+      // Check if record exists
+      let mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+
+      if (mgVideo) {
+        // Delete old video file if exists
+        if (mgVideo.videoPath && fs.existsSync(mgVideo.videoPath)) {
+          fs.unlinkSync(mgVideo.videoPath);
+        }
+        // Update existing record
+        mgVideo = mgVideoDb.update(mgVideo.id, {
+          cmsFilename,
+          videoPath: outputPath,
+          status: 'uploaded',
+          sceneCount
+        });
+      } else {
+        // Create new record
+        mgVideo = mgVideoDb.create({
+          assetListId,
+          slideNumber: parseInt(slideNumber),
+          cmsFilename,
+          videoPath: outputPath,
+          status: 'uploaded',
+          sceneCount
+        });
+      }
+
+      res.json({
+        success: true,
+        video: mgVideo,
+        filename: cmsFilename,
+        path: `/mg-videos/${cmsFilename}`
+      });
+    } catch (error) {
+      // Clean up uploaded file on error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete motion graphics video for a slide
+  router.delete('/motion-graphics/:assetListId/:slideNumber/video', (req, res) => {
+    try {
+      const { assetListId, slideNumber } = req.params;
+
+      const mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+      if (!mgVideo) {
+        return res.status(404).json({ error: 'Motion graphics video not found' });
+      }
+
+      // Delete the video file
+      if (mgVideo.videoPath && fs.existsSync(mgVideo.videoPath)) {
+        fs.unlinkSync(mgVideo.videoPath);
+      }
+
+      // Update record to pending (keep the record for tracking)
+      mgVideoDb.update(mgVideo.id, {
+        videoPath: null,
+        status: 'pending'
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
+
+// Helper function to generate CMS filename for motion graphics videos
+// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.VID1.mp4
+function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.VID1.mp4`;
+}
 
 // Helper function to extract unique slides from assets array
 // Used when Carl doesn't send a separate slides array

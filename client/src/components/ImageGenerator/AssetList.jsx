@@ -1,24 +1,35 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
+import MotionGraphicsGroup from './MotionGraphicsGroup';
 
 export default function AssetList({
   assets,
   slides: allSlides,
   generatedImages,
+  motionGraphicsVideos = [],
   onGenerate,
   onUpload,
   onImport,
   onEditPrompt,
   onSelectImage,
+  onUploadMGVideo,
+  onDeleteMGVideo,
   selectedImageId,
   loading
 }) {
   const fileInputRefs = useRef({});
   const [characterToggles, setCharacterToggles] = useState({});
+
   // Build the data - key includes assetNumber for multi-asset slides
   const imageByKey = {};
   generatedImages?.forEach(img => {
     const assetNum = img.assetNumber || 1;
     imageByKey[`${img.slideNumber}-${img.assetType}-${assetNum}`] = img;
+  });
+
+  // Build MG videos map by slide number
+  const mgVideoBySlide = {};
+  motionGraphicsVideos?.forEach(v => {
+    mgVideoBySlide[v.slideNumber] = v;
   });
 
   const assetsBySlide = {};
@@ -32,15 +43,59 @@ export default function AssetList({
 
   let slides = [];
   if (allSlides?.length > 0) {
-    slides = allSlides.map(s => ({
-      slideNumber: String(s.slideNumber ?? s.slide_number ?? ''),
-      slideTitle: s.slideTitle || s.slide_title || s.title || '',
-      slideType: s.slideType || s.slide_type || s.type || '',
-      assets: assetsBySlide[String(s.slideNumber ?? s.slide_number ?? '')] || []
-    })).sort((a, b) => Number(a.slideNumber) - Number(b.slideNumber));
+    slides = allSlides.map(s => {
+      const slideNum = String(s.slideNumber ?? s.slide_number ?? '');
+      const slideAssets = assetsBySlide[slideNum] || [];
+
+      // Check if this slide has motion graphics scenes
+      // Check both raw assets AND generatedImages for MG types
+      const hasMGFromAssets = slideAssets.some(a =>
+        (a.type || '').toLowerCase().includes('motion_graphics')
+      );
+      const hasMGFromImages = generatedImages?.some(img =>
+        img.slideNumber === parseInt(slideNum) &&
+        ((img.assetType || '').toLowerCase().includes('motion_graphics'))
+      ) || false;
+
+      const hasMGScenes = hasMGFromAssets || hasMGFromImages;
+
+      return {
+        slideNumber: slideNum,
+        slideTitle: s.slideTitle || s.slide_title || s.title || '',
+        slideType: s.slideType || s.slide_type || s.type || '',
+        assets: slideAssets,
+        isMotionGraphics: hasMGScenes
+      };
+    }).sort((a, b) => Number(a.slideNumber) - Number(b.slideNumber));
   }
 
   const slidesWithAssets = slides.filter(s => s.assets.length > 0).length;
+
+  // Get MG scenes for a slide (from generatedImages)
+  // Falls back to finding scenes via imageByKey when assetType doesn't match
+  const getMGScenes = (slideNumber) => {
+    // First try to get from generatedImages by assetType
+    let scenes = generatedImages?.filter(img =>
+      img.slideNumber === parseInt(slideNumber) &&
+      ((img.assetType || '').toLowerCase().includes('motion_graphics'))
+    ) || [];
+
+    // If no scenes found, fall back to finding via assets + imageByKey
+    if (scenes.length === 0) {
+      const slideAssets = assetsBySlide[String(slideNumber)] || [];
+      const mgAssets = slideAssets.filter(a =>
+        (a.type || '').toLowerCase().includes('motion_graphics')
+      );
+
+      scenes = mgAssets.map(asset => {
+        const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
+        const key = `${slideNumber}-${asset.type}-${assetNum}`;
+        return imageByKey[key];
+      }).filter(Boolean);
+    }
+
+    return scenes;
+  };
 
   // Super simple render with zero CSS dependencies
   return (
@@ -51,7 +106,34 @@ export default function AssetList({
       </div>
 
       <div className="asset-items">
-        {slides.map((slide) => (
+        {slides.map((slide) => {
+          // Render Motion Graphics slides with special component
+          if (slide.isMotionGraphics && slide.assets.length > 0) {
+            const mgScenes = getMGScenes(slide.slideNumber);
+            const mgVideo = mgVideoBySlide[parseInt(slide.slideNumber)];
+
+            return (
+              <MotionGraphicsGroup
+                key={slide.slideNumber}
+                slideNumber={slide.slideNumber}
+                slideTitle={slide.slideTitle}
+                scenes={mgScenes}
+                mgVideo={mgVideo}
+                onGenerate={onGenerate}
+                onUpload={onUpload}
+                onImport={onImport}
+                onEditPrompt={onEditPrompt}
+                onSelectImage={onSelectImage}
+                onUploadVideo={onUploadMGVideo}
+                onDeleteVideo={onDeleteMGVideo}
+                selectedImageId={selectedImageId}
+                loading={loading}
+              />
+            );
+          }
+
+          // Render normal slides
+          return (
           <div key={slide.slideNumber} className={`slide-group ${slide.assets.length === 0 ? 'no-assets' : ''}`}>
             <div className="slide-header">
               <span className="slide-badge">{slide.slideNumber}</span>
@@ -202,7 +284,8 @@ export default function AssetList({
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

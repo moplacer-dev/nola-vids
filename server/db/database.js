@@ -111,12 +111,27 @@ function initDatabase() {
       created_at TEXT NOT NULL
     );
 
+    -- Motion graphics final videos (one video per slide)
+    CREATE TABLE IF NOT EXISTS motion_graphics_videos (
+      id TEXT PRIMARY KEY,
+      asset_list_id TEXT REFERENCES asset_lists(id) ON DELETE CASCADE,
+      slide_number INTEGER NOT NULL,
+      cms_filename TEXT,
+      video_path TEXT,
+      status TEXT DEFAULT 'pending',
+      scene_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(asset_list_id, slide_number)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_characters_module ON characters(module_name);
     CREATE INDEX IF NOT EXISTS idx_asset_lists_module ON asset_lists(module_name);
     CREATE INDEX IF NOT EXISTS idx_asset_lists_session ON asset_lists(module_name, session_number);
     CREATE INDEX IF NOT EXISTS idx_generated_images_asset_list ON generated_images(asset_list_id);
     CREATE INDEX IF NOT EXISTS idx_generated_images_status ON generated_images(status);
     CREATE INDEX IF NOT EXISTS idx_generation_history_image ON generation_history(generated_image_id);
+    CREATE INDEX IF NOT EXISTS idx_mg_videos_asset_list ON motion_graphics_videos(asset_list_id);
   `);
 
   // Migration: Add source_uri column if it doesn't exist (for existing databases)
@@ -743,6 +758,91 @@ const generationHistoryQueries = {
   }
 };
 
+// Motion graphics video operations (final videos for MG slides)
+const motionGraphicsVideoQueries = {
+  create: (video) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO motion_graphics_videos (id, asset_list_id, slide_number, cms_filename, video_path, status, scene_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      video.assetListId,
+      video.slideNumber,
+      video.cmsFilename || null,
+      video.videoPath || null,
+      video.status || 'pending',
+      video.sceneCount || 0,
+      now,
+      now
+    );
+    return { id, ...video, createdAt: now, updatedAt: now };
+  },
+
+  getById: (id) => {
+    const row = db.prepare('SELECT * FROM motion_graphics_videos WHERE id = ?').get(id);
+    return row ? parseMGVideoRow(row) : null;
+  },
+
+  getByAssetList: (assetListId) => {
+    const rows = db.prepare('SELECT * FROM motion_graphics_videos WHERE asset_list_id = ? ORDER BY slide_number').all(assetListId);
+    return rows.map(parseMGVideoRow);
+  },
+
+  getByAssetListAndSlide: (assetListId, slideNumber) => {
+    const row = db.prepare('SELECT * FROM motion_graphics_videos WHERE asset_list_id = ? AND slide_number = ?').get(assetListId, slideNumber);
+    return row ? parseMGVideoRow(row) : null;
+  },
+
+  update: (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    if (updates.cmsFilename !== undefined) {
+      fields.push('cms_filename = ?');
+      values.push(updates.cmsFilename);
+    }
+    if (updates.videoPath !== undefined) {
+      fields.push('video_path = ?');
+      values.push(updates.videoPath);
+    }
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.sceneCount !== undefined) {
+      fields.push('scene_count = ?');
+      values.push(updates.sceneCount);
+    }
+
+    if (fields.length === 0) return null;
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    db.prepare(`UPDATE motion_graphics_videos SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return motionGraphicsVideoQueries.getById(id);
+  },
+
+  delete: (id) => {
+    const video = db.prepare('SELECT * FROM motion_graphics_videos WHERE id = ?').get(id);
+    if (!video) return null;
+    db.prepare('DELETE FROM motion_graphics_videos WHERE id = ?').run(id);
+    return parseMGVideoRow(video);
+  },
+
+  deleteByAssetListAndSlide: (assetListId, slideNumber) => {
+    const video = db.prepare('SELECT * FROM motion_graphics_videos WHERE asset_list_id = ? AND slide_number = ?')
+      .get(assetListId, slideNumber);
+    if (!video) return null;
+    db.prepare('DELETE FROM motion_graphics_videos WHERE asset_list_id = ? AND slide_number = ?')
+      .run(assetListId, slideNumber);
+    return parseMGVideoRow(video);
+  }
+};
+
 // Parse helper functions
 function parseCharacterRow(row) {
   return {
@@ -804,6 +904,20 @@ function parseJobRow(row) {
   };
 }
 
+function parseMGVideoRow(row) {
+  return {
+    id: row.id,
+    assetListId: row.asset_list_id,
+    slideNumber: row.slide_number,
+    cmsFilename: row.cms_filename,
+    videoPath: row.video_path,
+    status: row.status,
+    sceneCount: row.scene_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -813,5 +927,6 @@ module.exports = {
   characters: characterQueries,
   assetLists: assetListQueries,
   generatedImages: generatedImageQueries,
-  generationHistory: generationHistoryQueries
+  generationHistory: generationHistoryQueries,
+  motionGraphicsVideos: motionGraphicsVideoQueries
 };

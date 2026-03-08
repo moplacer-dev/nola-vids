@@ -262,6 +262,26 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // Motion Graphics Video endpoints
+  const getMotionGraphicsSlide = useCallback(async (assetListId, slideNumber) => {
+    return request(`/motion-graphics/${encodeURIComponent(assetListId)}/${slideNumber}`);
+  }, [request]);
+
+  const uploadMotionGraphicsVideo = useCallback(async (assetListId, slideNumber, file) => {
+    const formData = new FormData();
+    formData.append('video', file);
+    return request(`/motion-graphics/${encodeURIComponent(assetListId)}/${slideNumber}/video`, {
+      method: 'POST',
+      body: formData
+    });
+  }, [request]);
+
+  const deleteMotionGraphicsVideo = useCallback(async (assetListId, slideNumber) => {
+    return request(`/motion-graphics/${encodeURIComponent(assetListId)}/${slideNumber}/video`, {
+      method: 'DELETE'
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -297,6 +317,10 @@ export function useApi(accessKey) {
     regenerateImage,
     updateGeneratedImage,
     uploadGeneratedImage,
-    importFromLibrary
+    importFromLibrary,
+    // Motion graphics videos
+    getMotionGraphicsSlide,
+    uploadMotionGraphicsVideo,
+    deleteMotionGraphicsVideo
   };
 }

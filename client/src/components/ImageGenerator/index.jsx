@@ -17,11 +17,14 @@ export default function ImageGenerator({
   uploadGeneratedImage,
   importFromLibrary,
   getGeneratedImages,
-  getLibrary
+  getLibrary,
+  uploadMotionGraphicsVideo,
+  deleteMotionGraphicsVideo
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
   const [generatedImages, setGeneratedImages] = useState([]);
+  const [motionGraphicsVideos, setMotionGraphicsVideos] = useState([]);
   const [characters, setCharacters] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [editingImage, setEditingImage] = useState(null);
@@ -79,6 +82,7 @@ export default function ImageGenerator({
       const data = await getAssetList(assetListId);
       setSelectedAssetList(data);
       setGeneratedImages(data.generatedImages || []);
+      setMotionGraphicsVideos(data.motionGraphicsVideos || []);
     } catch (err) {
       console.error('Failed to load asset list:', err);
     } finally {
@@ -196,6 +200,32 @@ export default function ImageGenerator({
     }
   };
 
+  const handleUploadMGVideo = async (slideNumber, file) => {
+    if (!selectedAssetList?.id || !slideNumber || !file) {
+      console.error('Upload MG video failed: missing required data', { assetListId: selectedAssetList?.id, slideNumber, file });
+      return;
+    }
+    try {
+      await uploadMotionGraphicsVideo(selectedAssetList.id, slideNumber, file);
+      await loadAssetListDetails(selectedAssetList.id);
+    } catch (err) {
+      console.error('Failed to upload MG video:', err);
+    }
+  };
+
+  const handleDeleteMGVideo = async (slideNumber) => {
+    if (!selectedAssetList?.id || !slideNumber) {
+      console.error('Delete MG video failed: missing required data');
+      return;
+    }
+    try {
+      await deleteMotionGraphicsVideo(selectedAssetList.id, slideNumber);
+      await loadAssetListDetails(selectedAssetList.id);
+    } catch (err) {
+      console.error('Failed to delete MG video:', err);
+    }
+  };
+
   // Get unique modules and sessions from asset lists
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
@@ -270,11 +300,14 @@ export default function ImageGenerator({
             assets={selectedAssetList.assets}
             slides={selectedAssetList.slides}
             generatedImages={generatedImages}
+            motionGraphicsVideos={motionGraphicsVideos}
             onGenerate={handleGenerate}
             onUpload={handleUpload}
             onImport={handleOpenLibraryPicker}
             onEditPrompt={handleEditPrompt}
             onSelectImage={setSelectedImage}
+            onUploadMGVideo={handleUploadMGVideo}
+            onDeleteMGVideo={handleDeleteMGVideo}
             selectedImageId={selectedImage?.id}
             loading={loading}
           />

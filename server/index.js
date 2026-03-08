@@ -22,10 +22,12 @@ const storageDir = path.join(__dirname, 'storage');
 const uploadsDir = path.join(storageDir, 'uploads');
 const imagesDir = path.join(storageDir, 'images');
 const anchorsDir = path.join(storageDir, 'anchors');
+const mgVideosDir = path.join(storageDir, 'mg-videos');
 if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 if (!fs.existsSync(anchorsDir)) fs.mkdirSync(anchorsDir, { recursive: true });
+if (!fs.existsSync(mgVideosDir)) fs.mkdirSync(mgVideosDir, { recursive: true });
 
 // CORS configuration - defaults to permissive, can be restricted via CORS_ORIGINS env var
 const corsOrigins = process.env.CORS_ORIGINS;
@@ -83,6 +85,9 @@ app.use('/images', express.static(imagesDir));
 
 // Serve character anchor images
 app.use('/anchors', express.static(anchorsDir));
+
+// Serve motion graphics final videos
+app.use('/mg-videos', express.static(mgVideosDir));
 
 // API routes (protected by auth middleware)
 app.use('/api', authMiddleware, createRoutes(jobManager));
