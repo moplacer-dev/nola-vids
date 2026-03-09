@@ -11,6 +11,7 @@ export default function ImageGenerator({
   getAssetList,
   getCharacters,
   setCharacterAnchor,
+  removeCharacterReferenceImage,
   generateImage,
   regenerateImage,
   updateGeneratedImage,
@@ -233,14 +234,24 @@ export default function ImageGenerator({
     }
   };
 
-  const handleSetAnchor = async (characterId, file) => {
+  const handleSetAnchor = async (characterId, files) => {
     try {
-      const formData = new FormData();
-      formData.append('anchor', file);
-      await setCharacterAnchor(characterId, formData);
+      // Support both single file and array of files
+      const fileList = Array.isArray(files) ? files : [files];
+      await setCharacterAnchor(characterId, fileList);
       await loadCharacters(selectedModule);
     } catch (err) {
       console.error('Failed to set anchor:', err);
+    }
+  };
+
+  const handleRemoveReferenceImage = async (characterId, imagePath) => {
+    if (!removeCharacterReferenceImage) return;
+    try {
+      await removeCharacterReferenceImage(characterId, imagePath);
+      await loadCharacters(selectedModule);
+    } catch (err) {
+      console.error('Failed to remove reference image:', err);
     }
   };
 
@@ -481,6 +492,7 @@ export default function ImageGenerator({
           <CharacterPanel
             characters={characters}
             onSetAnchor={handleSetAnchor}
+            onRemoveReferenceImage={handleRemoveReferenceImage}
           />
         )}
 

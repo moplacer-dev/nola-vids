@@ -15,28 +15,48 @@ class ImageGenService {
    * Generate an image from a text prompt
    * @param {Object} options - Generation options
    * @param {string} options.prompt - The image generation prompt
-   * @param {string} [options.anchorImagePath] - Path to anchor image for character consistency
+   * @param {string|string[]} [options.anchorImagePath] - Path to anchor image(s) for character consistency (single path or array)
+   * @param {string[]} [options.anchorImagePaths] - Array of paths to reference images (preferred over anchorImagePath)
    * @param {string} [options.aspectRatio] - Aspect ratio (e.g., '16:9', '1:1', '3:2', '4:3')
    * @returns {Promise<{imageData: string, mimeType: string}>} - Base64 image data and mime type
    */
-  async generate({ prompt, anchorImagePath, aspectRatio = '3:2' }) {
+  async generate({ prompt, anchorImagePath, anchorImagePaths = [], aspectRatio = '3:2' }) {
     let contents;
 
     // Include aspect ratio instruction in the prompt for better compliance
     const aspectInstruction = `Generate a ${aspectRatio} aspect ratio image`;
 
-    // If we have an anchor image for character consistency, include it
-    if (anchorImagePath && fs.existsSync(anchorImagePath)) {
-      const anchorImage = await this._prepareImage(anchorImagePath);
-      contents = [
-        {
+    // Normalize paths: support both single path (backward compat) and array
+    let imagePaths = [...anchorImagePaths];
+    if (anchorImagePath) {
+      if (Array.isArray(anchorImagePath)) {
+        imagePaths = [...anchorImagePath, ...imagePaths];
+      } else {
+        imagePaths = [anchorImagePath, ...imagePaths];
+      }
+    }
+    // Filter to only existing files and limit to 3
+    imagePaths = imagePaths.filter(p => p && fs.existsSync(p)).slice(0, 3);
+
+    // If we have reference images for character consistency, include them
+    if (imagePaths.length > 0) {
+      const imageContents = [];
+      for (const imagePath of imagePaths) {
+        const img = await this._prepareImage(imagePath);
+        imageContents.push({
           inlineData: {
-            mimeType: anchorImage.mimeType,
-            data: anchorImage.imageBytes
+            mimeType: img.mimeType,
+            data: img.imageBytes
           }
-        },
+        });
+      }
+      const refText = imagePaths.length === 1
+        ? 'Using the character from this reference image for consistency'
+        : `Using the characters from these ${imagePaths.length} reference images for consistency`;
+      contents = [
+        ...imageContents,
         {
-          text: `Using the character from this reference image for consistency, ${aspectInstruction}: ${prompt}`
+          text: `${refText}, ${aspectInstruction}: ${prompt}`
         }
       ];
     } else {
@@ -94,12 +114,13 @@ class ImageGenService {
    * @param {Object} options - Generation options
    * @param {string} options.prompt - The image generation prompt
    * @param {string} options.outputPath - Where to save the generated image
-   * @param {string} [options.anchorImagePath] - Path to anchor image for character consistency
+   * @param {string|string[]} [options.anchorImagePath] - Path to anchor image(s) for character consistency
+   * @param {string[]} [options.anchorImagePaths] - Array of paths to reference images
    * @param {string} [options.aspectRatio] - Aspect ratio
    * @returns {Promise<{path: string, mimeType: string}>} - Saved file info
    */
-  async generateAndSave({ prompt, outputPath, anchorImagePath, aspectRatio }) {
-    const result = await this.generate({ prompt, anchorImagePath, aspectRatio });
+  async generateAndSave({ prompt, outputPath, anchorImagePath, anchorImagePaths, aspectRatio }) {
+    const result = await this.generate({ prompt, anchorImagePath, anchorImagePaths, aspectRatio });
 
     // Decode base64 and write to file
     const imageBuffer = Buffer.from(result.imageData, 'base64');

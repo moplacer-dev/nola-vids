@@ -3,27 +3,47 @@ import './ImageGenForm.css';
 
 export default function ImageGenForm({ onGenerate, disabled }) {
   const [prompt, setPrompt] = useState('');
-  const [referenceImage, setReferenceImage] = useState(null);
-  const [referencePreview, setReferencePreview] = useState(null);
+  const [referenceImages, setReferenceImages] = useState([]);
+  const [referencePreviews, setReferencePreviews] = useState([]);
   const [moduleName, setModuleName] = useState('');
   const [sessionNumber, setSessionNumber] = useState('');
   const [pageNumber, setPageNumber] = useState('');
   const fileInputRef = useRef(null);
 
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setReferenceImage(file);
-      // Create preview URL
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // Limit to 3 total images
+    const remainingSlots = 3 - referenceImages.length;
+    const filesToAdd = files.slice(0, remainingSlots);
+
+    // Add files to state
+    setReferenceImages(prev => [...prev, ...filesToAdd]);
+
+    // Create preview URLs for new files
+    filesToAdd.forEach(file => {
       const reader = new FileReader();
-      reader.onload = (e) => setReferencePreview(e.target.result);
+      reader.onload = (e) => {
+        setReferencePreviews(prev => [...prev, e.target.result]);
+      };
       reader.readAsDataURL(file);
+    });
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
-  const handleClearReference = () => {
-    setReferenceImage(null);
-    setReferencePreview(null);
+  const handleRemoveImage = (index) => {
+    setReferenceImages(prev => prev.filter((_, i) => i !== index));
+    setReferencePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearAll = () => {
+    setReferenceImages([]);
+    setReferencePreviews([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -35,7 +55,7 @@ export default function ImageGenForm({ onGenerate, disabled }) {
 
     onGenerate({
       prompt: prompt.trim(),
-      referenceImage,
+      referenceImages,
       moduleName: moduleName.trim() || null,
       sessionNumber: sessionNumber ? parseInt(sessionNumber) : null,
       pageNumber: pageNumber ? parseInt(pageNumber) : null
@@ -64,27 +84,42 @@ export default function ImageGenForm({ onGenerate, disabled }) {
       </div>
 
       <div className="form-section">
-        <label>Reference Image (Optional)</label>
-        <p className="field-hint">Upload a reference image for character or style consistency</p>
+        <label>Reference Images (Optional)</label>
+        <p className="field-hint">Upload up to 3 reference images for character or style consistency</p>
 
         <input
           type="file"
           accept="image/*"
+          multiple
           ref={fileInputRef}
           onChange={handleFileSelect}
           style={{ display: 'none' }}
         />
 
-        {referencePreview ? (
-          <div className="reference-preview">
-            <img src={referencePreview} alt="Reference" />
-            <button
-              type="button"
-              className="btn-clear-reference"
-              onClick={handleClearReference}
-            >
-              Remove
-            </button>
+        {referencePreviews.length > 0 ? (
+          <div className="reference-grid">
+            {referencePreviews.map((preview, index) => (
+              <div key={index} className="reference-preview-item">
+                <img src={preview} alt={`Reference ${index + 1}`} />
+                <button
+                  type="button"
+                  className="btn-remove-reference"
+                  onClick={() => handleRemoveImage(index)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {referenceImages.length < 3 && (
+              <button
+                type="button"
+                className="btn-add-more-reference"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+              >
+                + Add
+              </button>
+            )}
           </div>
         ) : (
           <button
@@ -93,7 +128,17 @@ export default function ImageGenForm({ onGenerate, disabled }) {
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
           >
-            Upload Reference Image
+            Upload Reference Images
+          </button>
+        )}
+
+        {referenceImages.length > 0 && (
+          <button
+            type="button"
+            className="btn-clear-all-references"
+            onClick={handleClearAll}
+          >
+            Clear All
           </button>
         )}
       </div>

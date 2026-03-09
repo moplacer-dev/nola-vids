@@ -50,6 +50,7 @@ export default function App() {
     getAssetList,
     getCharacters,
     setCharacterAnchor,
+    removeCharacterReferenceImage,
     generateImage,
     generateStandaloneImage,
     regenerateImage,
@@ -318,6 +319,7 @@ export default function App() {
             getAssetList={getAssetList}
             getCharacters={getCharacters}
             setCharacterAnchor={setCharacterAnchor}
+            removeCharacterReferenceImage={removeCharacterReferenceImage}
             generateImage={generateImage}
             regenerateImage={regenerateImage}
             updateGeneratedImage={updateGeneratedImage}

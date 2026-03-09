@@ -163,10 +163,31 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
-  const setCharacterAnchor = useCallback(async (characterId, formData) => {
+  const setCharacterAnchor = useCallback(async (characterId, filesOrFormData) => {
+    let formData;
+    if (filesOrFormData instanceof FormData) {
+      formData = filesOrFormData;
+    } else if (Array.isArray(filesOrFormData)) {
+      formData = new FormData();
+      for (const file of filesOrFormData) {
+        formData.append('anchor', file);
+      }
+    } else {
+      // Single file
+      formData = new FormData();
+      formData.append('anchor', filesOrFormData);
+    }
     return request(`/characters/${characterId}/anchor`, {
       method: 'PUT',
       body: formData
+    });
+  }, [request]);
+
+  const removeCharacterReferenceImage = useCallback(async (characterId, imagePath) => {
+    return request(`/characters/${characterId}/reference-image`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imagePath })
     });
   }, [request]);
 
@@ -198,12 +219,16 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
-  const generateStandaloneImage = useCallback(async ({ prompt, referenceImage, moduleName, sessionNumber, pageNumber }) => {
+  const generateStandaloneImage = useCallback(async ({ prompt, referenceImage, referenceImages, moduleName, sessionNumber, pageNumber }) => {
     const formData = new FormData();
     formData.append('prompt', prompt);
-    if (referenceImage) {
-      formData.append('referenceImage', referenceImage);
+
+    // Support both single referenceImage (legacy) and multiple referenceImages
+    const images = referenceImages || (referenceImage ? [referenceImage] : []);
+    for (const img of images) {
+      formData.append('referenceImage', img);
     }
+
     if (moduleName) {
       formData.append('moduleName', moduleName);
     }
@@ -382,6 +407,7 @@ export function useApi(accessKey) {
     getCharacters,
     createCharacter,
     setCharacterAnchor,
+    removeCharacterReferenceImage,
     getGeneratedImages,
     getGeneratedImage,
     generateImage,

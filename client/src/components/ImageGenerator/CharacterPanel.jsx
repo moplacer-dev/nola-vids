@@ -1,62 +1,100 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
-export default function CharacterPanel({ characters, onSetAnchor }) {
+export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage }) {
   const fileInputRef = useRef({});
   const [viewingCharacter, setViewingCharacter] = useState(null);
 
+  // Keep viewingCharacter in sync when characters prop updates
+  useEffect(() => {
+    if (viewingCharacter) {
+      const updated = characters.find(c => c.id === viewingCharacter.id);
+      if (updated) {
+        setViewingCharacter(updated);
+      }
+    }
+  }, [characters]);
+
+  // Get reference images array (with fallback to legacy anchorImagePath)
+  const getReferenceImages = (char) => {
+    if (char.referenceImages && Array.isArray(char.referenceImages)) {
+      return char.referenceImages;
+    }
+    return char.anchorImagePath ? [char.anchorImagePath] : [];
+  };
+
   const handleFileSelect = (characterId, e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onSetAnchor(characterId, file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      onSetAnchor(characterId, files);
+    }
+    // Reset input so same file can be selected again
+    if (fileInputRef.current[characterId]) {
+      fileInputRef.current[characterId].value = '';
+    }
+  };
+
+  const handleRemoveImage = (characterId, imagePath) => {
+    if (onRemoveReferenceImage) {
+      onRemoveReferenceImage(characterId, imagePath);
     }
   };
 
   return (
     <div className="character-panel">
       <h3>Career Character</h3>
-      {characters.map(char => (
-        <div key={char.id} className="character-card">
-          <div className="character-anchor">
-            {char.anchorImagePath ? (
-              <img
-                src={`/anchors/${char.anchorImagePath.split('/').pop()}`}
-                alt={char.characterName}
-              />
-            ) : (
-              <span className="character-anchor-placeholder">?</span>
-            )}
-          </div>
+      {characters.map(char => {
+        const refImages = getReferenceImages(char);
+        const firstImage = refImages[0];
 
-          <div className="character-info">
-            <div className="character-name">{char.characterName}</div>
-            {char.career && (
-              <div className="character-career">{char.career}</div>
-            )}
+        return (
+          <div key={char.id} className="character-card">
+            <div className="character-anchor">
+              {firstImage ? (
+                <img
+                  src={`/anchors/${firstImage.split('/').pop()}`}
+                  alt={char.characterName}
+                />
+              ) : (
+                <span className="character-anchor-placeholder">?</span>
+              )}
+              {refImages.length > 1 && (
+                <span className="character-ref-count">+{refImages.length - 1}</span>
+              )}
+            </div>
 
-            <div className="character-actions">
-              <input
-                type="file"
-                accept="image/*"
-                ref={el => fileInputRef.current[char.id] = el}
-                style={{ display: 'none' }}
-                onChange={(e) => handleFileSelect(char.id, e)}
-              />
-              <button
-                className="btn-set-anchor"
-                onClick={() => fileInputRef.current[char.id]?.click()}
-              >
-                {char.anchorImagePath ? 'Update Reference' : 'Set Reference'}
-              </button>
-              <button
-                className="btn-view-anchor"
-                onClick={() => setViewingCharacter(char)}
-              >
-                View
-              </button>
+            <div className="character-info">
+              <div className="character-name">{char.characterName}</div>
+              {char.career && (
+                <div className="character-career">{char.career}</div>
+              )}
+
+              <div className="character-actions">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  ref={el => fileInputRef.current[char.id] = el}
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileSelect(char.id, e)}
+                />
+                <button
+                  className="btn-set-anchor"
+                  onClick={() => fileInputRef.current[char.id]?.click()}
+                  disabled={refImages.length >= 3}
+                >
+                  {refImages.length >= 3 ? 'Max 3' : refImages.length > 0 ? 'Add More' : 'Set Reference'}
+                </button>
+                <button
+                  className="btn-view-anchor"
+                  onClick={() => setViewingCharacter(char)}
+                >
+                  View
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Character Details Modal */}
       {viewingCharacter && (
@@ -68,14 +106,38 @@ export default function CharacterPanel({ characters, onSetAnchor }) {
             </div>
 
             <div className="character-modal-body">
-              {viewingCharacter.anchorImagePath && (
-                <div className="character-modal-image">
-                  <img
-                    src={`/anchors/${viewingCharacter.anchorImagePath.split('/').pop()}`}
-                    alt={viewingCharacter.characterName}
-                  />
-                </div>
-              )}
+              {(() => {
+                const refImages = getReferenceImages(viewingCharacter);
+                if (refImages.length > 0) {
+                  return (
+                    <div className="character-modal-images">
+                      <div className="character-modal-images-grid">
+                        {refImages.map((imgPath, index) => (
+                          <div key={index} className="character-modal-image-item">
+                            <img
+                              src={`/anchors/${imgPath.split('/').pop()}`}
+                              alt={`${viewingCharacter.characterName} ref ${index + 1}`}
+                            />
+                            {onRemoveReferenceImage && (
+                              <button
+                                className="btn-remove-modal-image"
+                                onClick={() => handleRemoveImage(viewingCharacter.id, imgPath)}
+                                title="Remove this reference image"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="character-modal-images-hint">
+                        {refImages.length} of 3 reference images
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div className="character-modal-details">
                 {viewingCharacter.career && (

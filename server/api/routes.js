@@ -687,7 +687,14 @@ module.exports = (jobManager) => {
   router.get('/characters/:moduleName', (req, res) => {
     try {
       const characters = characterDb.getByModule(req.params.moduleName);
-      res.json(characters);
+      // Ensure referenceImages has at least the anchorImagePath if empty
+      const enrichedCharacters = characters.map(char => {
+        if ((!char.referenceImages || char.referenceImages.length === 0) && char.anchorImagePath) {
+          char.referenceImages = [char.anchorImagePath];
+        }
+        return char;
+      });
+      res.json(enrichedCharacters);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -728,22 +735,17 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Set anchor image for character
-  router.put('/characters/:id/anchor', upload.single('anchor'), (req, res) => {
+  // Set/add reference images for character (supports multiple files)
+  router.put('/characters/:id/anchor', upload.array('anchor', 3), (req, res) => {
     try {
       const character = characterDb.getById(req.params.id);
       if (!character) {
         return res.status(404).json({ error: 'Character not found' });
       }
 
-      if (!req.file) {
-        return res.status(400).json({ error: 'Anchor image file is required' });
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'At least one reference image file is required' });
       }
-
-      // Move the uploaded file to a permanent location
-      const ext = path.extname(req.file.originalname) || '.png';
-      const anchorFilename = `anchor_${character.moduleName}_${character.characterName.replace(/\s+/g, '_')}${ext}`;
-      const anchorPath = path.join(STORAGE_DIR, 'anchors', anchorFilename);
 
       // Ensure anchors directory exists
       const anchorsDir = path.join(STORAGE_DIR, 'anchors');
@@ -751,11 +753,73 @@ module.exports = (jobManager) => {
         fs.mkdirSync(anchorsDir, { recursive: true });
       }
 
-      // Move file
-      fs.renameSync(req.file.path, anchorPath);
+      // Get existing reference images or initialize empty array
+      // Note: character.referenceImages is already parsed by parseCharacterRow
+      let referenceImages = Array.isArray(character.referenceImages) ? character.referenceImages : [];
+
+      // Process each uploaded file
+      const newPaths = [];
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const ext = path.extname(file.originalname) || '.png';
+        const timestamp = Date.now();
+        const anchorFilename = `anchor_${character.moduleName}_${character.characterName.replace(/\s+/g, '_')}_${timestamp}_${i}${ext}`;
+        const anchorPath = path.join(anchorsDir, anchorFilename);
+
+        // Move file
+        fs.renameSync(file.path, anchorPath);
+        newPaths.push(anchorPath);
+      }
+
+      // Add new paths to existing ones (max 3 total)
+      referenceImages = [...referenceImages, ...newPaths].slice(-3);
+
+      // Update character with both legacy anchorImagePath (first image) and new referenceImages array
+      characterDb.update(req.params.id, {
+        anchorImagePath: referenceImages[0] || null,
+        referenceImages: referenceImages
+      });
+
+      const updated = characterDb.getById(req.params.id);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Remove a specific reference image from character
+  router.delete('/characters/:id/reference-image', (req, res) => {
+    try {
+      const { imagePath } = req.body;
+      const character = characterDb.getById(req.params.id);
+
+      if (!character) {
+        return res.status(404).json({ error: 'Character not found' });
+      }
+
+      if (!imagePath) {
+        return res.status(400).json({ error: 'imagePath is required' });
+      }
+
+      // Get existing reference images (already parsed by parseCharacterRow)
+      let referenceImages = Array.isArray(character.referenceImages) ? [...character.referenceImages] : [];
+
+      // Remove the specified image
+      const index = referenceImages.indexOf(imagePath);
+      if (index > -1) {
+        referenceImages.splice(index, 1);
+
+        // Delete the file from disk
+        if (fs.existsSync(imagePath)) {
+          fs.unlinkSync(imagePath);
+        }
+      }
 
       // Update character
-      characterDb.setAnchorImage(req.params.id, anchorPath);
+      characterDb.update(req.params.id, {
+        anchorImagePath: referenceImages[0] || null,
+        referenceImages: referenceImages
+      });
 
       const updated = characterDb.getById(req.params.id);
       res.json(updated);
@@ -769,7 +833,7 @@ module.exports = (jobManager) => {
   // ==========================================
 
   // Generate a standalone image (one-off, not from asset list)
-  router.post('/images/generate-standalone', upload.single('referenceImage'), async (req, res) => {
+  router.post('/images/generate-standalone', upload.array('referenceImage', 3), async (req, res) => {
     try {
       const { prompt, moduleName, sessionNumber, pageNumber } = req.body;
 
@@ -800,19 +864,23 @@ module.exports = (jobManager) => {
         fs.mkdirSync(imagesDir, { recursive: true });
       }
 
-      // Get reference image path if uploaded
-      const anchorImagePath = req.file ? req.file.path : null;
+      // Get reference image paths if uploaded (supports multiple)
+      const anchorImagePaths = req.files ? req.files.map(f => f.path) : [];
 
       // Generate the image
       const result = await imageGenService.generateAndSave({
         prompt,
         outputPath,
-        anchorImagePath
+        anchorImagePaths
       });
 
-      // Clean up uploaded reference image after use
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      // Clean up uploaded reference images after use
+      if (req.files) {
+        for (const file of req.files) {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        }
       }
 
       // Save to database so it appears in Library
@@ -871,7 +939,7 @@ module.exports = (jobManager) => {
 
       // Check if we should use character anchor
       // Server-side validation: only use anchor for character-related asset types
-      let anchorImagePath = null;
+      let anchorImagePaths = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
       const isCharacterAssetType = assetTypeLower.includes('career') ||
                                    assetTypeLower.includes('character') ||
@@ -880,8 +948,21 @@ module.exports = (jobManager) => {
 
       if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
         const character = characterDb.getById(genImage.characterId);
-        if (character && character.anchorImagePath) {
-          anchorImagePath = character.anchorImagePath;
+        if (character) {
+          // Try to get multiple reference images first, fall back to single anchorImagePath
+          if (character.referenceImages) {
+            try {
+              const refs = JSON.parse(character.referenceImages);
+              if (Array.isArray(refs) && refs.length > 0) {
+                anchorImagePaths = refs;
+              }
+            } catch (e) {
+              // Fallback to single path
+            }
+          }
+          if (anchorImagePaths.length === 0 && character.anchorImagePath) {
+            anchorImagePaths = [character.anchorImagePath];
+          }
         }
       }
 
@@ -908,7 +989,7 @@ module.exports = (jobManager) => {
       imageGenService.generateAndSave({
         prompt: finalPrompt,
         outputPath,
-        anchorImagePath
+        anchorImagePaths
       }).then(result => {
         // Update record with success
         generatedImageDb.update(generatedImageId, {
@@ -1211,7 +1292,7 @@ module.exports = (jobManager) => {
       const finalPrompt = req.body.prompt;
 
       // Server-side validation: only use anchor for character-related asset types
-      let anchorImagePath = null;
+      let anchorImagePaths = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
       const isCharacterAssetType = assetTypeLower.includes('career') ||
                                    assetTypeLower.includes('character') ||
@@ -1220,8 +1301,21 @@ module.exports = (jobManager) => {
 
       if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
         const character = characterDb.getById(genImage.characterId);
-        if (character && character.anchorImagePath) {
-          anchorImagePath = character.anchorImagePath;
+        if (character) {
+          // Try to get multiple reference images first, fall back to single anchorImagePath
+          if (character.referenceImages) {
+            try {
+              const refs = JSON.parse(character.referenceImages);
+              if (Array.isArray(refs) && refs.length > 0) {
+                anchorImagePaths = refs;
+              }
+            } catch (e) {
+              // Fallback to single path
+            }
+          }
+          if (anchorImagePaths.length === 0 && character.anchorImagePath) {
+            anchorImagePaths = [character.anchorImagePath];
+          }
         }
       }
 
@@ -1235,7 +1329,7 @@ module.exports = (jobManager) => {
       imageGenService.generateAndSave({
         prompt: finalPrompt,
         outputPath,
-        anchorImagePath
+        anchorImagePaths
       }).then(result => {
         generatedImageDb.update(req.params.id, {
           status: 'completed',
