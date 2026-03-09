@@ -11,14 +11,17 @@ export default function MotionGraphicsGroup({
   onImport,
   onEditPrompt,
   onSelectImage,
+  onSelectVideo,
   onUploadVideo,
   onDeleteVideo,
   onAddScene,
   onDeleteScene,
   selectedImageId,
+  selectedVideoId,
   loading
 }) {
-  const [expanded, setExpanded] = useState(!mgVideo?.videoPath);
+  const [expanded, setExpanded] = useState(true);
+  const [characterToggles, setCharacterToggles] = useState({});
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
 
@@ -65,10 +68,32 @@ export default function MotionGraphicsGroup({
     });
   };
 
+  // Check if this MG video is currently selected
+  const isVideoSelected = hasVideo && mgVideo?.id === selectedVideoId;
+
+  const handleHeaderClick = (e) => {
+    // If clicking on the expand button, just toggle expand
+    if (e.target.closest('.mg-expand-btn')) {
+      setExpanded(!expanded);
+      return;
+    }
+
+    // If video exists, select it for preview
+    if (hasVideo && onSelectVideo) {
+      onSelectVideo(mgVideo);
+    } else {
+      // Otherwise just toggle expand
+      setExpanded(!expanded);
+    }
+  };
+
   return (
-    <div className={`mg-group ${hasVideo ? 'has-video' : ''}`}>
-      {/* Header */}
-      <div className="mg-group-header" onClick={() => setExpanded(!expanded)}>
+    <div className={`mg-group ${hasVideo ? 'has-video' : ''} ${isVideoSelected ? 'video-selected' : ''}`}>
+      {/* Header - clickable to select video when available */}
+      <div
+        className={`mg-group-header ${hasVideo ? 'clickable-video' : ''} ${isVideoSelected ? 'selected' : ''}`}
+        onClick={handleHeaderClick}
+      >
         <div className="mg-header-left">
           <span className="slide-badge">{slideNumber}</span>
           <div className="mg-header-info">
@@ -85,7 +110,7 @@ export default function MotionGraphicsGroup({
               Video: {hasVideo ? 'Uploaded' : 'Pending'}
             </span>
           </div>
-          <button className="mg-expand-btn">
+          <button className="mg-expand-btn" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
             {expanded ? '\u25BC' : '\u25B6'}
           </button>
         </div>
@@ -94,57 +119,40 @@ export default function MotionGraphicsGroup({
       {/* Expanded Content */}
       {expanded && (
         <div className="mg-group-content">
-          {/* Video Section - shown prominently when video exists */}
-          {hasVideo && (
-            <div className="mg-video-section">
-              <div className="mg-video-preview">
-                <video
-                  src={`/mg-videos/${mgVideo.cmsFilename}`}
-                  controls
-                  className="mg-video-player"
-                />
-              </div>
-              <div className="mg-video-info">
+          {/* Video Controls Section - compact, no embedded player */}
+          <div className="mg-video-controls">
+            {hasVideo ? (
+              <div className="mg-video-info-bar">
                 <span className="mg-video-filename">{mgVideo.cmsFilename}</span>
                 <div className="mg-video-actions">
-                  <a
-                    href={`/mg-videos/${mgVideo.cmsFilename}`}
-                    download={mgVideo.cmsFilename}
-                    className="btn-secondary"
-                  >
-                    Download
-                  </a>
                   <button
-                    className="btn-secondary"
-                    onClick={() => videoInputRef.current?.click()}
+                    className="btn-secondary btn-sm"
+                    onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}
                   >
                     Replace
                   </button>
                   <button
-                    className="btn-secondary btn-danger"
-                    onClick={() => onDeleteVideo(slideNumber)}
+                    className="btn-secondary btn-sm btn-danger"
+                    onClick={(e) => { e.stopPropagation(); onDeleteVideo(slideNumber); }}
                   >
                     Remove
                   </button>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Upload Video Button - shown when no video */}
-          {!hasVideo && (
-            <div className="mg-upload-section">
-              <button
-                className="btn-upload-video"
-                onClick={() => videoInputRef.current?.click()}
-              >
-                Upload Final Video
-              </button>
-              <span className="mg-upload-hint">
-                Upload the completed motion graphics video (.mp4)
-              </span>
-            </div>
-          )}
+            ) : (
+              <div className="mg-upload-bar">
+                <button
+                  className="btn-upload-video"
+                  onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}
+                >
+                  Upload Final Video
+                </button>
+                <span className="mg-upload-hint">
+                  Upload the completed motion graphics video (.mp4)
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Hidden video input */}
           <input
@@ -156,11 +164,12 @@ export default function MotionGraphicsGroup({
           />
 
           {/* Scenes Grid */}
-          <div className="mg-scenes-section">
+          <div className={`mg-scenes-section ${hasVideo ? 'scenes-secondary' : ''}`}>
             <div className="mg-scenes-header">
               <span className="mg-scenes-label">
-                {hasVideo ? 'View Scenes' : 'Scene Images'}
+                {hasVideo ? 'Reference Scenes' : 'Scene Images'}
               </span>
+              {hasVideo && <span className="mg-scenes-hint">(click header to preview video)</span>}
             </div>
             <div className="mg-scenes-grid">
               {safeScenes.map((scene, index) => {
@@ -200,13 +209,14 @@ export default function MotionGraphicsGroup({
                     </div>
                     <div className="mg-scene-actions">
                       <button
-                        className="btn-sm"
+                        className="btn-sm btn-icon"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleEditScene(scene);
                         }}
+                        title="Edit prompt"
                       >
-                        Edit
+                        ✎
                       </button>
                       <input
                         type="file"
@@ -222,22 +232,42 @@ export default function MotionGraphicsGroup({
                         }}
                       />
                       <button
-                        className="btn-sm"
+                        className="btn-sm btn-icon"
                         onClick={(e) => {
                           e.stopPropagation();
                           fileInputRef.current?.[scene.id]?.click();
                         }}
                         disabled={!scene.id || loading}
+                        title="Upload image"
                       >
-                        Upload
+                        ⬆
                       </button>
+                      {scene.characterId && (
+                        <label className="character-toggle mg-character-toggle" onClick={(e) => e.stopPropagation()} title="Include character">
+                          <input
+                            type="checkbox"
+                            checked={characterToggles[scene.id] ?? true}
+                            onChange={(e) => {
+                              setCharacterToggles(prev => ({
+                                ...prev,
+                                [scene.id]: e.target.checked
+                              }));
+                            }}
+                          />
+                        </label>
+                      )}
                       <button
                         className="btn-sm btn-primary"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (scene.id) onGenerate(scene.id, {});
+                          if (scene.id) {
+                            const hasCharacter = !!scene.characterId;
+                            const useCharacter = characterToggles[scene.id] ?? true;
+                            onGenerate(scene.id, { useCharacterAnchor: hasCharacter && useCharacter });
+                          }
                         }}
                         disabled={!scene.id || scene.status === 'generating' || loading}
+                        title="Generate image"
                       >
                         Gen
                       </button>

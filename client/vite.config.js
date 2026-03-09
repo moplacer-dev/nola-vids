@@ -10,7 +10,9 @@ export default defineConfig({
       '/auth': 'http://localhost:3001',
       '/videos': 'http://localhost:3001',
       '/images': 'http://localhost:3001',
-      '/anchors': 'http://localhost:3001'
+      '/anchors': 'http://localhost:3001',
+      '/mg-videos': 'http://localhost:3001',
+      '/audio': 'http://localhost:3001'
     }
   }
 })

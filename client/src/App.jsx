@@ -62,7 +62,14 @@ export default function App() {
     deleteMotionGraphicsVideo,
     // Motion graphics scenes
     addMGScene,
-    deleteMGScene
+    deleteMGScene,
+    // Audio/TTS
+    getVoices,
+    generateAudio,
+    uploadAudio,
+    updateAudio,
+    regenerateAudio,
+    setSessionDefaultVoice
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -322,6 +329,12 @@ export default function App() {
             deleteMotionGraphicsVideo={deleteMotionGraphicsVideo}
             addMGScene={addMGScene}
             deleteMGScene={deleteMGScene}
+            getVoices={getVoices}
+            generateAudio={generateAudio}
+            uploadAudio={uploadAudio}
+            updateAudio={updateAudio}
+            regenerateAudio={regenerateAudio}
+            setSessionDefaultVoice={setSessionDefaultVoice}
           />
         </main>
       ) : (

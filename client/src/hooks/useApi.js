@@ -296,6 +296,64 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // Audio/TTS endpoints
+  const getVoices = useCallback(async () => {
+    return request('/voices');
+  }, [request]);
+
+  const generateAudio = useCallback(async (audioId, options = {}) => {
+    return request('/audio/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audioId,
+        text: options.text,
+        voiceId: options.voiceId,
+        voiceName: options.voiceName
+      })
+    });
+  }, [request]);
+
+  const uploadAudio = useCallback(async (id, file) => {
+    if (!id) {
+      throw new Error('Audio ID is required for upload');
+    }
+    const formData = new FormData();
+    formData.append('audio', file);
+    return request(`/audio/${encodeURIComponent(String(id))}/upload`, {
+      method: 'POST',
+      body: formData
+    });
+  }, [request]);
+
+  const updateAudio = useCallback(async (id, updates) => {
+    return request(`/audio/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  }, [request]);
+
+  const regenerateAudio = useCallback(async (id, options = {}) => {
+    return request(`/audio/${encodeURIComponent(id)}/regenerate`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: options.text,
+        voiceId: options.voiceId,
+        voiceName: options.voiceName
+      })
+    });
+  }, [request]);
+
+  const setSessionDefaultVoice = useCallback(async (assetListId, voiceId, voiceName) => {
+    return request(`/asset-lists/${encodeURIComponent(assetListId)}/voice`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voiceId, voiceName })
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -338,6 +396,13 @@ export function useApi(accessKey) {
     deleteMotionGraphicsVideo,
     // Motion graphics scenes
     addMGScene,
-    deleteMGScene
+    deleteMGScene,
+    // Audio/TTS
+    getVoices,
+    generateAudio,
+    uploadAudio,
+    updateAudio,
+    regenerateAudio,
+    setSessionDefaultVoice
   };
 }

@@ -6,16 +6,26 @@ export default function AssetList({
   slides: allSlides,
   generatedImages,
   motionGraphicsVideos = [],
+  generatedAudio = [],
+  voices = [],
+  defaultVoiceId,
   onGenerate,
   onUpload,
   onImport,
   onEditPrompt,
   onSelectImage,
+  onSelectVideo,
   onUploadMGVideo,
   onDeleteMGVideo,
   onAddScene,
   onDeleteScene,
+  onGenerateAudio,
+  onUploadAudio,
+  onEditNarration,
+  onSelectAudio,
   selectedImageId,
+  selectedVideoId,
+  selectedAudioId,
   loading
 }) {
   const fileInputRefs = useRef({});
@@ -33,6 +43,23 @@ export default function AssetList({
   motionGraphicsVideos?.forEach(v => {
     mgVideoBySlide[v.slideNumber] = v;
   });
+
+  // Build audio map by slide number
+  const audioBySlide = {};
+  generatedAudio?.forEach(a => {
+    audioBySlide[a.slideNumber] = a;
+  });
+
+  // Track expanded narration sections
+  const [expandedNarrations, setExpandedNarrations] = useState({});
+  const audioFileInputRefs = useRef({});
+
+  const toggleNarration = (slideNumber) => {
+    setExpandedNarrations(prev => ({
+      ...prev,
+      [slideNumber]: !prev[slideNumber]
+    }));
+  };
 
   const assetsBySlide = {};
   assets?.forEach(asset => {
@@ -131,11 +158,13 @@ export default function AssetList({
                 onImport={onImport}
                 onEditPrompt={onEditPrompt}
                 onSelectImage={onSelectImage}
+                onSelectVideo={onSelectVideo}
                 onUploadVideo={onUploadMGVideo}
                 onDeleteVideo={onDeleteMGVideo}
                 onAddScene={onAddScene}
                 onDeleteScene={onDeleteScene}
                 selectedImageId={selectedImageId}
+                selectedVideoId={selectedVideoId}
                 loading={loading}
               />
             );
@@ -297,6 +326,126 @@ export default function AssetList({
                 </div>
               );
             })}
+
+            {/* Narration Section */}
+            {(() => {
+              const audio = audioBySlide[parseInt(slide.slideNumber)];
+              if (!audio) return null;
+
+              const isExpanded = expandedNarrations[slide.slideNumber];
+              const hasAudio = audio.status === 'completed' || audio.status === 'uploaded';
+              const isSelected = selectedAudioId === audio.id;
+
+              return (
+                <div className={`narration-section ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}>
+                  <div
+                    className="narration-header"
+                    onClick={() => toggleNarration(slide.slideNumber)}
+                  >
+                    <div className="narration-header-left">
+                      <span className="narration-expand">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="narration-label">NARRATION</span>
+                    </div>
+                    <span className={`narration-status status-${audio.status}`}>
+                      {audio.status.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="narration-content">
+                      <p className="narration-text">
+                        {audio.narrationText || 'No narration text'}
+                      </p>
+
+                      <div className="narration-voice-row">
+                        <label>Voice:</label>
+                        <select
+                          value={audio.voiceId || defaultVoiceId || ''}
+                          onChange={(e) => {
+                            const voice = voices.find(v => v.voice_id === e.target.value);
+                            if (onEditNarration) {
+                              onEditNarration(audio.id, {
+                                voiceId: e.target.value,
+                                voiceName: voice?.name || ''
+                              });
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {voices.map(v => (
+                            <option key={v.voice_id} value={v.voice_id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="narration-actions">
+                        <button
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onEditNarration) {
+                              onEditNarration(audio.id, { editText: true });
+                            }
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <input
+                          type="file"
+                          accept="audio/mpeg,audio/mp3,audio/wav"
+                          style={{ display: 'none' }}
+                          ref={el => audioFileInputRefs.current[slide.slideNumber] = el}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file && audio?.id && onUploadAudio) {
+                              onUploadAudio(audio.id, file);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                        <button
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            audioFileInputRefs.current[slide.slideNumber]?.click();
+                          }}
+                          disabled={loading}
+                        >
+                          Upload
+                        </button>
+                        <button
+                          className="btn-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onGenerateAudio) {
+                              onGenerateAudio(audio.id, {
+                                voiceId: audio.voiceId || defaultVoiceId
+                              });
+                            }
+                          }}
+                          disabled={audio.status === 'generating' || loading}
+                        >
+                          {hasAudio ? 'Regen' : 'Gen'}
+                        </button>
+                        {hasAudio && (
+                          <button
+                            className="btn-preview"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onSelectAudio) onSelectAudio(audio);
+                            }}
+                          >
+                            Preview
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           );
         })}

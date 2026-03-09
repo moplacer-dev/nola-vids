@@ -8,6 +8,7 @@ const fs = require('fs');
 const { initDatabase } = require('./db/database');
 const VeoService = require('./services/veo');
 const ImageGenService = require('./services/imageGen');
+const ElevenLabsService = require('./services/elevenLabs');
 const JobManager = require('./jobs/jobManager');
 const createRoutes = require('./api/routes');
 
@@ -23,11 +24,13 @@ const uploadsDir = path.join(storageDir, 'uploads');
 const imagesDir = path.join(storageDir, 'images');
 const anchorsDir = path.join(storageDir, 'anchors');
 const mgVideosDir = path.join(storageDir, 'mg-videos');
+const audioDir = path.join(storageDir, 'audio');
 if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 if (!fs.existsSync(anchorsDir)) fs.mkdirSync(anchorsDir, { recursive: true });
 if (!fs.existsSync(mgVideosDir)) fs.mkdirSync(mgVideosDir, { recursive: true });
+if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
 // CORS configuration - defaults to permissive, can be restricted via CORS_ORIGINS env var
 const corsOrigins = process.env.CORS_ORIGINS;
@@ -77,8 +80,20 @@ const veoService = new VeoService(apiKey);
 const imageGenService = new ImageGenService(apiKey);
 const jobManager = new JobManager(veoService);
 
-// Make imageGenService available to routes
+// Initialize ElevenLabs TTS service (optional - app works without it)
+const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+const elevenLabsService = new ElevenLabsService(elevenLabsApiKey, {
+  modelId: process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2',
+  defaultVoiceId: process.env.ELEVENLABS_DEFAULT_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'
+});
+
+if (!elevenLabsService.isConfigured()) {
+  console.log('Note: ELEVENLABS_API_KEY not configured. TTS features will be disabled.');
+}
+
+// Make services available to routes
 app.set('imageGenService', imageGenService);
+app.set('elevenLabsService', elevenLabsService);
 
 // Serve generated images
 app.use('/images', express.static(imagesDir));
@@ -88,6 +103,9 @@ app.use('/anchors', express.static(anchorsDir));
 
 // Serve motion graphics final videos
 app.use('/mg-videos', express.static(mgVideosDir));
+
+// Serve generated audio files
+app.use('/audio', express.static(audioDir));
 
 // API routes (protected by auth middleware)
 app.use('/api', authMiddleware, createRoutes(jobManager));
@@ -139,6 +157,12 @@ app.listen(PORT, () => {
   console.log('  GET  /api/characters/:module - Get characters for module');
   console.log('  POST /api/characters         - Create/update character');
   console.log('  PUT  /api/characters/:id/anchor - Set anchor image');
+  console.log('');
+  console.log('Audio/TTS:');
+  console.log('  GET  /api/voices            - Get available TTS voices');
+  console.log('  POST /api/audio/generate    - Generate audio from text');
+  console.log('  PATCH /api/audio/:id        - Update audio settings');
+  console.log('  PUT  /api/audio/:id/regenerate - Regenerate audio');
   console.log('');
   console.log('  GET  /api/templates         - Get prompt templates');
 });

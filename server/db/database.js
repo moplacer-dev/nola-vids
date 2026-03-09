@@ -125,6 +125,23 @@ function initDatabase() {
       UNIQUE(asset_list_id, slide_number)
     );
 
+    -- Generated audio for TTS narration
+    CREATE TABLE IF NOT EXISTS generated_audio (
+      id TEXT PRIMARY KEY,
+      asset_list_id TEXT REFERENCES asset_lists(id) ON DELETE CASCADE,
+      slide_number INTEGER NOT NULL,
+      cms_filename TEXT,
+      narration_text TEXT,
+      voice_id TEXT,
+      voice_name TEXT,
+      audio_path TEXT,
+      duration_ms INTEGER,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(asset_list_id, slide_number)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_characters_module ON characters(module_name);
     CREATE INDEX IF NOT EXISTS idx_asset_lists_module ON asset_lists(module_name);
     CREATE INDEX IF NOT EXISTS idx_asset_lists_session ON asset_lists(module_name, session_number);
@@ -132,6 +149,8 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_generated_images_status ON generated_images(status);
     CREATE INDEX IF NOT EXISTS idx_generation_history_image ON generation_history(generated_image_id);
     CREATE INDEX IF NOT EXISTS idx_mg_videos_asset_list ON motion_graphics_videos(asset_list_id);
+    CREATE INDEX IF NOT EXISTS idx_generated_audio_asset_list ON generated_audio(asset_list_id);
+    CREATE INDEX IF NOT EXISTS idx_generated_audio_status ON generated_audio(status);
   `);
 
   // Migration: Add source_uri column if it doesn't exist (for existing databases)
@@ -163,6 +182,14 @@ function initDatabase() {
   if (!hasAssetNumber) {
     db.exec('ALTER TABLE generated_images ADD COLUMN asset_number INTEGER DEFAULT 1');
     console.log('Migration: Added asset_number column to generated_images table');
+  }
+
+  // Migration: Add default_voice_id and default_voice_name columns to asset_lists
+  const hasDefaultVoiceId = assetListColumns.some(col => col.name === 'default_voice_id');
+  if (!hasDefaultVoiceId) {
+    db.exec('ALTER TABLE asset_lists ADD COLUMN default_voice_id TEXT');
+    db.exec('ALTER TABLE asset_lists ADD COLUMN default_voice_name TEXT');
+    console.log('Migration: Added default_voice_id and default_voice_name columns to asset_lists table');
   }
 
   // Import any orphaned video files
@@ -586,6 +613,14 @@ const assetListQueries = {
       fields.push('career_character_json = ?');
       values.push(updates.careerCharacter ? JSON.stringify(updates.careerCharacter) : null);
     }
+    if (updates.defaultVoiceId !== undefined) {
+      fields.push('default_voice_id = ?');
+      values.push(updates.defaultVoiceId);
+    }
+    if (updates.defaultVoiceName !== undefined) {
+      fields.push('default_voice_name = ?');
+      values.push(updates.defaultVoiceName);
+    }
 
     if (fields.length === 0) return false;
 
@@ -843,6 +878,115 @@ const motionGraphicsVideoQueries = {
   }
 };
 
+// Generated audio operations (TTS narration)
+const generatedAudioQueries = {
+  create: (audio) => {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO generated_audio (id, asset_list_id, slide_number, cms_filename, narration_text, voice_id, voice_name, audio_path, duration_ms, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      audio.assetListId,
+      audio.slideNumber,
+      audio.cmsFilename || null,
+      audio.narrationText || null,
+      audio.voiceId || null,
+      audio.voiceName || null,
+      audio.audioPath || null,
+      audio.durationMs || null,
+      audio.status || 'pending',
+      now,
+      now
+    );
+    return { id, ...audio, createdAt: now, updatedAt: now };
+  },
+
+  getById: (id) => {
+    const row = db.prepare('SELECT * FROM generated_audio WHERE id = ?').get(id);
+    return row ? parseGeneratedAudioRow(row) : null;
+  },
+
+  getByAssetList: (assetListId) => {
+    const rows = db.prepare('SELECT * FROM generated_audio WHERE asset_list_id = ? ORDER BY slide_number').all(assetListId);
+    return rows.map(parseGeneratedAudioRow);
+  },
+
+  getByAssetListAndSlide: (assetListId, slideNumber) => {
+    const row = db.prepare('SELECT * FROM generated_audio WHERE asset_list_id = ? AND slide_number = ?').get(assetListId, slideNumber);
+    return row ? parseGeneratedAudioRow(row) : null;
+  },
+
+  update: (id, updates) => {
+    const fields = [];
+    const values = [];
+
+    if (updates.cmsFilename !== undefined) {
+      fields.push('cms_filename = ?');
+      values.push(updates.cmsFilename);
+    }
+    if (updates.narrationText !== undefined) {
+      fields.push('narration_text = ?');
+      values.push(updates.narrationText);
+    }
+    if (updates.voiceId !== undefined) {
+      fields.push('voice_id = ?');
+      values.push(updates.voiceId);
+    }
+    if (updates.voiceName !== undefined) {
+      fields.push('voice_name = ?');
+      values.push(updates.voiceName);
+    }
+    if (updates.audioPath !== undefined) {
+      fields.push('audio_path = ?');
+      values.push(updates.audioPath);
+    }
+    if (updates.durationMs !== undefined) {
+      fields.push('duration_ms = ?');
+      values.push(updates.durationMs);
+    }
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+
+    if (fields.length === 0) return null;
+
+    fields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    db.prepare(`UPDATE generated_audio SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return generatedAudioQueries.getById(id);
+  },
+
+  delete: (id) => {
+    const audio = db.prepare('SELECT * FROM generated_audio WHERE id = ?').get(id);
+    if (!audio) return null;
+    db.prepare('DELETE FROM generated_audio WHERE id = ?').run(id);
+    return parseGeneratedAudioRow(audio);
+  },
+
+  deleteByAssetList: (assetListId) => {
+    const rows = db.prepare('SELECT * FROM generated_audio WHERE asset_list_id = ?').all(assetListId);
+    db.prepare('DELETE FROM generated_audio WHERE asset_list_id = ?').run(assetListId);
+    return rows.map(parseGeneratedAudioRow);
+  },
+
+  upsert: (audio) => {
+    // Try to find existing record
+    const existing = generatedAudioQueries.getByAssetListAndSlide(audio.assetListId, audio.slideNumber);
+    if (existing) {
+      // Update existing record
+      return generatedAudioQueries.update(existing.id, audio);
+    } else {
+      // Create new record
+      return generatedAudioQueries.create(audio);
+    }
+  }
+};
+
 // Parse helper functions
 function parseCharacterRow(row) {
   return {
@@ -868,6 +1012,8 @@ function parseAssetListRow(row) {
     assets: JSON.parse(row.assets_json),
     slides: row.slides_json ? JSON.parse(row.slides_json) : null,
     careerCharacter: row.career_character_json ? JSON.parse(row.career_character_json) : null,
+    defaultVoiceId: row.default_voice_id || null,
+    defaultVoiceName: row.default_voice_name || null,
     importedAt: row.imported_at
   };
 }
@@ -918,6 +1064,23 @@ function parseMGVideoRow(row) {
   };
 }
 
+function parseGeneratedAudioRow(row) {
+  return {
+    id: row.id,
+    assetListId: row.asset_list_id,
+    slideNumber: row.slide_number,
+    cmsFilename: row.cms_filename,
+    narrationText: row.narration_text,
+    voiceId: row.voice_id,
+    voiceName: row.voice_name,
+    audioPath: row.audio_path,
+    durationMs: row.duration_ms,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -928,5 +1091,6 @@ module.exports = {
   assetLists: assetListQueries,
   generatedImages: generatedImageQueries,
   generationHistory: generationHistoryQueries,
-  motionGraphicsVideos: motionGraphicsVideoQueries
+  motionGraphicsVideos: motionGraphicsVideoQueries,
+  generatedAudio: generatedAudioQueries
 };

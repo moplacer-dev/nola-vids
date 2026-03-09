@@ -28,6 +28,7 @@ Carl Gen integrates with Carl v7 to manage and generate images for Star Academy 
 - **Asset List Import** - Receive asset lists pushed from Carl v7
 - **Slide-based Organization** - Assets grouped by slide number with titles
 - **Multi-Asset Support** - Multiple assets per slide with automatic numbering
+- **Motion Graphics Grouping** - Scene images grouped with final video upload
 - **Career Characters** - Anchor image support for consistent character generation
 - **Character Toggle** - Control whether to include character in each generation
 - **Three Fulfillment Methods:**
@@ -39,6 +40,18 @@ Carl Gen integrates with Carl v7 to manage and generate images for Star Academy 
 - **Asset Type Selector** - Change image/diagram/video types with auto-updated filenames
 - **Status Tracking** - Real-time generation status (pending, generating, completed, failed, uploaded, imported, default)
 - **CMS Naming** - Automatic filename convention for bulk CMS import
+
+### Motion Graphics Workflow
+
+Motion graphics slides have multiple "scenes" that are generated individually, but the final CMS deliverable is one video:
+
+- **Visual Grouping** - Slides with `motion_graphics_scene` assets are displayed as a collapsible group
+- **Scene Grid** - Individual scene images shown in a grid with generate/upload/edit actions
+- **Status Badges** - Header shows "Scenes: X/Y ready | Video: Pending/Uploaded"
+- **Final Video Upload** - Prominent upload button for the completed .mp4 video
+- **Video Preview** - Uploaded videos can be previewed, downloaded, replaced, or removed
+- **Auto-Collapse** - Scenes collapse by default once the final video is uploaded
+- **CMS Filename** - Videos follow pattern `MOD.{MODULE}.{SESSION}.{SLIDE}.VID1.mp4`
 
 ### Media Library
 
@@ -129,6 +142,7 @@ nola.vids/
 │       ├── images/           # Generated images
 │       ├── anchors/          # Character anchor images
 │       ├── defaults/         # Default slide images (cleanup.png, lab_safety.png)
+│       ├── mg-videos/        # Motion graphics final videos
 │       └── *.mp4             # Generated videos
 ├── client/
 │   ├── index.html
@@ -154,6 +168,7 @@ nola.vids/
 │       │   └── ImageGenerator/          # Carl Gen components
 │       │       ├── index.jsx            # Main Carl Gen page
 │       │       ├── AssetList.jsx        # Slide/asset list display
+│       │       ├── MotionGraphicsGroup.jsx # Motion graphics scene grouping
 │       │       ├── CharacterPanel.jsx   # Career character management
 │       │       ├── PromptEditor.jsx     # Prompt editing modal
 │       │       ├── ImagePreview.jsx     # Generated image preview
@@ -208,6 +223,14 @@ nola.vids/
 | GET | `/api/characters/:moduleName` | Get characters for a module |
 | POST | `/api/characters` | Create or update character |
 | PUT | `/api/characters/:id/anchor` | Set character anchor image |
+
+### Motion Graphics Videos
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/motion-graphics/:assetListId/:slideNumber` | Get video + scenes for a slide |
+| POST | `/api/motion-graphics/:assetListId/:slideNumber/video` | Upload final video (multipart form) |
+| DELETE | `/api/motion-graphics/:assetListId/:slideNumber/video` | Remove uploaded video |
 
 ### Jobs
 

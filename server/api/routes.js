@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const { videos: videoDb, folders: folderDb, characters: characterDb, assetLists: assetListDb, generatedImages: generatedImageDb, generationHistory: generationHistoryDb, motionGraphicsVideos: mgVideoDb } = require('../db/database');
+const { videos: videoDb, folders: folderDb, characters: characterDb, assetLists: assetListDb, generatedImages: generatedImageDb, generationHistory: generationHistoryDb, motionGraphicsVideos: mgVideoDb, generatedAudio: generatedAudioDb } = require('../db/database');
 
 const router = express.Router();
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
@@ -64,7 +64,7 @@ const upload = multer({
   dest: path.join(__dirname, '..', 'storage', 'uploads'),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -552,11 +552,43 @@ module.exports = (jobManager) => {
         }
       }
 
+      // Process slides with narration - create/update generated_audio records
+      let audioCreated = 0;
+      let audioKept = 0;
+      if (allSlides && allSlides.length > 0) {
+        for (const slide of allSlides) {
+          const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
+          const narration = slide.narration || slide.narrationText || '';
+
+          if (narration && narration.trim().length > 0) {
+            // Upsert audio record
+            const existingAudio = generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
+            if (existingAudio) {
+              // Update narration text if changed
+              if (existingAudio.narrationText !== narration) {
+                generatedAudioDb.update(existingAudio.id, { narrationText: narration });
+              }
+              audioKept++;
+            } else {
+              // Create new audio record
+              generatedAudioDb.create({
+                assetListId: assetList.id,
+                slideNumber: slideNum,
+                narrationText: narration,
+                status: 'pending'
+              });
+              audioCreated++;
+            }
+          }
+        }
+      }
+
       const action = isUpdate ? 'Updated' : 'Imported';
       const defaultsNote = defaultsApplied > 0 ? `, ${defaultsApplied} defaults applied` : '';
+      const audioNote = (audioCreated + audioKept) > 0 ? `, ${audioCreated + audioKept} narrations` : '';
       const details = isUpdate
-        ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed${defaultsNote}`
-        : `${created} assets${defaultsNote}`;
+        ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed${defaultsNote}${audioNote}`
+        : `${created} assets${defaultsNote}${audioNote}`;
 
       res.json({
         assetList,
@@ -586,7 +618,7 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Get single asset list with its generated images and motion graphics videos
+  // Get single asset list with its generated images, motion graphics videos, and audio
   router.get('/asset-lists/:id', (req, res) => {
     try {
       const assetList = assetListDb.getById(req.params.id);
@@ -596,11 +628,32 @@ module.exports = (jobManager) => {
 
       const generatedImages = generatedImageDb.getByAssetList(assetList.id);
       const motionGraphicsVideos = mgVideoDb.getByAssetList(assetList.id);
+      const generatedAudio = generatedAudioDb.getByAssetList(assetList.id);
+
+      // Backfill characterId for existing MG scenes that don't have one
+      const character = characterDb.getByModule(assetList.moduleName);
+      if (character) {
+        const mgScenes = generatedImages.filter(img =>
+          (img.assetType || '').toLowerCase().includes('motion_graphics') &&
+          !img.characterId
+        );
+        for (const scene of mgScenes) {
+          const slideKey = `S${assetList.sessionNumber}-${scene.slideNumber}`;
+          const hasCharacter = character.appearsOnSlides?.some(s =>
+            s === slideKey || s === String(scene.slideNumber)
+          );
+          if (hasCharacter) {
+            generatedImageDb.update(scene.id, { characterId: character.id });
+            scene.characterId = character.id; // Update in-memory for response
+          }
+        }
+      }
 
       res.json({
         ...assetList,
         generatedImages,
-        motionGraphicsVideos
+        motionGraphicsVideos,
+        generatedAudio
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1385,6 +1438,13 @@ module.exports = (jobManager) => {
         newAssetNumber
       );
 
+      // Check if character appears on this slide
+      const character = characterDb.getByModule(assetList.moduleName);
+      const slideKey = `S${assetList.sessionNumber}-${slideNumber}`;
+      const hasCharacter = character && character.appearsOnSlides?.some(s =>
+        s === slideKey || s === String(slideNumber)
+      );
+
       // Create the new scene record
       const newScene = generatedImageDb.create({
         assetListId,
@@ -1393,7 +1453,7 @@ module.exports = (jobManager) => {
         assetNumber: newAssetNumber,
         cmsFilename,
         originalPrompt: prompt || '',
-        characterId: null,
+        characterId: hasCharacter ? character.id : null,
         status: 'pending'
       });
 
@@ -1435,8 +1495,324 @@ module.exports = (jobManager) => {
     }
   });
 
+  // ==========================================
+  // Audio/TTS endpoints
+  // ==========================================
+
+  // Get available voices
+  router.get('/voices', async (req, res) => {
+    try {
+      const elevenLabsService = req.app.get('elevenLabsService');
+      if (!elevenLabsService || !elevenLabsService.isConfigured()) {
+        // Return hardcoded voices even if not configured
+        return res.json([
+          { voice_id: 'EXAVITQu4vr4xnSDxMaL', name: 'Rachel', description: 'Female, clear and articulate' },
+          { voice_id: '29vD33N1CtxCmqQRPOHJ', name: 'Drew', description: 'Male, articulate and professional' },
+          { voice_id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', description: 'Female, warm and engaging' },
+          { voice_id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', description: 'Male, professional and clear' }
+        ]);
+      }
+
+      const voices = await elevenLabsService.getVoices();
+      res.json(voices);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Generate audio for a slide
+  router.post('/audio/generate', async (req, res) => {
+    try {
+      const { audioId, text, voiceId, voiceName } = req.body;
+
+      if (!audioId) {
+        return res.status(400).json({ error: 'audioId is required' });
+      }
+
+      const audioRecord = generatedAudioDb.getById(audioId);
+      if (!audioRecord) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      const elevenLabsService = req.app.get('elevenLabsService');
+      if (!elevenLabsService || !elevenLabsService.isConfigured()) {
+        return res.status(503).json({ error: 'TTS service not configured. Add ELEVENLABS_API_KEY to .env file.' });
+      }
+
+      // Use provided text or existing narration
+      const narrationText = text || audioRecord.narrationText;
+      if (!narrationText || narrationText.trim().length === 0) {
+        return res.status(400).json({ error: 'No narration text provided' });
+      }
+
+      // Get the asset list to generate filename
+      const assetList = assetListDb.getById(audioRecord.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Generate CMS filename
+      const cmsFilename = generateAudioFilename(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        audioRecord.slideNumber
+      );
+
+      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
+
+      // Update status to generating
+      generatedAudioDb.update(audioId, {
+        status: 'generating',
+        narrationText,
+        voiceId: voiceId || audioRecord.voiceId,
+        voiceName: voiceName || audioRecord.voiceName
+      });
+
+      // Generate audio asynchronously
+      elevenLabsService.generateAndSave({
+        text: narrationText,
+        outputPath,
+        voiceId: voiceId || audioRecord.voiceId
+      }).then(result => {
+        // Verify file was actually created before marking complete
+        if (fs.existsSync(result.path)) {
+          generatedAudioDb.update(audioId, {
+            status: 'completed',
+            audioPath: result.path,
+            cmsFilename,
+            durationMs: result.durationMs
+          });
+          console.log(`Audio generated successfully: ${cmsFilename}`);
+        } else {
+          generatedAudioDb.update(audioId, { status: 'failed' });
+          console.error(`Audio file not created at expected path: ${result.path}`);
+        }
+      }).catch(error => {
+        generatedAudioDb.update(audioId, { status: 'failed' });
+        console.error(`Audio generation failed for ${audioId}:`, error.message);
+      });
+
+      res.json({
+        audioId,
+        status: 'generating',
+        message: 'Audio generation started'
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload audio file manually
+  router.post('/audio/:id/upload', upload.single('audio'), async (req, res) => {
+    try {
+      const audioRecord = generatedAudioDb.getById(req.params.id);
+      if (!audioRecord) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'Audio file is required' });
+      }
+
+      const assetList = assetListDb.getById(audioRecord.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Generate CMS filename
+      const ext = path.extname(req.file.originalname).toLowerCase() || '.mp3';
+      const cmsFilename = generateAudioFilename(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        audioRecord.slideNumber
+      ).replace(/\.mp3$/, ext);
+
+      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
+
+      // Ensure audio directory exists
+      const audioDir = path.join(STORAGE_DIR, 'audio');
+      if (!fs.existsSync(audioDir)) {
+        fs.mkdirSync(audioDir, { recursive: true });
+      }
+
+      // Move uploaded file
+      fs.renameSync(req.file.path, outputPath);
+
+      // Update record
+      const updated = generatedAudioDb.update(req.params.id, {
+        status: 'uploaded',
+        audioPath: outputPath,
+        cmsFilename
+      });
+
+      res.json({
+        success: true,
+        audio: updated,
+        filename: cmsFilename,
+        path: `/audio/${cmsFilename}`
+      });
+    } catch (error) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update audio settings (narration text, voice)
+  router.patch('/audio/:id', (req, res) => {
+    try {
+      const { narrationText, voiceId, voiceName } = req.body;
+
+      const updates = {};
+      if (narrationText !== undefined) updates.narrationText = narrationText;
+      if (voiceId !== undefined) updates.voiceId = voiceId;
+      if (voiceName !== undefined) updates.voiceName = voiceName;
+
+      const updated = generatedAudioDb.update(req.params.id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      res.json({ success: true, audio: updated });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Regenerate audio
+  router.put('/audio/:id/regenerate', async (req, res) => {
+    try {
+      const { text, voiceId, voiceName } = req.body;
+
+      const audioRecord = generatedAudioDb.getById(req.params.id);
+      if (!audioRecord) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      // Forward to generate endpoint
+      req.body.audioId = req.params.id;
+      req.body.text = text || audioRecord.narrationText;
+
+      const elevenLabsService = req.app.get('elevenLabsService');
+      if (!elevenLabsService || !elevenLabsService.isConfigured()) {
+        return res.status(503).json({ error: 'TTS service not configured' });
+      }
+
+      const assetList = assetListDb.getById(audioRecord.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const narrationText = text || audioRecord.narrationText;
+      if (!narrationText || narrationText.trim().length === 0) {
+        return res.status(400).json({ error: 'No narration text provided' });
+      }
+
+      const cmsFilename = generateAudioFilename(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        audioRecord.slideNumber
+      );
+      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
+
+      // Update status
+      generatedAudioDb.update(req.params.id, {
+        status: 'generating',
+        narrationText,
+        voiceId: voiceId || audioRecord.voiceId,
+        voiceName: voiceName || audioRecord.voiceName
+      });
+
+      // Regenerate
+      elevenLabsService.generateAndSave({
+        text: narrationText,
+        outputPath,
+        voiceId: voiceId || audioRecord.voiceId
+      }).then(result => {
+        // Verify file was actually created before marking complete
+        if (fs.existsSync(result.path)) {
+          generatedAudioDb.update(req.params.id, {
+            status: 'completed',
+            audioPath: result.path,
+            cmsFilename,
+            durationMs: result.durationMs
+          });
+          console.log(`Audio regenerated successfully: ${cmsFilename}`);
+        } else {
+          generatedAudioDb.update(req.params.id, { status: 'failed' });
+          console.error(`Audio file not created at expected path: ${result.path}`);
+        }
+      }).catch(error => {
+        generatedAudioDb.update(req.params.id, { status: 'failed' });
+        console.error(`Audio regeneration failed for ${req.params.id}:`, error.message);
+      });
+
+      res.json({
+        audioId: req.params.id,
+        status: 'generating',
+        message: 'Audio regeneration started'
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Set default voice for an asset list (session)
+  router.patch('/asset-lists/:id/voice', (req, res) => {
+    try {
+      const { voiceId, voiceName } = req.body;
+
+      const assetList = assetListDb.getById(req.params.id);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      assetListDb.update(req.params.id, {
+        defaultVoiceId: voiceId,
+        defaultVoiceName: voiceName
+      });
+
+      const updated = assetListDb.getById(req.params.id);
+      res.json({ success: true, assetList: updated });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get audio records for an asset list
+  router.get('/asset-lists/:id/audio', (req, res) => {
+    try {
+      const assetList = assetListDb.getById(req.params.id);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const audioRecords = generatedAudioDb.getByAssetList(req.params.id);
+      res.json(audioRecords);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
+
+// Helper function to generate CMS filename for audio
+// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.NAR1.mp3
+function generateAudioFilename(moduleName, sessionNumber, slideNumber) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.NAR1.mp3`;
+}
 
 // Helper function to generate CMS filename for motion graphics videos
 // Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.VID1.mp4
