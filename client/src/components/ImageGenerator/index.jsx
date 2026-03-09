@@ -113,6 +113,20 @@ export default function ImageGenerator({
       setGeneratedImages(data.generatedImages || []);
       setMotionGraphicsVideos(data.motionGraphicsVideos || []);
       setGeneratedAudioList(data.generatedAudio || []);
+
+      // Update selectedImage if it exists in the new data (fixes preview not updating after regenerate)
+      setSelectedImage(prev => {
+        if (!prev) return prev;
+        const updated = (data.generatedImages || []).find(img => img.id === prev.id);
+        return updated || prev;
+      });
+
+      // Update selectedAudio if it exists in the new data
+      setSelectedAudio(prev => {
+        if (!prev) return prev;
+        const updated = (data.generatedAudio || []).find(a => a.id === prev.id);
+        return updated || prev;
+      });
     } catch (err) {
       console.error('Failed to load asset list:', err);
     } finally {

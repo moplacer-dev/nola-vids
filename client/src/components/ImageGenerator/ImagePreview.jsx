@@ -87,7 +87,8 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
   const videoUrl = hasVideo ? `/mg-videos/${image.cmsFilename}` : null;
 
   const hasImage = !hasVideo && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported' || image.status === 'default') && image.imagePath;
-  const imageUrl = hasImage ? `/images/${image.imagePath.split('/').pop()}` : null;
+  // Add updatedAt as cache-buster to force reload after regeneration
+  const imageUrl = hasImage ? `/images/${image.imagePath.split('/').pop()}?t=${encodeURIComponent(image.updatedAt || '')}` : null;
 
   // Only use character anchor for character-related asset types
   const assetType = (image.assetType || '').toLowerCase();
