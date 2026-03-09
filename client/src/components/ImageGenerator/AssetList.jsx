@@ -145,6 +145,8 @@ export default function AssetList({
           if (slide.isMotionGraphics && (slide.assets.length > 0 || mgScenes.length > 0)) {
             const mgVideo = mgVideoBySlide[parseInt(slide.slideNumber)];
 
+            const mgAudio = audioBySlide[parseInt(slide.slideNumber)];
+
             return (
               <MotionGraphicsGroup
                 key={slide.slideNumber}
@@ -153,6 +155,7 @@ export default function AssetList({
                 scenes={mgScenes}
                 assets={slide.assets}
                 mgVideo={mgVideo}
+                audio={mgAudio}
                 onGenerate={onGenerate}
                 onUpload={onUpload}
                 onImport={onImport}
@@ -163,8 +166,15 @@ export default function AssetList({
                 onDeleteVideo={onDeleteMGVideo}
                 onAddScene={onAddScene}
                 onDeleteScene={onDeleteScene}
+                onGenerateAudio={onGenerateAudio}
+                onUploadAudio={onUploadAudio}
+                onEditNarration={onEditNarration}
+                onSelectAudio={onSelectAudio}
+                voices={voices}
+                defaultVoiceId={defaultVoiceId}
                 selectedImageId={selectedImageId}
                 selectedVideoId={selectedVideoId}
+                selectedAudioId={selectedAudioId}
                 loading={loading}
               />
             );

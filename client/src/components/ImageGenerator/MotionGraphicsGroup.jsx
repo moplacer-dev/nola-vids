@@ -6,6 +6,7 @@ export default function MotionGraphicsGroup({
   scenes = [],  // Default to empty array
   assets = [],  // Raw assets with context fields
   mgVideo,
+  audio,
   onGenerate,
   onUpload,
   onImport,
@@ -16,14 +17,23 @@ export default function MotionGraphicsGroup({
   onDeleteVideo,
   onAddScene,
   onDeleteScene,
+  onGenerateAudio,
+  onUploadAudio,
+  onEditNarration,
+  onSelectAudio,
+  voices = [],
+  defaultVoiceId,
   selectedImageId,
   selectedVideoId,
+  selectedAudioId,
   loading
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [narrationExpanded, setNarrationExpanded] = useState(false);
   const [characterToggles, setCharacterToggles] = useState({});
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   // Ensure scenes is always an array
   const safeScenes = Array.isArray(scenes) ? scenes : [];
@@ -289,6 +299,117 @@ export default function MotionGraphicsGroup({
               </div>
             </div>
           </div>
+
+          {/* Narration Section */}
+          {audio && (
+            <div className={`narration-section ${narrationExpanded ? 'expanded' : ''} ${selectedAudioId === audio.id ? 'selected' : ''}`}>
+              <div
+                className="narration-header"
+                onClick={() => setNarrationExpanded(!narrationExpanded)}
+              >
+                <div className="narration-header-left">
+                  <span className="narration-expand">{narrationExpanded ? '▼' : '▶'}</span>
+                  <span className="narration-label">NARRATION</span>
+                </div>
+                <span className={`narration-status status-${audio.status}`}>
+                  {audio.status.toUpperCase()}
+                </span>
+              </div>
+
+              {narrationExpanded && (
+                <div className="narration-content">
+                  <p className="narration-text">
+                    {audio.narrationText || 'No narration text'}
+                  </p>
+
+                  <div className="narration-voice-row">
+                    <label>Voice:</label>
+                    <select
+                      value={audio.voiceId || defaultVoiceId || ''}
+                      onChange={(e) => {
+                        const voice = voices.find(v => v.voice_id === e.target.value);
+                        if (onEditNarration) {
+                          onEditNarration(audio.id, {
+                            voiceId: e.target.value,
+                            voiceName: voice?.name || ''
+                          });
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {voices.map(v => (
+                        <option key={v.voice_id} value={v.voice_id}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="narration-actions">
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onEditNarration) {
+                          onEditNarration(audio.id, { editText: true });
+                        }
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <input
+                      type="file"
+                      accept="audio/mpeg,audio/mp3,audio/wav"
+                      style={{ display: 'none' }}
+                      ref={audioInputRef}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && audio?.id && onUploadAudio) {
+                          onUploadAudio(audio.id, file);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        audioInputRef.current?.click();
+                      }}
+                      disabled={loading}
+                    >
+                      Upload
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onGenerateAudio) {
+                          onGenerateAudio(audio.id, {
+                            voiceId: audio.voiceId || defaultVoiceId
+                          });
+                        }
+                      }}
+                      disabled={audio.status === 'generating' || loading}
+                    >
+                      {(audio.status === 'completed' || audio.status === 'uploaded') ? 'Regen' : 'Gen'}
+                    </button>
+                    {(audio.status === 'completed' || audio.status === 'uploaded') && (
+                      <button
+                        className="btn-preview"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onSelectAudio) onSelectAudio(audio);
+                        }}
+                      >
+                        Preview
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
