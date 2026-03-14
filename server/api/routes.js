@@ -2076,7 +2076,6 @@ module.exports = (jobManager) => {
 
         // Create audio record for question
         if (parts.question) {
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(null, null, 'question');
           // Check for existing by assessment + question + type
           const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
           const existingQuestion = existingRecords.find(r => r.narrationType === 'question');
