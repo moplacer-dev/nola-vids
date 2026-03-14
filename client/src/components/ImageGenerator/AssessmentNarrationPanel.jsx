@@ -35,6 +35,7 @@ export default function AssessmentNarrationPanel({
       'answer_c': 'Answer C',
       'answer_d': 'Answer D',
       'answer_e': 'Answer E',
+      'answer_f': 'Answer F',
       'correct_response': 'Correct Response',
       'incorrect_1': 'First Incorrect',
       'incorrect_2': 'Second Incorrect',
@@ -74,6 +75,7 @@ export default function AssessmentNarrationPanel({
     'answer_c',
     'answer_d',
     'answer_e',
+    'answer_f',
     // Feedback responses
     'correct_response',
     'incorrect_1',

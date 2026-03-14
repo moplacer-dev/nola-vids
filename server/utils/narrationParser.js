@@ -24,7 +24,7 @@ function parseNarrationText(narrationText, onscreenText) {
 
   // Extract question (text before first answer choice in onscreen_text)
   // Look for patterns like "A)" or "A." or "A:"
-  const answerStartMatch = onscreen.match(/\n?\s*[A-E][\).:]\s*/);
+  const answerStartMatch = onscreen.match(/\n?\s*[A-F][\).:]\s*/);
   if (answerStartMatch) {
     const firstAnswerIndex = answerStartMatch.index;
     if (firstAnswerIndex > 0) {
@@ -37,7 +37,7 @@ function parseNarrationText(narrationText, onscreenText) {
 
   // Extract answer choices from onscreen_text
   // Format variations: "A) Text", "A. Text", "A: Text", "(A) Text"
-  const answerRegex = /(?:^|\n)\s*(?:\()?([A-E])(?:\)|\.|\:)\s*([^\n]+)/gi;
+  const answerRegex = /(?:^|\n)\s*(?:\()?([A-F])(?:\)|\.|\:)\s*([^\n]+)/gi;
   let match;
   while ((match = answerRegex.exec(onscreen)) !== null) {
     parts.answers.push({
@@ -121,10 +121,10 @@ function isQuestionSlide(onscreenText, slideType) {
   if (!onscreenText) return false;
 
   // Multiple answer patterns: A) B) C) or A. B. C. or (A) (B) (C)
-  const hasAnswerChoices = /(?:^|\n)\s*(?:\()?[A-E][\).:\s]/m.test(onscreenText);
+  const hasAnswerChoices = /(?:^|\n)\s*(?:\()?[A-F][\).:\s]/m.test(onscreenText);
 
   // Must have at least 2 answer choices to be a question
-  const answerCount = (onscreenText.match(/(?:^|\n)\s*(?:\()?[A-E][\).:\s]/gm) || []).length;
+  const answerCount = (onscreenText.match(/(?:^|\n)\s*(?:\()?[A-F][\).:\s]/gm) || []).length;
 
   return hasAnswerChoices && answerCount >= 2;
 }
@@ -143,6 +143,7 @@ function narrationTypeToCode(narrationType) {
     'answer_c': 'ANS_C',
     'answer_d': 'ANS_D',
     'answer_e': 'ANS_E',
+    'answer_f': 'ANS_F',
     'correct_response': 'CORRECT',
     'incorrect_1': 'INCOR1',
     'incorrect_2': 'INCOR2',
@@ -175,6 +176,7 @@ function getNarrationTypeLabel(narrationType) {
     'answer_c': 'Answer C',
     'answer_d': 'Answer D',
     'answer_e': 'Answer E',
+    'answer_f': 'Answer F',
     'correct_response': 'Correct Response',
     'incorrect_1': 'First Incorrect',
     'incorrect_2': 'Second Incorrect',
@@ -205,6 +207,7 @@ function getQuestionNarrationTypes() {
     'answer_c',
     'answer_d',
     'answer_e',
+    'answer_f',
     'correct_response',
     'incorrect_1',
     'incorrect_2'

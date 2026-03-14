@@ -2096,9 +2096,10 @@ module.exports = (jobManager) => {
           const partA = question.partA || {};
           const partB = question.partB || {};
 
-          // Part A question stem
-          if (partA.stem) {
-            await upsertAssessmentAudio(assessment.id, qNum, 'part_a_question', partA.stem);
+          // Part A question: combine scenario + stem (scenario provides context)
+          const partAQuestionParts = [question.scenario, partA.stem].filter(Boolean);
+          if (partAQuestionParts.length > 0) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'part_a_question', partAQuestionParts.join(' '));
           }
 
           // Part A answer choices (only create for choices that exist)
@@ -2135,9 +2136,10 @@ module.exports = (jobManager) => {
 
         } else if (question.choices && question.choices.length > 0) {
           // NEW: Use pre-structured data for stem/choices (single_select format)
-          // Question stem
-          if (question.stem) {
-            await upsertAssessmentAudio(assessment.id, qNum, 'question', question.stem);
+          // Combine scenario + stem for question narration (like leadIn + question for slides)
+          const questionParts = [question.scenario, question.stem].filter(Boolean);
+          if (questionParts.length > 0) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'question', questionParts.join(' '));
           }
 
           // Answer choices from structured array
