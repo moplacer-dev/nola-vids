@@ -2,10 +2,9 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
   // If audio is selected, show audio preview
   if (audio) {
     const hasAudio = (audio.status === 'completed' || audio.status === 'uploaded') && audio.audioPath;
-    const audioFilename = hasAudio ? audio.audioPath.split('/').pop() : null;
-    // Add updatedAt as cache-buster to force reload after regeneration
-    const audioUrl = hasAudio ? `/audio/${audioFilename}?t=${encodeURIComponent(audio.updatedAt || '')}` : null;
-    const audioDownloadUrl = hasAudio ? `/audio/${audioFilename}` : null;
+    // audioPath is the full Supabase public URL - use directly with cache buster
+    const audioUrl = hasAudio ? `${audio.audioPath}?t=${encodeURIComponent(audio.updatedAt || '')}` : null;
+    const audioDownloadUrl = hasAudio ? audio.audioPath : null;
 
     const handleDownload = () => {
       if (!audioDownloadUrl) return;
