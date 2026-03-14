@@ -51,7 +51,7 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
             <div className="character-anchor">
               {firstImage ? (
                 <img
-                  src={`/anchors/${firstImage.split('/').pop()}`}
+                  src={firstImage.startsWith('http') ? firstImage : `/anchors/${firstImage}`}
                   alt={char.characterName}
                 />
               ) : (
@@ -115,7 +115,7 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                         {refImages.map((imgPath, index) => (
                           <div key={index} className="character-modal-image-item">
                             <img
-                              src={`/anchors/${imgPath.split('/').pop()}`}
+                              src={imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`}
                               alt={`${viewingCharacter.characterName} ref ${index + 1}`}
                             />
                             {onRemoveReferenceImage && (
