@@ -1206,6 +1206,8 @@ const assessmentAssetQueries = {
     if (updates.gradeLevel !== undefined) updateData.grade_level = updates.gradeLevel;
     if (updates.questions !== undefined) updateData.questions_json = updates.questions;
     if (updates.assetSummary !== undefined) updateData.asset_summary_json = updates.assetSummary;
+    if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
+    if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
 
     const { data, error } = await supabase
       .from('assessment_assets')
@@ -1320,6 +1322,8 @@ function parseAssessmentAssetRow(row) {
     gradeLevel: row.grade_level,
     questions: row.questions_json,
     assetSummary: row.asset_summary_json,
+    defaultVoiceId: row.default_voice_id,
+    defaultVoiceName: row.default_voice_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

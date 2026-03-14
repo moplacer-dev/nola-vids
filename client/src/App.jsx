@@ -71,6 +71,7 @@ export default function App() {
     updateAudio,
     regenerateAudio,
     setSessionDefaultVoice,
+    setAssessmentDefaultVoice,
     // Assessment Assets
     getAssessmentAssets,
     getAssessmentAsset,
@@ -344,6 +345,7 @@ export default function App() {
             updateAudio={updateAudio}
             regenerateAudio={regenerateAudio}
             setSessionDefaultVoice={setSessionDefaultVoice}
+            setAssessmentDefaultVoice={setAssessmentDefaultVoice}
             getAssessmentAssets={getAssessmentAssets}
             getAssessmentAsset={getAssessmentAsset}
             getAssessmentAudio={getAssessmentAudio}

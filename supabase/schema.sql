@@ -233,6 +233,8 @@ CREATE TABLE IF NOT EXISTS assessment_assets (
   grade_level TEXT NOT NULL,
   questions_json JSONB NOT NULL DEFAULT '[]',
   asset_summary_json JSONB NOT NULL DEFAULT '{}',
+  default_voice_id TEXT,
+  default_voice_name TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(module_name, assessment_type)

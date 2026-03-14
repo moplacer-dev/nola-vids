@@ -31,6 +31,7 @@ export default function ImageGenerator({
   updateAudio,
   regenerateAudio,
   setSessionDefaultVoice,
+  setAssessmentDefaultVoice,
   // Assessment Assets
   getAssessmentAssets,
   getAssessmentAsset,
@@ -468,6 +469,16 @@ export default function ImageGenerator({
     }
   };
 
+  const handleSetAssessmentDefaultVoice = async (voiceId, voiceName) => {
+    if (!setAssessmentDefaultVoice || !selectedAssessment?.id) return;
+    try {
+      await setAssessmentDefaultVoice(selectedAssessment.id, voiceId, voiceName);
+      await loadAssessmentDetails(selectedAssessment.id);
+    } catch (err) {
+      console.error('Failed to set assessment default voice:', err);
+    }
+  };
+
   // Assessment audio handlers
   const handleGenerateAssessmentAudio = async (audioId, options = {}) => {
     if (!generateAssessmentAudio) return;
@@ -488,7 +499,7 @@ export default function ImageGenerator({
       await generateBulkAudio({
         assessmentAssetId: selectedAssessment.id,
         questionNumber,
-        voiceId: selectedAssetList?.defaultVoiceId
+        voiceId: selectedAssessment?.defaultVoiceId
       });
       // Refresh assessment to get updated status
       await loadAssessmentDetails(selectedAssessment.id);
@@ -639,12 +650,16 @@ export default function ImageGenerator({
           <div className="selector-group">
             <label>Default Voice</label>
             <select
-              value={selectedAssetList?.defaultVoiceId || ''}
+              value={selectedAssessment?.defaultVoiceId || selectedAssetList?.defaultVoiceId || ''}
               onChange={(e) => {
                 const voice = voices.find(v => v.voice_id === e.target.value);
-                handleSetDefaultVoice(e.target.value, voice?.name || '');
+                if (selectedAssessment) {
+                  handleSetAssessmentDefaultVoice(e.target.value, voice?.name || '');
+                } else {
+                  handleSetDefaultVoice(e.target.value, voice?.name || '');
+                }
               }}
-              disabled={!selectedAssetList}
+              disabled={!selectedAssetList && !selectedAssessment}
             >
               <option value="">Select Voice...</option>
               {voices.map(v => (
@@ -809,7 +824,7 @@ export default function ImageGenerator({
                         questionNumber={questionNum}
                         audioRecords={assessmentAudioList}
                         voices={voices}
-                        defaultVoiceId={voices[0]?.voice_id}
+                        defaultVoiceId={selectedAssessment?.defaultVoiceId || voices[0]?.voice_id}
                         onGenerateAudio={handleGenerateAssessmentAudio}
                         onGenerateAll={handleGenerateAllAssessmentAudio}
                         onUploadAudio={handleUploadAssessmentAudio}

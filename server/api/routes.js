@@ -2275,6 +2275,21 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Set default voice for assessment
+  router.patch('/assessment-assets/:id/voice', async (req, res) => {
+    try {
+      const { voiceId, voiceName } = req.body;
+      await assessmentAssetDb.update(req.params.id, {
+        defaultVoiceId: voiceId,
+        defaultVoiceName: voiceName
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting assessment default voice:', error);
+      res.status(500).json({ error: 'Failed to set default voice' });
+    }
+  });
+
   // Get all audio for an assessment
   router.get('/assessment-assets/:id/audio', async (req, res) => {
     try {

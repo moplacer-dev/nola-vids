@@ -379,6 +379,14 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const setAssessmentDefaultVoice = useCallback(async (assessmentId, voiceId, voiceName) => {
+    return request(`/assessment-assets/${encodeURIComponent(assessmentId)}/voice`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voiceId, voiceName })
+    });
+  }, [request]);
+
   // Assessment Assets endpoints
   const getAssessmentAssets = useCallback(async (moduleName) => {
     const params = moduleName ? `?moduleName=${encodeURIComponent(moduleName)}` : '';
@@ -466,6 +474,7 @@ export function useApi(accessKey) {
     updateAudio,
     regenerateAudio,
     setSessionDefaultVoice,
+    setAssessmentDefaultVoice,
     // Assessment Assets
     getAssessmentAssets,
     getAssessmentAsset,
