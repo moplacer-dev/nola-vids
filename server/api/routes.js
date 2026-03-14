@@ -2064,131 +2064,116 @@ module.exports = (jobManager) => {
       let audioCreated = 0;
       let audioKept = 0;
 
+      // Helper to upsert assessment audio record
+      const upsertAssessmentAudio = async (assessmentId, qNum, narrationType, text) => {
+        if (!text || !text.trim()) return false;
+        const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessmentId, qNum);
+        const existing = existingRecords.find(r => r.narrationType === narrationType);
+        if (existing) {
+          if (existing.narrationText !== text) {
+            await generatedAudioDb.update(existing.id, { narrationText: text });
+          }
+          audioKept++;
+        } else {
+          await generatedAudioDb.create({
+            assessmentAssetId: assessmentId,
+            questionNumber: qNum,
+            narrationType,
+            narrationText: text,
+            cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, narrationType),
+            status: 'pending'
+          });
+          audioCreated++;
+        }
+        return true;
+      };
+
       for (const question of questions) {
         const qNum = question.questionNumber || (questions.indexOf(question) + 1);
 
-        // Get narration and onscreen text from question data
-        const narration = question.narration || '';
-        const onscreenText = question.onscreen_text || question.scenario || '';
+        if (question.questionType === 'two_part') {
+          // NEW: Handle two-part questions with partA and partB
+          const partA = question.partA || {};
+          const partB = question.partB || {};
 
-        // Parse into separate parts
-        const parts = parseNarrationText(narration, onscreenText);
-
-        // Create audio record for question
-        if (parts.question) {
-          // Check for existing by assessment + question + type
-          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
-          const existingQuestion = existingRecords.find(r => r.narrationType === 'question');
-
-          if (existingQuestion) {
-            if (existingQuestion.narrationText !== parts.question) {
-              await generatedAudioDb.update(existingQuestion.id, { narrationText: parts.question });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assessmentAssetId: assessment.id,
-              questionNumber: qNum,
-              narrationType: 'question',
-              narrationText: parts.question,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'question'),
-              status: 'pending'
-            });
-            audioCreated++;
+          // Part A question stem
+          if (partA.stem) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'part_a_question', partA.stem);
           }
-        }
 
-        // Create audio records for each answer choice
-        for (const answer of parts.answers) {
-          const narrationType = `answer_${answer.letter.toLowerCase()}`;
-          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
-          const existingAnswer = existingRecords.find(r => r.narrationType === narrationType);
-
-          if (existingAnswer) {
-            if (existingAnswer.narrationText !== answer.text) {
-              await generatedAudioDb.update(existingAnswer.id, { narrationText: answer.text });
+          // Part A answer choices (only create for choices that exist)
+          if (partA.choices && Array.isArray(partA.choices)) {
+            for (const choice of partA.choices) {
+              if (choice.label && choice.text) {
+                const narrationType = `part_a_answer_${choice.label.toLowerCase()}`;
+                await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
+              }
             }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assessmentAssetId: assessment.id,
-              questionNumber: qNum,
-              narrationType,
-              narrationText: answer.text,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, narrationType),
-              status: 'pending'
-            });
-            audioCreated++;
           }
-        }
 
-        // Create audio record for correct response
-        if (parts.correctResponse) {
-          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
-          const existing = existingRecords.find(r => r.narrationType === 'correct_response');
+          // Part B question stem
+          if (partB.stem) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'part_b_question', partB.stem);
+          }
 
-          if (existing) {
-            if (existing.narrationText !== parts.correctResponse) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.correctResponse });
+          // Part B answer choices (only create for choices that exist)
+          if (partB.choices && Array.isArray(partB.choices)) {
+            for (const choice of partB.choices) {
+              if (choice.label && choice.text) {
+                const narrationType = `part_b_answer_${choice.label.toLowerCase()}`;
+                await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
+              }
             }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assessmentAssetId: assessment.id,
-              questionNumber: qNum,
-              narrationType: 'correct_response',
-              narrationText: parts.correctResponse,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'correct_response'),
-              status: 'pending'
-            });
-            audioCreated++;
           }
-        }
 
-        // Create audio record for first incorrect response
-        if (parts.incorrect1) {
-          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
-          const existing = existingRecords.find(r => r.narrationType === 'incorrect_1');
+          // Feedback text from narration field (still parse for backward compatibility)
+          const narration = question.narration || '';
+          const feedbackParts = parseNarrationText(narration, '');
+          await upsertAssessmentAudio(assessment.id, qNum, 'correct_response', feedbackParts.correctResponse);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_1', feedbackParts.incorrect1);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_2', feedbackParts.incorrect2);
 
-          if (existing) {
-            if (existing.narrationText !== parts.incorrect1) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect1 });
+        } else if (question.choices && question.choices.length > 0) {
+          // NEW: Use pre-structured data for stem/choices (single_select format)
+          // Question stem
+          if (question.stem) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'question', question.stem);
+          }
+
+          // Answer choices from structured array
+          for (const choice of question.choices) {
+            if (choice.label && choice.text) {
+              const narrationType = `answer_${choice.label.toLowerCase()}`;
+              await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
             }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assessmentAssetId: assessment.id,
-              questionNumber: qNum,
-              narrationType: 'incorrect_1',
-              narrationText: parts.incorrect1,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'incorrect_1'),
-              status: 'pending'
-            });
-            audioCreated++;
           }
-        }
 
-        // Create audio record for second incorrect response
-        if (parts.incorrect2) {
-          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
-          const existing = existingRecords.find(r => r.narrationType === 'incorrect_2');
+          // Feedback text from narration field (still parse for backward compatibility)
+          const narration = question.narration || '';
+          const feedbackParts = parseNarrationText(narration, '');
+          await upsertAssessmentAudio(assessment.id, qNum, 'correct_response', feedbackParts.correctResponse);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_1', feedbackParts.incorrect1);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_2', feedbackParts.incorrect2);
 
-          if (existing) {
-            if (existing.narrationText !== parts.incorrect2) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect2 });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assessmentAssetId: assessment.id,
-              questionNumber: qNum,
-              narrationType: 'incorrect_2',
-              narrationText: parts.incorrect2,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'incorrect_2'),
-              status: 'pending'
-            });
-            audioCreated++;
+        } else {
+          // FALLBACK: Legacy parsing for backward compatibility
+          const narration = question.narration || '';
+          const onscreenText = question.onscreen_text || question.scenario || '';
+          const parts = parseNarrationText(narration, onscreenText);
+
+          // Create audio record for question
+          await upsertAssessmentAudio(assessment.id, qNum, 'question', parts.question);
+
+          // Create audio records for each answer choice
+          for (const answer of parts.answers) {
+            const narrationType = `answer_${answer.letter.toLowerCase()}`;
+            await upsertAssessmentAudio(assessment.id, qNum, narrationType, answer.text);
           }
+
+          // Create audio records for feedback responses
+          await upsertAssessmentAudio(assessment.id, qNum, 'correct_response', parts.correctResponse);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_1', parts.incorrect1);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_2', parts.incorrect2);
         }
       }
 
@@ -2779,6 +2764,29 @@ async function processAssetList({
   // For question slides (RCP), create multi-part audio records
   let audioCreated = 0;
   let audioKept = 0;
+  // Helper to upsert slide audio record
+  const upsertSlideAudio = async (assetListId, slideNum, narrationType, text) => {
+    if (!text || !text.trim()) return false;
+    const existing = await generatedAudioDb.getByAssetListSlideAndType(assetListId, slideNum, narrationType);
+    if (existing) {
+      if (existing.narrationText !== text) {
+        await generatedAudioDb.update(existing.id, { narrationText: text });
+      }
+      audioKept++;
+    } else {
+      await generatedAudioDb.create({
+        assetListId,
+        slideNumber: slideNum,
+        narrationType,
+        narrationText: text,
+        cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, narrationType),
+        status: 'pending'
+      });
+      audioCreated++;
+    }
+    return true;
+  };
+
   if (slides && slides.length > 0) {
     for (const slide of slides) {
       const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
@@ -2786,116 +2794,55 @@ async function processAssetList({
       const onscreenText = slide.onscreen_text || slide.onscreenText || '';
       const slideType = slide.slideType || slide.slide_type || '';
 
-      // Check if this is a question slide
-      if (isQuestionSlide(onscreenText, slideType)) {
-        // Parse the combined text into separate parts
+      // NEW: Check for structuredNarration first (pre-parsed by Carl)
+      if (slide.structuredNarration) {
+        const sn = slide.structuredNarration;
+
+        // Combine leadIn + question for the 'question' narration type
+        const questionParts = [sn.leadIn, sn.question].filter(Boolean);
+        if (questionParts.length > 0) {
+          await upsertSlideAudio(assetList.id, slideNum, 'question', questionParts.join(' '));
+        }
+
+        // Answer choices from structured array
+        if (sn.answerChoices && Array.isArray(sn.answerChoices)) {
+          for (const choice of sn.answerChoices) {
+            if (choice.label && choice.text) {
+              const narrationType = `answer_${choice.label.toLowerCase()}`;
+              await upsertSlideAudio(assetList.id, slideNum, narrationType, choice.text);
+            }
+          }
+        }
+
+        // Response texts
+        if (sn.correctResponseText) {
+          await upsertSlideAudio(assetList.id, slideNum, 'correct_response', sn.correctResponseText);
+        }
+        if (sn.firstIncorrectText) {
+          await upsertSlideAudio(assetList.id, slideNum, 'incorrect_1', sn.firstIncorrectText);
+        }
+        if (sn.secondIncorrectText) {
+          await upsertSlideAudio(assetList.id, slideNum, 'incorrect_2', sn.secondIncorrectText);
+        }
+
+      } else if (isQuestionSlide(onscreenText, slideType)) {
+        // FALLBACK: Legacy regex parsing for question slides
         const parts = parseNarrationText(narration, onscreenText);
 
         // Create audio record for question (scenario + question text)
-        if (parts.question) {
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'question');
-          if (existing) {
-            if (existing.narrationText !== parts.question) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.question });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assetListId: assetList.id,
-              slideNumber: slideNum,
-              narrationType: 'question',
-              narrationText: parts.question,
-              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'question'),
-              status: 'pending'
-            });
-            audioCreated++;
-          }
-        }
+        await upsertSlideAudio(assetList.id, slideNum, 'question', parts.question);
 
         // Create audio records for each answer choice
         for (const answer of parts.answers) {
           const narrationType = `answer_${answer.letter.toLowerCase()}`;
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, narrationType);
-          if (existing) {
-            if (existing.narrationText !== answer.text) {
-              await generatedAudioDb.update(existing.id, { narrationText: answer.text });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assetListId: assetList.id,
-              slideNumber: slideNum,
-              narrationType,
-              narrationText: answer.text,
-              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, narrationType),
-              status: 'pending'
-            });
-            audioCreated++;
-          }
+          await upsertSlideAudio(assetList.id, slideNum, narrationType, answer.text);
         }
 
-        // Create audio record for correct response
-        if (parts.correctResponse) {
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'correct_response');
-          if (existing) {
-            if (existing.narrationText !== parts.correctResponse) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.correctResponse });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assetListId: assetList.id,
-              slideNumber: slideNum,
-              narrationType: 'correct_response',
-              narrationText: parts.correctResponse,
-              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'correct_response'),
-              status: 'pending'
-            });
-            audioCreated++;
-          }
-        }
+        // Create audio records for feedback responses
+        await upsertSlideAudio(assetList.id, slideNum, 'correct_response', parts.correctResponse);
+        await upsertSlideAudio(assetList.id, slideNum, 'incorrect_1', parts.incorrect1);
+        await upsertSlideAudio(assetList.id, slideNum, 'incorrect_2', parts.incorrect2);
 
-        // Create audio record for first incorrect response
-        if (parts.incorrect1) {
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'incorrect_1');
-          if (existing) {
-            if (existing.narrationText !== parts.incorrect1) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect1 });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assetListId: assetList.id,
-              slideNumber: slideNum,
-              narrationType: 'incorrect_1',
-              narrationText: parts.incorrect1,
-              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_1'),
-              status: 'pending'
-            });
-            audioCreated++;
-          }
-        }
-
-        // Create audio record for second incorrect response
-        if (parts.incorrect2) {
-          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'incorrect_2');
-          if (existing) {
-            if (existing.narrationText !== parts.incorrect2) {
-              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect2 });
-            }
-            audioKept++;
-          } else {
-            await generatedAudioDb.create({
-              assetListId: assetList.id,
-              slideNumber: slideNum,
-              narrationType: 'incorrect_2',
-              narrationText: parts.incorrect2,
-              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_2'),
-              status: 'pending'
-            });
-            audioCreated++;
-          }
-        }
       } else if (narration && narration.trim().length > 0) {
         // Regular slide - single narration
         const existingAudio = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'slide_narration');

@@ -735,7 +735,43 @@ export default function ImageGenerator({
                       <div className="question-row">
                         <div className="question-number">Q{questionNum}</div>
                         <div className="question-content">
-                          <p className="question-text">{question.scenario}</p>
+                          {/* Badge for question type */}
+                          {question.questionType === 'two_part' && (
+                            <span className="question-type-badge two-part">Two-Part</span>
+                          )}
+
+                          {/* Two-part question display */}
+                          {question.questionType === 'two_part' ? (
+                            <>
+                              {question.partA?.stem && (
+                                <div className="question-part">
+                                  <strong>Part A:</strong> {question.partA.stem}
+                                </div>
+                              )}
+                              {question.partB?.stem && (
+                                <div className="question-part">
+                                  <strong>Part B:</strong> {question.partB.stem}
+                                </div>
+                              )}
+                            </>
+                          ) : question.stem ? (
+                            /* Structured single_select with stem */
+                            <>
+                              <p className="question-text">{question.stem}</p>
+                              {question.choices && question.choices.length > 0 && (
+                                <div className="question-choices-preview">
+                                  {question.choices.slice(0, 2).map((c, i) => (
+                                    <span key={i} className="choice-preview">{c.label}) {c.text?.substring(0, 30)}{c.text?.length > 30 ? '...' : ''}</span>
+                                  ))}
+                                  {question.choices.length > 2 && <span className="choice-more">+{question.choices.length - 2} more</span>}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            /* Legacy format with scenario */
+                            <p className="question-text">{question.scenario}</p>
+                          )}
+
                           {question.visual?.description && (
                             <p className="visual-prompt">{question.visual.description}</p>
                           )}

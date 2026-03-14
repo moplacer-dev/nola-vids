@@ -37,7 +37,18 @@ export default function AssessmentNarrationPanel({
       'answer_e': 'Answer E',
       'correct_response': 'Correct Response',
       'incorrect_1': 'First Incorrect',
-      'incorrect_2': 'Second Incorrect'
+      'incorrect_2': 'Second Incorrect',
+      // Two-part question labels
+      'part_a_question': 'Part A - Question',
+      'part_a_answer_a': 'Part A - Answer A',
+      'part_a_answer_b': 'Part A - Answer B',
+      'part_a_answer_c': 'Part A - Answer C',
+      'part_a_answer_d': 'Part A - Answer D',
+      'part_b_question': 'Part B - Question',
+      'part_b_answer_a': 'Part B - Answer A',
+      'part_b_answer_b': 'Part B - Answer B',
+      'part_b_answer_c': 'Part B - Answer C',
+      'part_b_answer_d': 'Part B - Answer D'
     };
     return labels[narrationType] || narrationType;
   };
@@ -45,11 +56,25 @@ export default function AssessmentNarrationPanel({
   // Order of narration types for display
   const typeOrder = [
     'question',
+    // Two-part question types (Part A)
+    'part_a_question',
+    'part_a_answer_a',
+    'part_a_answer_b',
+    'part_a_answer_c',
+    'part_a_answer_d',
+    // Two-part question types (Part B)
+    'part_b_question',
+    'part_b_answer_a',
+    'part_b_answer_b',
+    'part_b_answer_c',
+    'part_b_answer_d',
+    // Single select answer choices
     'answer_a',
     'answer_b',
     'answer_c',
     'answer_d',
     'answer_e',
+    // Feedback responses
     'correct_response',
     'incorrect_1',
     'incorrect_2'

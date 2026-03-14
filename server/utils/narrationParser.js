@@ -145,7 +145,18 @@ function narrationTypeToCode(narrationType) {
     'answer_e': 'ANS_E',
     'correct_response': 'CORRECT',
     'incorrect_1': 'INCOR1',
-    'incorrect_2': 'INCOR2'
+    'incorrect_2': 'INCOR2',
+    // Two-part question types
+    'part_a_question': 'PA_Q',
+    'part_a_answer_a': 'PA_A',
+    'part_a_answer_b': 'PA_B',
+    'part_a_answer_c': 'PA_C',
+    'part_a_answer_d': 'PA_D',
+    'part_b_question': 'PB_Q',
+    'part_b_answer_a': 'PB_A',
+    'part_b_answer_b': 'PB_B',
+    'part_b_answer_c': 'PB_C',
+    'part_b_answer_d': 'PB_D'
   };
   return typeMap[narrationType] || 'NAR1';
 }
@@ -166,7 +177,18 @@ function getNarrationTypeLabel(narrationType) {
     'answer_e': 'Answer E',
     'correct_response': 'Correct Response',
     'incorrect_1': 'First Incorrect',
-    'incorrect_2': 'Second Incorrect'
+    'incorrect_2': 'Second Incorrect',
+    // Two-part question labels
+    'part_a_question': 'Part A - Question',
+    'part_a_answer_a': 'Part A - Answer A',
+    'part_a_answer_b': 'Part A - Answer B',
+    'part_a_answer_c': 'Part A - Answer C',
+    'part_a_answer_d': 'Part A - Answer D',
+    'part_b_question': 'Part B - Question',
+    'part_b_answer_a': 'Part B - Answer A',
+    'part_b_answer_b': 'Part B - Answer B',
+    'part_b_answer_c': 'Part B - Answer C',
+    'part_b_answer_d': 'Part B - Answer D'
   };
   return labelMap[narrationType] || narrationType;
 }
@@ -189,11 +211,34 @@ function getQuestionNarrationTypes() {
   ];
 }
 
+/**
+ * Get all possible narration types for a two-part question
+ * @returns {string[]} Array of narration types
+ */
+function getTwoPartQuestionNarrationTypes() {
+  return [
+    'part_a_question',
+    'part_a_answer_a',
+    'part_a_answer_b',
+    'part_a_answer_c',
+    'part_a_answer_d',
+    'part_b_question',
+    'part_b_answer_a',
+    'part_b_answer_b',
+    'part_b_answer_c',
+    'part_b_answer_d',
+    'correct_response',
+    'incorrect_1',
+    'incorrect_2'
+  ];
+}
+
 module.exports = {
   parseNarrationText,
   isQuestionSlide,
   narrationTypeToCode,
   getNarrationTypeLabel,
   getQuestionNarrationTypes,
+  getTwoPartQuestionNarrationTypes,
   cleanResponseText
 };
