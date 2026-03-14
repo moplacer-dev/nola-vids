@@ -441,6 +441,79 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'assets array is required' });
       }
 
+      // Use slides array if provided, otherwise extract unique slides from assets
+      const allSlides = slides || extractSlidesFromAssets(assets);
+
+      // Check if any slides/assets have RCP slideTypes
+      const hasRcpSlides = allSlides.some(s => isRcpSlideType(s.slideType)) ||
+                          assets.some(a => isRcpSlideType(a.slideType));
+
+      // If RCP slides detected, partition and process both lists
+      if (hasRcpSlides) {
+        // Partition slides by RCP vs non-RCP
+        const regularSlides = allSlides.filter(s => !isRcpSlideType(s.slideType));
+        const rcpSlides = allSlides.filter(s => isRcpSlideType(s.slideType));
+
+        // Get slide numbers for each partition
+        const rcpSlideNumbers = new Set(rcpSlides.map(s => s.slideNumber ?? s.slide_number));
+
+        // Partition assets by slide membership
+        const regularAssets = assets.filter(a => !rcpSlideNumbers.has(a.slideNumber));
+        const rcpAssets = assets.filter(a => rcpSlideNumbers.has(a.slideNumber));
+
+        // Process regular session if there are regular assets
+        let regularResult = null;
+        if (regularAssets.length > 0) {
+          regularResult = await processAssetList({
+            moduleName,
+            sessionNumber,
+            sessionTitle,
+            sessionType: 'regular',
+            assets: regularAssets,
+            slides: regularSlides,
+            careerCharacter,
+            assetListDb,
+            generatedImageDb,
+            characterDb,
+            generatedAudioDb
+          });
+        }
+
+        // Process RCP session if there are RCP assets
+        let rcpResult = null;
+        if (rcpAssets.length > 0) {
+          rcpResult = await processAssetList({
+            moduleName,
+            sessionNumber,
+            sessionTitle: `${sessionTitle || `Session ${sessionNumber}`} RCP`,
+            sessionType: 'rcp',
+            assets: rcpAssets,
+            slides: rcpSlides,
+            careerCharacter,
+            assetListDb,
+            generatedImageDb,
+            characterDb,
+            generatedAudioDb
+          });
+        }
+
+        // Build response message
+        const messages = [];
+        if (regularResult) messages.push(regularResult.message);
+        if (rcpResult) messages.push(rcpResult.message);
+
+        return res.json({
+          assetList: regularResult?.assetList || rcpResult?.assetList,
+          rcpAssetList: rcpResult?.assetList,
+          generatedImages: [
+            ...(regularResult?.generatedImages || []),
+            ...(rcpResult?.generatedImages || [])
+          ],
+          message: messages.join(' | ')
+        });
+      }
+
+      // No RCP slides - process normally
       // Determine session type from provided value or parse from sessionTitle
       let sessionType = providedSessionType;
       if (!sessionType && sessionTitle) {
@@ -450,9 +523,6 @@ module.exports = (jobManager) => {
 
       // Keep all assets
       const filteredAssets = assets;
-
-      // Use slides array if provided, otherwise extract unique slides from assets
-      const allSlides = slides || extractSlidesFromAssets(assets);
 
       // Check if asset list already exists for this module+session+type
       let assetList = await assetListDb.getByModuleSessionAndType(moduleName, sessionNumber, sessionType);
@@ -2143,6 +2213,249 @@ function parseSessionType(sessionTitle) {
   }
 
   return 'regular';
+}
+
+// Check if a slideType indicates an RCP slide
+function isRcpSlideType(slideType) {
+  if (!slideType) return false;
+  const t = slideType.toLowerCase();
+  return t.startsWith('rcp_') || t === 'rcp' ||
+         t === 'rcp_recall' || t === 'rcp_connect' ||
+         t === 'rcp_practice' || t === 'rcp_apply';
+}
+
+// Helper function to process a single asset list (used for splitting RCP sessions)
+async function processAssetList({
+  moduleName,
+  sessionNumber,
+  sessionTitle,
+  sessionType,
+  assets,
+  slides,
+  careerCharacter,
+  assetListDb,
+  generatedImageDb,
+  characterDb,
+  generatedAudioDb
+}) {
+  // Check if asset list already exists for this module+session+type
+  let assetList = await assetListDb.getByModuleSessionAndType(moduleName, sessionNumber, sessionType);
+  let isUpdate = false;
+  let existingImages = [];
+
+  if (assetList) {
+    // Update existing asset list
+    isUpdate = true;
+    await assetListDb.update(assetList.id, {
+      sessionTitle,
+      assets,
+      slides,
+      careerCharacter
+    });
+    // Refresh to get updated data
+    assetList = await assetListDb.getById(assetList.id);
+    existingImages = await generatedImageDb.getByAssetList(assetList.id);
+  } else {
+    // Create new asset list
+    assetList = await assetListDb.create({
+      moduleName,
+      sessionNumber,
+      sessionType,
+      sessionTitle,
+      assets,
+      slides,
+      careerCharacter
+    });
+  }
+
+  // Handle career character (create or update)
+  let characterId = null;
+  let characterAppearsOn = [];
+  if (careerCharacter && careerCharacter.name) {
+    const existingChar = await characterDb.getByModuleAndName(moduleName, careerCharacter.name);
+    if (existingChar) {
+      const currentSlides = existingChar.appearsOnSlides || [];
+      const newSlides = careerCharacter.appearsOn || [];
+      const allCharSlides = [...new Set([...currentSlides, ...newSlides])];
+      await characterDb.update(existingChar.id, {
+        appearsOnSlides: allCharSlides,
+        career: careerCharacter.career || existingChar.career,
+        appearanceDescription: careerCharacter.appearance || existingChar.appearanceDescription
+      });
+      characterId = existingChar.id;
+      characterAppearsOn = allCharSlides;
+    } else {
+      const newChar = await characterDb.create({
+        moduleName,
+        characterName: careerCharacter.name,
+        career: careerCharacter.career,
+        appearanceDescription: careerCharacter.appearance,
+        appearsOnSlides: careerCharacter.appearsOn || []
+      });
+      if (newChar) {
+        characterId = newChar.id;
+        characterAppearsOn = careerCharacter.appearsOn || [];
+      }
+    }
+  }
+
+  // Build map of existing images by slideNumber+assetType+assetNumber
+  const existingByKey = {};
+  const duplicateIds = [];
+  existingImages.forEach(img => {
+    const key = `${img.slideNumber}-${img.assetType}-${img.assetNumber || 1}`;
+    if (existingByKey[key]) {
+      duplicateIds.push(img.id);
+    } else {
+      existingByKey[key] = img;
+    }
+  });
+
+  // Delete any duplicates found
+  if (duplicateIds.length > 0) {
+    await generatedImageDb.deleteByIds(duplicateIds);
+  }
+
+  // Helper to get assetNumber from either camelCase or snake_case field
+  const getAssetNumber = (asset) => asset.assetNumber ?? asset.asset_number ?? 1;
+
+  // Build set of new slide keys from assets
+  const newSlideKeys = new Set(
+    assets.map(a => `${a.slideNumber}-${a.type}-${getAssetNumber(a)}`)
+  );
+
+  // Find images to delete (slides that were removed from asset list)
+  const imagesToDelete = existingImages.filter(img => {
+    const key = `${img.slideNumber}-${img.assetType}-${img.assetNumber || 1}`;
+    return !newSlideKeys.has(key);
+  });
+
+  // Delete removed images
+  if (imagesToDelete.length > 0) {
+    await generatedImageDb.deleteByIds(imagesToDelete.map(img => img.id));
+  }
+
+  // Build a map of slide numbers to slide titles for default image lookup
+  const slideTitleMap = {};
+  if (slides) {
+    slides.forEach(s => {
+      const num = String(s.slideNumber ?? s.slide_number ?? '');
+      const title = s.slideTitle || s.slide_title || s.title || '';
+      if (num) slideTitleMap[num] = title;
+    });
+  }
+
+  // Process each asset: update existing or create new
+  const generatedImages = [];
+  let created = 0;
+  let kept = 0;
+  let defaultsApplied = 0;
+
+  for (const asset of assets) {
+    const assetNum = getAssetNumber(asset);
+    const key = `${asset.slideNumber}-${asset.type}-${assetNum}`;
+    const existing = existingByKey[key];
+
+    const slideKey = `S${sessionNumber}-${asset.slideNumber}`;
+    const hasCharacter = characterId && characterAppearsOn.some(s =>
+      s === slideKey || s === asset.slideNumber || s === `${asset.slideNumber}`
+    );
+
+    if (existing) {
+      // Update existing image record with new prompt
+      await generatedImageDb.update(existing.id, {
+        originalPrompt: asset.prompt,
+        characterId: hasCharacter ? characterId : existing.characterId
+      });
+
+      // If existing record is still pending, check if we should apply a default
+      if (existing.status === 'pending') {
+        const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
+        const defaultImage = await getDefaultImageForSlide(slideTitle);
+        if (defaultImage) {
+          const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset);
+          const result = await applyDefaultImage(existing.id, defaultImage, cmsFilename);
+          existing.status = 'default';
+          existing.imagePath = result.outputPath;
+          existing.cmsFilename = result.outputFilename;
+          defaultsApplied++;
+        }
+      }
+
+      generatedImages.push({ ...existing, originalPrompt: asset.prompt });
+      kept++;
+    } else {
+      // Create new pending record
+      const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset);
+      const image = await generatedImageDb.create({
+        assetListId: assetList.id,
+        slideNumber: asset.slideNumber,
+        assetType: asset.type,
+        assetNumber: assetNum,
+        cmsFilename,
+        originalPrompt: asset.prompt,
+        characterId: hasCharacter ? characterId : null,
+        status: 'pending'
+      });
+
+      // Check if this slide has a default image
+      const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
+      const defaultImage = await getDefaultImageForSlide(slideTitle);
+
+      if (defaultImage) {
+        const result = await applyDefaultImage(image.id, defaultImage, cmsFilename);
+        image.status = 'default';
+        image.imagePath = result.outputPath;
+        image.cmsFilename = result.outputFilename;
+        defaultsApplied++;
+      }
+
+      generatedImages.push(image);
+      created++;
+    }
+  }
+
+  // Process slides with narration - create/update generated_audio records
+  let audioCreated = 0;
+  let audioKept = 0;
+  if (slides && slides.length > 0) {
+    for (const slide of slides) {
+      const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
+      const narration = slide.narration || slide.narrationText || '';
+
+      if (narration && narration.trim().length > 0) {
+        const existingAudio = await generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
+        if (existingAudio) {
+          if (existingAudio.narrationText !== narration) {
+            await generatedAudioDb.update(existingAudio.id, { narrationText: narration });
+          }
+          audioKept++;
+        } else {
+          await generatedAudioDb.create({
+            assetListId: assetList.id,
+            slideNumber: slideNum,
+            narrationText: narration,
+            status: 'pending'
+          });
+          audioCreated++;
+        }
+      }
+    }
+  }
+
+  const action = isUpdate ? 'Updated' : 'Imported';
+  const defaultsNote = defaultsApplied > 0 ? `, ${defaultsApplied} defaults applied` : '';
+  const audioNote = (audioCreated + audioKept) > 0 ? `, ${audioCreated + audioKept} narrations` : '';
+  const details = isUpdate
+    ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed${defaultsNote}${audioNote}`
+    : `${created} assets${defaultsNote}${audioNote}`;
+  const typeLabel = sessionType !== 'regular' ? ` ${sessionType.toUpperCase()}` : '';
+
+  return {
+    assetList,
+    generatedImages,
+    message: `${action} ${moduleName} Session ${sessionNumber}${typeLabel}: ${details}`
+  };
 }
 
 function generateCmsFilename(moduleName, sessionNumber, asset) {

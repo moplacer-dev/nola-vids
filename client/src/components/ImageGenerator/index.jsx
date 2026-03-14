@@ -105,11 +105,13 @@ export default function ImageGenerator({
     const interval = setInterval(async () => {
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [generatedImages, generatedAudioList, selectedAssetList]);
+  }, [generatedImages, generatedAudioList, selectedAssetList, selectedAssessment]);
 
   const loadAssetLists = async () => {
     try {
@@ -191,6 +193,8 @@ export default function ImageGenerator({
       // Reload to get updated status
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
     } catch (err) {
       console.error('Generation failed:', err);
@@ -202,6 +206,8 @@ export default function ImageGenerator({
       await regenerateImage(imageId, options);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
     } catch (err) {
       console.error('Regeneration failed:', err);
@@ -217,6 +223,8 @@ export default function ImageGenerator({
       await uploadGeneratedImage(imageId, file);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
     } catch (err) {
       console.error('Upload failed:', err);
@@ -245,6 +253,8 @@ export default function ImageGenerator({
       setImportingForImage(null);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
     } catch (err) {
       console.error('Import failed:', err);
@@ -264,6 +274,8 @@ export default function ImageGenerator({
       await updateGeneratedImage(imageId, updates);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
       setEditingImage(null);
     } catch (err) {
@@ -611,35 +623,98 @@ export default function ImageGenerator({
               ) : (
                 (selectedAssessment.questions || []).map((question, index) => {
                   const questionNum = question.questionNumber || (index + 1);
-                  const questionImage = generatedImages.find(img => img.questionNumber === questionNum);
+                  const questionImage = generatedImages.find(img => img.slideNumber === questionNum);
                   return (
                     <div
                       key={question.id || index}
                       className={`assessment-question-card ${selectedImage?.id === questionImage?.id ? 'selected' : ''}`}
                       onClick={() => questionImage && setSelectedImage(questionImage)}
                     >
-                      <div className="question-number">Q{questionNum}</div>
-                      <div className="question-content">
-                        <p className="question-text">{question.scenario}</p>
-                        {question.visual?.description && (
-                          <p className="visual-prompt">{question.visual.description}</p>
-                        )}
-                        {question.visual?.type && (
-                          <span className="visual-type-badge">{question.visual.type}</span>
-                        )}
+                      <div className="question-row">
+                        <div className="question-number">Q{questionNum}</div>
+                        <div className="question-content">
+                          <p className="question-text">{question.scenario}</p>
+                          {question.visual?.description && (
+                            <p className="visual-prompt">{question.visual.description}</p>
+                          )}
+                          {question.visual?.type && (
+                            <span className="visual-type-badge">{question.visual.type}</span>
+                          )}
+                        </div>
+                        <div className="question-image-status">
+                          {questionImage?.imagePath ? (
+                            <img
+                              src={questionImage.imagePath}
+                              alt={`Q${index + 1}`}
+                              className="question-thumbnail"
+                            />
+                          ) : questionImage?.status === 'generating' ? (
+                            <span className="status-generating">Generating...</span>
+                          ) : (
+                            <span className="status-pending">No image</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="question-image-status">
-                        {questionImage?.imagePath ? (
-                          <img
-                            src={questionImage.imagePath}
-                            alt={`Q${index + 1}`}
-                            className="question-thumbnail"
-                          />
-                        ) : questionImage?.status === 'generating' ? (
-                          <span className="status-generating">Generating...</span>
-                        ) : (
-                          <span className="status-pending">No image</span>
-                        )}
+                      <div className="question-actions">
+                        <button
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (questionImage) {
+                              handleEditPrompt({
+                                ...questionImage,
+                                asset: {
+                                  prompt: question.visual?.description || question.scenario,
+                                }
+                              });
+                            }
+                          }}
+                          disabled={!questionImage}
+                        >
+                          Edit Prompt
+                        </button>
+                        <input
+                          type="file"
+                          id={`upload-question-${questionNum}`}
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            if (e.target.files?.[0] && questionImage) {
+                              handleUpload(questionImage.id, e.target.files[0]);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                        <button
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            document.getElementById(`upload-question-${questionNum}`)?.click();
+                          }}
+                          disabled={!questionImage}
+                        >
+                          Upload
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (questionImage) handleOpenLibraryPicker(questionImage.id);
+                          }}
+                          disabled={!questionImage}
+                        >
+                          Import
+                        </button>
+                        <button
+                          className="btn-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (questionImage) handleGenerate(questionImage.id);
+                          }}
+                          disabled={!questionImage || questionImage?.status === 'generating' || loading}
+                        >
+                          {questionImage?.status === 'generating' ? 'Generating...' : 'Generate'}
+                        </button>
                       </div>
                     </div>
                   );
