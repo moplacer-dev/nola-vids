@@ -207,6 +207,36 @@ CREATE POLICY "Allow all for service role" ON motion_graphics_videos FOR ALL USI
 CREATE POLICY "Allow all for service role" ON generated_audio FOR ALL USING (true);
 
 -- ==========================================
+-- Assessment Assets Table
+-- Pre-Test/Post-Test question data from Carl v7
+-- ==========================================
+CREATE TABLE IF NOT EXISTS assessment_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  module_name TEXT NOT NULL,
+  assessment_type TEXT NOT NULL CHECK (assessment_type IN ('pre_test', 'post_test')),
+  subject TEXT NOT NULL,
+  grade_level TEXT NOT NULL,
+  questions_json JSONB NOT NULL DEFAULT '[]',
+  asset_summary_json JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(module_name, assessment_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_assets_module ON assessment_assets(module_name);
+CREATE INDEX IF NOT EXISTS idx_assessment_assets_type ON assessment_assets(assessment_type);
+
+-- Add assessment_asset_id to generated_images for assessment visuals
+ALTER TABLE generated_images
+  ADD COLUMN IF NOT EXISTS assessment_asset_id UUID REFERENCES assessment_assets(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_generated_images_assessment ON generated_images(assessment_asset_id);
+
+-- Enable RLS on assessment_assets
+ALTER TABLE assessment_assets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for service role" ON assessment_assets FOR ALL USING (true);
+
+-- ==========================================
 -- Storage Buckets (create these in Supabase dashboard)
 -- ==========================================
 -- Required buckets:

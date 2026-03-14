@@ -11,7 +11,8 @@ const {
   generatedImages: generatedImageDb,
   generationHistory: generationHistoryDb,
   motionGraphicsVideos: mgVideoDb,
-  generatedAudio: generatedAudioDb
+  generatedAudio: generatedAudioDb,
+  assessmentAssets: assessmentAssetDb
 } = require('../db/database');
 
 const storage = require('../services/storage');
@@ -1867,6 +1868,198 @@ module.exports = (jobManager) => {
     }
   });
 
+  // ==========================================
+  // Assessment Assets endpoints (Pre-Test/Post-Test)
+  // ==========================================
+
+  // Receive assessment data from Carl v7
+  router.post('/assessment-assets', async (req, res) => {
+    try {
+      const { moduleName, assessmentType, subject, gradeLevel, questions, assetSummary } = req.body;
+
+      // Validate required fields
+      if (!moduleName) {
+        return res.status(400).json({ error: 'moduleName is required' });
+      }
+      if (!assessmentType || !['pre_test', 'post_test'].includes(assessmentType)) {
+        return res.status(400).json({ error: 'assessmentType must be "pre_test" or "post_test"' });
+      }
+      if (!questions || !Array.isArray(questions)) {
+        return res.status(400).json({ error: 'questions array is required' });
+      }
+
+      // Check for existing assessment (upsert logic)
+      let assessment = await assessmentAssetDb.getByModuleAndType(moduleName, assessmentType);
+      let isUpdate = false;
+      let existingImages = [];
+
+      if (assessment) {
+        // Update existing assessment
+        isUpdate = true;
+        existingImages = await generatedImageDb.getByAssessmentAsset(assessment.id);
+        assessment = await assessmentAssetDb.update(assessment.id, {
+          subject: subject || assessment.subject,
+          gradeLevel: gradeLevel || assessment.gradeLevel,
+          questions,
+          assetSummary: assetSummary || {}
+        });
+      } else {
+        // Create new assessment
+        assessment = await assessmentAssetDb.create({
+          moduleName,
+          assessmentType,
+          subject: subject || 'science',
+          gradeLevel: gradeLevel || '7',
+          questions,
+          assetSummary: assetSummary || {}
+        });
+      }
+
+      // Build map of existing images by question number + visual type
+      const existingByKey = {};
+      existingImages.forEach(img => {
+        const key = `${img.slideNumber}-${img.assetType}`;
+        existingByKey[key] = img;
+      });
+
+      // Build set of new question keys (questions with visuals)
+      const questionsWithVisuals = questions.filter(q => q.visual);
+      const newKeys = new Set(
+        questionsWithVisuals.map(q => `${q.questionNumber}-${getAssessmentAssetType(assessmentType, q.visual.type)}`)
+      );
+
+      // Find images to delete (questions that were removed or no longer have visuals)
+      const imagesToDelete = existingImages.filter(img => {
+        const key = `${img.slideNumber}-${img.assetType}`;
+        return !newKeys.has(key);
+      });
+
+      // Delete orphaned images
+      if (imagesToDelete.length > 0) {
+        await generatedImageDb.deleteByIds(imagesToDelete.map(img => img.id));
+      }
+
+      // Process each question with a visual
+      const generatedImages = [];
+      let created = 0;
+      let kept = 0;
+
+      for (const question of questionsWithVisuals) {
+        const assetType = getAssessmentAssetType(assessmentType, question.visual.type);
+        const key = `${question.questionNumber}-${assetType}`;
+        const existing = existingByKey[key];
+
+        const cmsFilename = generateAssessmentCmsFilename(
+          moduleName,
+          assessmentType,
+          question.questionNumber,
+          question.visual.type
+        );
+
+        // Build prompt from visual description
+        const prompt = buildAssessmentVisualPrompt(question);
+
+        if (existing) {
+          // Update existing image record
+          await generatedImageDb.update(existing.id, {
+            originalPrompt: prompt,
+            cmsFilename
+          });
+          generatedImages.push({ ...existing, originalPrompt: prompt, cmsFilename });
+          kept++;
+        } else {
+          // Create new pending record
+          const image = await generatedImageDb.create({
+            assessmentAssetId: assessment.id,
+            slideNumber: question.questionNumber,
+            assetType,
+            assetNumber: 1,
+            cmsFilename,
+            originalPrompt: prompt,
+            status: 'pending'
+          });
+          generatedImages.push(image);
+          created++;
+        }
+      }
+
+      const assessmentLabel = assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test';
+      const action = isUpdate ? 'Updated' : 'Created';
+      const details = isUpdate
+        ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed`
+        : `${created} image records`;
+
+      res.json({
+        assessmentAsset: {
+          id: assessment.id,
+          moduleName: assessment.moduleName,
+          assessmentType: assessment.assessmentType,
+          subject: assessment.subject,
+          gradeLevel: assessment.gradeLevel
+        },
+        generatedImages,
+        message: `${action} ${moduleName} ${assessmentLabel}: ${details}`
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List all assessment assets
+  router.get('/assessment-assets', async (req, res) => {
+    try {
+      const { moduleName } = req.query;
+      let assessments;
+
+      if (moduleName) {
+        assessments = await assessmentAssetDb.getByModule(moduleName);
+      } else {
+        assessments = await assessmentAssetDb.getAll();
+      }
+
+      res.json(assessments);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get single assessment asset with its generated images
+  router.get('/assessment-assets/:id', async (req, res) => {
+    try {
+      const assessment = await assessmentAssetDb.getById(req.params.id);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment asset not found' });
+      }
+
+      const generatedImages = await generatedImageDb.getByAssessmentAsset(assessment.id);
+
+      res.json({
+        ...assessment,
+        generatedImages
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete assessment asset
+  router.delete('/assessment-assets/:id', async (req, res) => {
+    try {
+      const images = await generatedImageDb.getByAssessmentAsset(req.params.id);
+      if (images.length > 0) {
+        await generatedImageDb.deleteByIds(images.map(img => img.id));
+      }
+
+      const deleted = await assessmentAssetDb.delete(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Assessment asset not found' });
+      }
+      res.json({ success: true, deletedImages: images.length });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
@@ -1980,6 +2173,75 @@ function generateCmsFilename(moduleName, sessionNumber, asset) {
   const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
 
   return `MOD.${moduleCode}.${session}.${slide}.${typeCode}${assetNum}.png`;
+}
+
+// Generate CMS filename for assessment visuals
+// Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>1.png
+function generateAssessmentCmsFilename(moduleName, assessmentType, questionNumber, visualType) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS',
+    'Heat and Energy': 'ENER'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
+  const qNum = String(questionNumber).padStart(2, '0');
+
+  const typeCodeMap = {
+    'table': 'TBL',
+    'graph': 'GRA',
+    'diagram': 'DIA',
+    'image': 'IMG',
+    'chart': 'CHA'
+  };
+
+  const typeCode = typeCodeMap[visualType?.toLowerCase()] || 'IMG';
+
+  return `MOD.${moduleCode}.${testType}.Q${qNum}.${typeCode}1.png`;
+}
+
+// Get asset type for assessment visuals
+function getAssessmentAssetType(assessmentType, visualType) {
+  const prefix = assessmentType === 'pre_test' ? 'pre_test' : 'post_test';
+  const type = visualType?.toLowerCase() || 'image';
+  return `${prefix}_${type}`;
+}
+
+// Build prompt from assessment visual description
+function buildAssessmentVisualPrompt(question) {
+  const visual = question.visual;
+  if (!visual) return '';
+
+  const parts = [];
+
+  if (visual.title) {
+    parts.push(`Title: ${visual.title}`);
+  }
+
+  if (visual.description) {
+    parts.push(visual.description);
+  }
+
+  if (question.scenario) {
+    parts.push(`Context: ${question.scenario}`);
+  }
+
+  // Add type-specific instructions
+  const type = visual.type?.toLowerCase();
+  if (type === 'table') {
+    parts.push('Create a clean, educational data table with clear headers and readable values.');
+  } else if (type === 'graph') {
+    parts.push('Create a clear, labeled graph suitable for educational assessment.');
+  } else if (type === 'diagram') {
+    parts.push('Create a clear, labeled diagram for educational purposes.');
+  }
+
+  return parts.join('\n\n');
 }
 
 const promptTemplates = {

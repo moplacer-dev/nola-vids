@@ -599,6 +599,7 @@ const generatedImageQueries = {
       .insert({
         id,
         asset_list_id: image.assetListId || null,
+        assessment_asset_id: image.assessmentAssetId || null,
         slide_number: image.slideNumber || null,
         asset_type: image.assetType || null,
         asset_number: image.assetNumber || 1,
@@ -693,6 +694,7 @@ const generatedImageQueries = {
     if (updates.assetType !== undefined) updateData.asset_type = updates.assetType;
     if (updates.cmsFilename !== undefined) updateData.cms_filename = updates.cmsFilename;
     if (updates.originalPrompt !== undefined) updateData.original_prompt = updates.originalPrompt;
+    if (updates.assessmentAssetId !== undefined) updateData.assessment_asset_id = updates.assessmentAssetId;
 
     const { error, count } = await supabase
       .from('generated_images')
@@ -725,6 +727,28 @@ const generatedImageQueries = {
 
     if (error) throw error;
     return count || 0;
+  },
+
+  async getByAssessmentAsset(assessmentAssetId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('assessment_asset_id', assessmentAssetId)
+      .order('slide_number');
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async deleteByAssessmentAsset(assessmentAssetId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .delete()
+      .eq('assessment_asset_id', assessmentAssetId)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
   }
 };
 
@@ -1004,6 +1028,108 @@ const generatedAudioQueries = {
 };
 
 // ==========================================
+// Assessment Asset Operations
+// ==========================================
+const assessmentAssetQueries = {
+  async create(assessment) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .insert({
+        id,
+        module_name: assessment.moduleName,
+        assessment_type: assessment.assessmentType,
+        subject: assessment.subject,
+        grade_level: assessment.gradeLevel,
+        questions_json: assessment.questions || [],
+        asset_summary_json: assessment.assetSummary || {},
+        created_at: now,
+        updated_at: now
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return parseAssessmentAssetRow(data);
+  },
+
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? parseAssessmentAssetRow(data) : null;
+  },
+
+  async getAll() {
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data.map(parseAssessmentAssetRow);
+  },
+
+  async getByModule(moduleName) {
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .select('*')
+      .eq('module_name', moduleName)
+      .order('assessment_type');
+
+    if (error) throw error;
+    return data.map(parseAssessmentAssetRow);
+  },
+
+  async getByModuleAndType(moduleName, assessmentType) {
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .select('*')
+      .eq('module_name', moduleName)
+      .eq('assessment_type', assessmentType)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? parseAssessmentAssetRow(data) : null;
+  },
+
+  async update(id, updates) {
+    const updateData = { updated_at: new Date().toISOString() };
+
+    if (updates.subject !== undefined) updateData.subject = updates.subject;
+    if (updates.gradeLevel !== undefined) updateData.grade_level = updates.gradeLevel;
+    if (updates.questions !== undefined) updateData.questions_json = updates.questions;
+    if (updates.assetSummary !== undefined) updateData.asset_summary_json = updates.assetSummary;
+
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data ? parseAssessmentAssetRow(data) : null;
+  },
+
+  async delete(id) {
+    const { error, count } = await supabase
+      .from('assessment_assets')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return count > 0;
+  }
+};
+
+// ==========================================
 // Parse Helper Functions
 // ==========================================
 function parseJobRow(row) {
@@ -1070,6 +1196,7 @@ function parseGeneratedImageRow(row) {
   return {
     id: row.id,
     assetListId: row.asset_list_id,
+    assessmentAssetId: row.assessment_asset_id,
     slideNumber: row.slide_number,
     assetType: row.asset_type,
     assetNumber: row.asset_number || 1,
@@ -1079,6 +1206,20 @@ function parseGeneratedImageRow(row) {
     characterId: row.character_id,
     imagePath: row.image_path,
     status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function parseAssessmentAssetRow(row) {
+  return {
+    id: row.id,
+    moduleName: row.module_name,
+    assessmentType: row.assessment_type,
+    subject: row.subject,
+    gradeLevel: row.grade_level,
+    questions: row.questions_json,
+    assetSummary: row.asset_summary_json,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1125,5 +1266,6 @@ module.exports = {
   generatedImages: generatedImageQueries,
   generationHistory: generationHistoryQueries,
   motionGraphicsVideos: motionGraphicsVideoQueries,
-  generatedAudio: generatedAudioQueries
+  generatedAudio: generatedAudioQueries,
+  assessmentAssets: assessmentAssetQueries
 };
