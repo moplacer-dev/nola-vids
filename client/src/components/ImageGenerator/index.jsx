@@ -29,7 +29,10 @@ export default function ImageGenerator({
   uploadAudio,
   updateAudio,
   regenerateAudio,
-  setSessionDefaultVoice
+  setSessionDefaultVoice,
+  // Assessment Assets
+  getAssessmentAssets,
+  getAssessmentAsset
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -51,6 +54,10 @@ export default function ImageGenerator({
   const [selectedModule, setSelectedModule] = useState('');
   const [selectedSession, setSelectedSession] = useState('');
 
+  // Assessment assets state
+  const [assessmentAssets, setAssessmentAssets] = useState([]);
+  const [selectedAssessment, setSelectedAssessment] = useState(null);
+
   // Load asset lists and voices on mount
   useEffect(() => {
     loadAssetLists();
@@ -68,12 +75,25 @@ export default function ImageGenerator({
     }
   };
 
-  // Load characters when module changes
+  // Load characters and assessment assets when module changes
   useEffect(() => {
     if (selectedModule) {
       loadCharacters(selectedModule);
+      loadAssessmentAssets(selectedModule);
     }
   }, [selectedModule]);
+
+  const loadAssessmentAssets = async (moduleName) => {
+    try {
+      if (getAssessmentAssets) {
+        const assets = await getAssessmentAssets(moduleName);
+        setAssessmentAssets(assets || []);
+      }
+    } catch (err) {
+      console.error('Failed to load assessment assets:', err);
+      setAssessmentAssets([]);
+    }
+  };
 
   // Poll for image and audio generation status
   useEffect(() => {
@@ -145,7 +165,24 @@ export default function ImageGenerator({
   };
 
   const handleSelectAssetList = (assetList) => {
+    setSelectedAssessment(null);
     loadAssetListDetails(assetList.id);
+  };
+
+  const loadAssessmentDetails = async (assessmentId) => {
+    try {
+      setLoading(true);
+      const data = await getAssessmentAsset(assessmentId);
+      setSelectedAssessment(data);
+      setSelectedAssetList(null);
+      setGeneratedImages(data.generatedImages || []);
+      setMotionGraphicsVideos([]);
+      setGeneratedAudioList([]);
+    } catch (err) {
+      console.error('Failed to load assessment:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGenerate = async (imageId, options = {}) => {
@@ -444,7 +481,9 @@ export default function ImageGenerator({
                 setSelectedModule(e.target.value);
                 setSelectedSession('');
                 setSelectedAssetList(null);
+                setSelectedAssessment(null);
                 setGeneratedImages([]);
+                setAssessmentAssets([]);
               }}
             >
               <option value="">Select Module...</option>
@@ -459,9 +498,23 @@ export default function ImageGenerator({
             <select
               value={selectedSession}
               onChange={(e) => {
-                setSelectedSession(e.target.value);
-                if (e.target.value) {
-                  const session = sessions.find(s => s.id === e.target.value);
+                const value = e.target.value;
+                setSelectedSession(value);
+
+                if (!value) {
+                  setSelectedAssetList(null);
+                  setSelectedAssessment(null);
+                  setGeneratedImages([]);
+                  return;
+                }
+
+                // Check if selection is an assessment
+                if (value.startsWith('assessment:')) {
+                  const assessmentId = value.replace('assessment:', '');
+                  loadAssessmentDetails(assessmentId);
+                } else {
+                  // Regular session
+                  const session = sessions.find(s => s.id === value);
                   if (session) {
                     handleSelectAssetList({ id: session.id });
                   }
@@ -470,6 +523,13 @@ export default function ImageGenerator({
               disabled={!selectedModule}
             >
               <option value="">Select Session...</option>
+              {/* Assessment options (Pre-Test, Post-Test) */}
+              {assessmentAssets.map(a => (
+                <option key={a.id} value={`assessment:${a.id}`}>
+                  {a.assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test'}
+                </option>
+              ))}
+              {/* Session options (including RCA/RCP) */}
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>
                   Session {s.number}{s.type && s.type !== 'regular' ? ` ${s.type.toUpperCase()}` : ''}
@@ -498,8 +558,8 @@ export default function ImageGenerator({
           </div>
         </div>
 
-        {/* Character Panel */}
-        {selectedModule && characters.length > 0 && (
+        {/* Character Panel - hide when assessment is selected */}
+        {selectedModule && characters.length > 0 && !selectedAssessment && (
           <CharacterPanel
             characters={characters}
             onSetAnchor={handleSetAnchor}
@@ -507,8 +567,8 @@ export default function ImageGenerator({
           />
         )}
 
-        {/* Asset List */}
-        {selectedAssetList && (
+        {/* Asset List for regular sessions */}
+        {selectedAssetList && !selectedAssessment && (
           <AssetList
             assets={selectedAssetList.assets}
             slides={selectedAssetList.slides}
@@ -538,6 +598,53 @@ export default function ImageGenerator({
           />
         )}
 
+        {/* Assessment Asset Display */}
+        {selectedAssessment && (
+          <div className="assessment-content">
+            <div className="assessment-header">
+              <h3>{selectedAssessment.assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test'}</h3>
+              <span className="question-count">{selectedAssessment.questions?.length || 0} Questions</span>
+            </div>
+            <div className="assessment-questions">
+              {loading ? (
+                <div className="loading-indicator">Loading assessment...</div>
+              ) : (
+                (selectedAssessment.questions || []).map((question, index) => {
+                  const questionImage = generatedImages.find(img => img.questionNumber === (index + 1));
+                  return (
+                    <div
+                      key={question.id || index}
+                      className={`assessment-question-card ${selectedImage?.id === questionImage?.id ? 'selected' : ''}`}
+                      onClick={() => questionImage && setSelectedImage(questionImage)}
+                    >
+                      <div className="question-number">Q{index + 1}</div>
+                      <div className="question-content">
+                        <p className="question-text">{question.questionText}</p>
+                        {question.visualPrompt && (
+                          <p className="visual-prompt">{question.visualPrompt}</p>
+                        )}
+                      </div>
+                      <div className="question-image-status">
+                        {questionImage?.imagePath ? (
+                          <img
+                            src={questionImage.imagePath}
+                            alt={`Q${index + 1}`}
+                            className="question-thumbnail"
+                          />
+                        ) : questionImage?.status === 'generating' ? (
+                          <span className="status-generating">Generating...</span>
+                        ) : (
+                          <span className="status-pending">No image</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
 
       <div className="image-gen-right">
@@ -565,7 +672,11 @@ export default function ImageGenerator({
                     onClick={() => setSelectedImage(img)}
                     style={{ cursor: 'pointer' }}
                   >
-                    <span className="queue-slide">S{selectedAssetList?.sessionNumber}.Slide{img.slideNumber}</span>
+                    <span className="queue-slide">
+                      {selectedAssessment
+                        ? `Q${img.questionNumber || img.slideNumber}`
+                        : `S${selectedAssetList?.sessionNumber}.Slide${img.slideNumber}`}
+                    </span>
                     <span className="queue-status">{img.status.toUpperCase()}</span>
                   </div>
                 ))

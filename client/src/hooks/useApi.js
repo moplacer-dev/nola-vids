@@ -379,6 +379,16 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // Assessment Assets endpoints
+  const getAssessmentAssets = useCallback(async (moduleName) => {
+    const params = moduleName ? `?moduleName=${encodeURIComponent(moduleName)}` : '';
+    return request(`/assessment-assets${params}`);
+  }, [request]);
+
+  const getAssessmentAsset = useCallback(async (id) => {
+    return request(`/assessment-assets/${id}`);
+  }, [request]);
+
   return {
     loading,
     error,
@@ -429,6 +439,9 @@ export function useApi(accessKey) {
     uploadAudio,
     updateAudio,
     regenerateAudio,
-    setSessionDefaultVoice
+    setSessionDefaultVoice,
+    // Assessment Assets
+    getAssessmentAssets,
+    getAssessmentAsset
   };
 }

@@ -70,7 +70,10 @@ export default function App() {
     uploadAudio,
     updateAudio,
     regenerateAudio,
-    setSessionDefaultVoice
+    setSessionDefaultVoice,
+    // Assessment Assets
+    getAssessmentAssets,
+    getAssessmentAsset
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -337,6 +340,8 @@ export default function App() {
             updateAudio={updateAudio}
             regenerateAudio={regenerateAudio}
             setSessionDefaultVoice={setSessionDefaultVoice}
+            getAssessmentAssets={getAssessmentAssets}
+            getAssessmentAsset={getAssessmentAsset}
           />
         </main>
       ) : (
