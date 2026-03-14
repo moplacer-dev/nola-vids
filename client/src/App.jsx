@@ -66,6 +66,7 @@ export default function App() {
     deleteMGScene,
     // Audio/TTS
     getVoices,
+    checkAudioStatus,
     generateAudio,
     uploadAudio,
     updateAudio,
@@ -340,6 +341,7 @@ export default function App() {
             addMGScene={addMGScene}
             deleteMGScene={deleteMGScene}
             getVoices={getVoices}
+            checkAudioStatus={checkAudioStatus}
             generateAudio={generateAudio}
             uploadAudio={uploadAudio}
             updateAudio={updateAudio}

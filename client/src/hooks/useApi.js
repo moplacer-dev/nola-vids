@@ -326,6 +326,15 @@ export function useApi(accessKey) {
     return request('/voices');
   }, [request]);
 
+  // Lightweight status check for polling
+  const checkAudioStatus = useCallback(async (audioIds) => {
+    return request('/audio/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioIds })
+    });
+  }, [request]);
+
   const generateAudio = useCallback(async (audioId, options = {}) => {
     return request('/audio/generate', {
       method: 'POST',
@@ -469,6 +478,7 @@ export function useApi(accessKey) {
     deleteMGScene,
     // Audio/TTS
     getVoices,
+    checkAudioStatus,
     generateAudio,
     uploadAudio,
     updateAudio,

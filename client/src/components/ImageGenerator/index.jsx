@@ -26,6 +26,7 @@ export default function ImageGenerator({
   deleteMGScene,
   // Audio/TTS
   getVoices,
+  checkAudioStatus,
   generateAudio,
   uploadAudio,
   updateAudio,
@@ -102,24 +103,68 @@ export default function ImageGenerator({
     }
   };
 
-  // Poll for image and audio generation status
+  // Poll for image and audio generation status (lightweight polling)
   useEffect(() => {
     const hasGeneratingImages = generatedImages.some(img => img.status === 'generating');
-    const hasGeneratingAudio = generatedAudioList.some(a => a.status === 'generating');
-    const hasGeneratingAssessmentAudio = assessmentAudioList.some(a => a.status === 'generating');
+    const generatingAudioIds = generatedAudioList.filter(a => a.status === 'generating').map(a => a.id);
+    const generatingAssessmentAudioIds = assessmentAudioList.filter(a => a.status === 'generating').map(a => a.id);
+    const allGeneratingAudioIds = [...generatingAudioIds, ...generatingAssessmentAudioIds];
 
-    if (!hasGeneratingImages && !hasGeneratingAudio && !hasGeneratingAssessmentAudio) return;
+    // If no generating items, no need to poll
+    if (!hasGeneratingImages && allGeneratingAudioIds.length === 0) return;
 
     const interval = setInterval(async () => {
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      } else if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
+      // For images, we still need full refetch (image generation is less frequent)
+      if (hasGeneratingImages) {
+        if (selectedAssetList) {
+          await loadAssetListDetails(selectedAssetList.id);
+        } else if (selectedAssessment) {
+          await loadAssessmentDetails(selectedAssessment.id);
+        }
+        return;
       }
-    }, 5000);
+
+      // For audio, use lightweight status check
+      if (allGeneratingAudioIds.length > 0 && checkAudioStatus) {
+        try {
+          const result = await checkAudioStatus(allGeneratingAudioIds);
+          if (result?.records) {
+            // Merge status updates into local state
+            const statusMap = new Map(result.records.map(r => [r.id, r]));
+
+            // Update generatedAudioList
+            setGeneratedAudioList(prev => prev.map(audio => {
+              const update = statusMap.get(audio.id);
+              if (update) {
+                return { ...audio, ...update };
+              }
+              return audio;
+            }));
+
+            // Update assessmentAudioList
+            setAssessmentAudioList(prev => prev.map(audio => {
+              const update = statusMap.get(audio.id);
+              if (update) {
+                return { ...audio, ...update };
+              }
+              return audio;
+            }));
+
+            // Update selectedAudio if it was updated
+            setSelectedAudio(prev => {
+              if (!prev) return prev;
+              const update = statusMap.get(prev.id);
+              return update ? { ...prev, ...update } : prev;
+            });
+          }
+        } catch (err) {
+          console.error('Failed to check audio status:', err);
+        }
+      }
+    }, 3000); // Faster polling since it's lightweight
 
     return () => clearInterval(interval);
-  }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment]);
+  }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment, checkAudioStatus]);
 
   const loadAssetLists = async () => {
     try {
@@ -383,16 +428,26 @@ export default function ImageGenerator({
     }
   };
 
-  // Audio handlers
+  // Audio handlers - use optimistic updates instead of full refetch
   const handleGenerateAudio = async (audioId, options = {}) => {
     if (!generateAudio) return;
     try {
+      // Optimistic update: set status to 'generating' immediately
+      setGeneratedAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'generating' } : audio
+      ));
+      setSelectedAudio(prev =>
+        prev?.id === audioId ? { ...prev, status: 'generating' } : prev
+      );
+
       await generateAudio(audioId, options);
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      }
+      // Polling will handle the status update when complete
     } catch (err) {
       console.error('Audio generation failed:', err);
+      // Revert on error
+      setGeneratedAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'failed' } : audio
+      ));
     }
   };
 
@@ -444,12 +499,22 @@ export default function ImageGenerator({
   const handleRegenerateAudio = async (audioId, options = {}) => {
     if (!regenerateAudio) return;
     try {
+      // Optimistic update: set status to 'generating' immediately
+      setGeneratedAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'generating' } : audio
+      ));
+      setSelectedAudio(prev =>
+        prev?.id === audioId ? { ...prev, status: 'generating' } : prev
+      );
+
       await regenerateAudio(audioId, options);
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      }
+      // Polling will handle the status update when complete
     } catch (err) {
       console.error('Audio regeneration failed:', err);
+      // Revert on error
+      setGeneratedAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'failed' } : audio
+      ));
     }
   };
 
@@ -479,32 +544,53 @@ export default function ImageGenerator({
     }
   };
 
-  // Assessment audio handlers
+  // Assessment audio handlers - use optimistic updates
   const handleGenerateAssessmentAudio = async (audioId, options = {}) => {
     if (!generateAssessmentAudio) return;
     try {
+      // Optimistic update: set status to 'generating' immediately
+      setAssessmentAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'generating' } : audio
+      ));
+      setSelectedAudio(prev =>
+        prev?.id === audioId ? { ...prev, status: 'generating' } : prev
+      );
+
       await generateAssessmentAudio(audioId, options);
-      // Refresh assessment to get updated status
-      if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
-      }
+      // Polling will handle the status update when complete
     } catch (err) {
       console.error('Assessment audio generation failed:', err);
+      // Revert on error
+      setAssessmentAudioList(prev => prev.map(audio =>
+        audio.id === audioId ? { ...audio, status: 'failed' } : audio
+      ));
     }
   };
 
   const handleGenerateAllAssessmentAudio = async (questionNumber) => {
     if (!generateBulkAudio || !selectedAssessment) return;
     try {
+      // Optimistic update: set all pending audio for this question to 'generating'
+      setAssessmentAudioList(prev => prev.map(audio =>
+        audio.questionNumber === questionNumber && audio.status === 'pending'
+          ? { ...audio, status: 'generating' }
+          : audio
+      ));
+
       await generateBulkAudio({
         assessmentAssetId: selectedAssessment.id,
         questionNumber,
         voiceId: selectedAssessment?.defaultVoiceId
       });
-      // Refresh assessment to get updated status
-      await loadAssessmentDetails(selectedAssessment.id);
+      // Polling will handle the status updates when complete
     } catch (err) {
       console.error('Bulk audio generation failed:', err);
+      // Revert on error
+      setAssessmentAudioList(prev => prev.map(audio =>
+        audio.questionNumber === questionNumber && audio.status === 'generating'
+          ? { ...audio, status: 'pending' }
+          : audio
+      ));
     }
   };
 

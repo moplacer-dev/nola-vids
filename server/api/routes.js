@@ -1703,6 +1703,37 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Lightweight endpoint to check status of multiple audio records
+  // Used for polling without fetching full asset list data
+  router.post('/audio/status', async (req, res) => {
+    try {
+      const { audioIds } = req.body;
+      if (!audioIds || !Array.isArray(audioIds) || audioIds.length === 0) {
+        return res.json({ records: [] });
+      }
+
+      // Fetch only the requested audio records
+      const records = await Promise.all(
+        audioIds.map(id => generatedAudioDb.getById(id))
+      );
+
+      // Return only essential fields for status update
+      const statusRecords = records
+        .filter(r => r !== null)
+        .map(r => ({
+          id: r.id,
+          status: r.status,
+          audioPath: r.audioPath,
+          durationMs: r.durationMs,
+          updatedAt: r.updatedAt
+        }));
+
+      res.json({ records: statusRecords });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.post('/audio/generate', async (req, res) => {
     try {
       const { audioId, text, voiceId, voiceName } = req.body;
