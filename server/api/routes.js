@@ -431,7 +431,7 @@ module.exports = (jobManager) => {
   // Receive asset list from Carl v7
   router.post('/asset-lists', async (req, res) => {
     try {
-      const { moduleName, sessionNumber, sessionTitle, assets, slides, careerCharacter } = req.body;
+      const { moduleName, sessionNumber, sessionTitle, sessionType: providedSessionType, assets, slides, careerCharacter } = req.body;
 
       if (!moduleName) {
         return res.status(400).json({ error: 'moduleName is required' });
@@ -440,14 +440,21 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'assets array is required' });
       }
 
+      // Determine session type from provided value or parse from sessionTitle
+      let sessionType = providedSessionType;
+      if (!sessionType && sessionTitle) {
+        sessionType = parseSessionType(sessionTitle);
+      }
+      sessionType = sessionType || 'regular';
+
       // Keep all assets
       const filteredAssets = assets;
 
       // Use slides array if provided, otherwise extract unique slides from assets
       const allSlides = slides || extractSlidesFromAssets(assets);
 
-      // Check if asset list already exists for this module+session
-      let assetList = await assetListDb.getByModuleAndSession(moduleName, sessionNumber);
+      // Check if asset list already exists for this module+session+type
+      let assetList = await assetListDb.getByModuleSessionAndType(moduleName, sessionNumber, sessionType);
       let isUpdate = false;
       let existingImages = [];
 
@@ -468,6 +475,7 @@ module.exports = (jobManager) => {
         assetList = await assetListDb.create({
           moduleName,
           sessionNumber,
+          sessionType,
           sessionTitle,
           assets,
           slides: allSlides,
@@ -656,11 +664,12 @@ module.exports = (jobManager) => {
       const details = isUpdate
         ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed${defaultsNote}${audioNote}`
         : `${created} assets${defaultsNote}${audioNote}`;
+      const typeLabel = sessionType !== 'regular' ? ` ${sessionType.toUpperCase()}` : '';
 
       res.json({
         assetList,
         generatedImages,
-        message: `${action} ${moduleName} Session ${sessionNumber}: ${details}`
+        message: `${action} ${moduleName} Session ${sessionNumber}${typeLabel}: ${details}`
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1916,6 +1925,31 @@ function extractSlidesFromAssets(assets) {
     }
   }
   return Object.values(slideMap).sort((a, b) => a.slideNumber - b.slideNumber);
+}
+
+// Parse session type from session title
+// Detects RCP, RCA, Review patterns in titles like "Session 2 RCP" or "Session 2: RCA"
+function parseSessionType(sessionTitle) {
+  if (!sessionTitle) return 'regular';
+
+  const titleUpper = sessionTitle.toUpperCase();
+
+  // Check for RCP pattern
+  if (titleUpper.includes('RCP') || titleUpper.includes('REVIEW CHECKPOINT')) {
+    return 'rcp';
+  }
+
+  // Check for RCA pattern
+  if (titleUpper.includes('RCA') || titleUpper.includes('REVIEW CRITICAL ASSESSMENT')) {
+    return 'rca';
+  }
+
+  // Check for generic Review pattern (if not RCP/RCA)
+  if (titleUpper.includes('REVIEW')) {
+    return 'review';
+  }
+
+  return 'regular';
 }
 
 function generateCmsFilename(moduleName, sessionNumber, asset) {

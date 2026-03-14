@@ -412,8 +412,19 @@ export default function ImageGenerator({
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
     .filter(l => l.moduleName === selectedModule)
-    .map(l => ({ number: l.sessionNumber, title: l.sessionTitle, id: l.id }))
-    .sort((a, b) => a.number - b.number);
+    .map(l => ({
+      number: l.sessionNumber,
+      title: l.sessionTitle,
+      type: l.sessionType || 'regular',
+      id: l.id
+    }))
+    .sort((a, b) => {
+      // Sort by session number first
+      if (a.number !== b.number) return a.number - b.number;
+      // Then sort by type: regular first, then rcp, rca, review
+      const typeOrder = { regular: 0, rcp: 1, rca: 2, review: 3 };
+      return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+    });
 
   // Filter current asset list
   const filteredAssetList = sessions.find(s =>
@@ -461,7 +472,7 @@ export default function ImageGenerator({
               <option value="">Select Session...</option>
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>
-                  Session {s.number}
+                  Session {s.number}{s.type && s.type !== 'regular' ? ` ${s.type.toUpperCase()}` : ''}
                 </option>
               ))}
             </select>

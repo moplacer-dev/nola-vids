@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS asset_lists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   module_name TEXT NOT NULL,
   session_number INTEGER,
+  session_type TEXT DEFAULT 'regular',
   session_title TEXT,
   assets_json JSONB NOT NULL DEFAULT '[]',
   slides_json JSONB,
@@ -92,6 +93,11 @@ CREATE TABLE IF NOT EXISTS asset_lists (
 
 CREATE INDEX IF NOT EXISTS idx_asset_lists_module ON asset_lists(module_name);
 CREATE INDEX IF NOT EXISTS idx_asset_lists_session ON asset_lists(module_name, session_number);
+
+-- Unique constraint on module_name, session_number, session_type
+-- This allows "Session 2" and "Session 2 RCP" to coexist
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_lists_unique_session
+  ON asset_lists(module_name, session_number, session_type);
 
 -- ==========================================
 -- Generated Images Table

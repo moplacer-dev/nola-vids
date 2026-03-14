@@ -480,6 +480,7 @@ const assetListQueries = {
         id,
         module_name: assetList.moduleName,
         session_number: assetList.sessionNumber || null,
+        session_type: assetList.sessionType || 'regular',
         session_title: assetList.sessionTitle || null,
         assets_json: assetList.assets,
         slides_json: assetList.slides || null,
@@ -532,6 +533,21 @@ const assetListQueries = {
       .select('*')
       .eq('module_name', moduleName)
       .eq('session_number', sessionNumber)
+      .order('imported_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? parseAssetListRow(data) : null;
+  },
+
+  async getByModuleSessionAndType(moduleName, sessionNumber, sessionType) {
+    const { data, error } = await supabase
+      .from('asset_lists')
+      .select('*')
+      .eq('module_name', moduleName)
+      .eq('session_number', sessionNumber)
+      .eq('session_type', sessionType || 'regular')
       .order('imported_at', { ascending: false })
       .limit(1)
       .single();
@@ -1039,6 +1055,7 @@ function parseAssetListRow(row) {
     id: row.id,
     moduleName: row.module_name,
     sessionNumber: row.session_number,
+    sessionType: row.session_type || 'regular',
     sessionTitle: row.session_title,
     assets: row.assets_json,
     slides: row.slides_json,
