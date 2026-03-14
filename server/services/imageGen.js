@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 const fs = require('fs');
 const path = require('path');
+const storage = require('./storage');
 
 // Gemini 3.1 Flash with native image generation
 const MODEL = 'gemini-3.1-flash-image-preview';
@@ -15,44 +16,64 @@ class ImageGenService {
    * Generate an image from a text prompt
    * @param {Object} options - Generation options
    * @param {string} options.prompt - The image generation prompt
-   * @param {string|string[]} [options.anchorImagePath] - Path to anchor image(s) for character consistency (single path or array)
-   * @param {string[]} [options.anchorImagePaths] - Array of paths to reference images (preferred over anchorImagePath)
+   * @param {string|string[]} [options.anchorImagePath] - Path to anchor image(s) for character consistency (local paths)
+   * @param {string[]} [options.anchorImagePaths] - Array of paths to reference images (local paths)
+   * @param {string[]} [options.anchorImageUrls] - Array of URLs to reference images (Supabase URLs)
    * @param {string} [options.aspectRatio] - Aspect ratio (e.g., '16:9', '1:1', '3:2', '4:3')
    * @returns {Promise<{imageData: string, mimeType: string}>} - Base64 image data and mime type
    */
-  async generate({ prompt, anchorImagePath, anchorImagePaths = [], aspectRatio = '3:2' }) {
+  async generate({ prompt, anchorImagePath, anchorImagePaths = [], anchorImageUrls = [], aspectRatio = '3:2' }) {
     let contents;
 
     // Include aspect ratio instruction in the prompt for better compliance
     const aspectInstruction = `Generate a ${aspectRatio} aspect ratio image`;
 
-    // Normalize paths: support both single path (backward compat) and array
-    let imagePaths = [...anchorImagePaths];
+    // Normalize local paths: support both single path (backward compat) and array
+    let localPaths = [...anchorImagePaths];
     if (anchorImagePath) {
       if (Array.isArray(anchorImagePath)) {
-        imagePaths = [...anchorImagePath, ...imagePaths];
+        localPaths = [...anchorImagePath, ...localPaths];
       } else {
-        imagePaths = [anchorImagePath, ...imagePaths];
+        localPaths = [anchorImagePath, ...localPaths];
       }
     }
-    // Filter to only existing files and limit to 3
-    imagePaths = imagePaths.filter(p => p && fs.existsSync(p)).slice(0, 3);
+    // Filter to only existing local files and limit to 3
+    localPaths = localPaths.filter(p => p && fs.existsSync(p)).slice(0, 3);
 
-    // If we have reference images for character consistency, include them
-    if (imagePaths.length > 0) {
-      const imageContents = [];
-      for (const imagePath of imagePaths) {
-        const img = await this._prepareImage(imagePath);
+    // Download images from URLs if needed
+    const imageContents = [];
+
+    // First, process local files
+    for (const imagePath of localPaths) {
+      const img = await this._prepareImage(imagePath);
+      imageContents.push({
+        inlineData: {
+          mimeType: img.mimeType,
+          data: img.imageBytes
+        }
+      });
+    }
+
+    // Then, process URLs (download from Supabase Storage)
+    for (const url of anchorImageUrls.slice(0, 3 - imageContents.length)) {
+      try {
+        const img = await this._prepareImageFromUrl(url);
         imageContents.push({
           inlineData: {
             mimeType: img.mimeType,
             data: img.imageBytes
           }
         });
+      } catch (e) {
+        console.error(`Failed to download reference image from ${url}:`, e.message);
       }
-      const refText = imagePaths.length === 1
+    }
+
+    // If we have reference images for character consistency, include them
+    if (imageContents.length > 0) {
+      const refText = imageContents.length === 1
         ? 'Using the character from this reference image for consistency'
-        : `Using the characters from these ${imagePaths.length} reference images for consistency`;
+        : `Using the characters from these ${imageContents.length} reference images for consistency`;
       contents = [
         ...imageContents,
         {
@@ -68,7 +89,6 @@ class ImageGenService {
       contents,
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
-        // Request specific aspect ratio if the API supports it
         generationConfig: {
           aspectRatio: aspectRatio
         }
@@ -78,7 +98,7 @@ class ImageGenService {
     // Debug log
     console.log('Image generation response:', JSON.stringify(response, null, 2));
 
-    // Extract image from response - the structure varies by SDK version
+    // Extract image from response
     const candidates = response.candidates || response.response?.candidates;
 
     if (!candidates || candidates.length === 0) {
@@ -98,7 +118,6 @@ class ImageGenService {
     );
 
     if (!imagePart) {
-      // Log what we got for debugging
       console.log('Parts received:', JSON.stringify(parts, null, 2));
       throw new Error('No image data in response. The content may have been filtered or the model returned text only.');
     }
@@ -110,7 +129,7 @@ class ImageGenService {
   }
 
   /**
-   * Generate an image and save it to disk
+   * Generate an image and save it to disk (legacy method for local storage)
    * @param {Object} options - Generation options
    * @param {string} options.prompt - The image generation prompt
    * @param {string} options.outputPath - Where to save the generated image
@@ -140,7 +159,37 @@ class ImageGenService {
   }
 
   /**
-   * Prepare image for API
+   * Generate an image and upload it to Supabase Storage
+   * @param {Object} options - Generation options
+   * @param {string} options.prompt - The image generation prompt
+   * @param {string} options.bucket - Supabase Storage bucket name
+   * @param {string} options.filename - Filename to save in the bucket
+   * @param {string[]} [options.anchorImageUrls] - Array of URLs to reference images
+   * @param {string} [options.aspectRatio] - Aspect ratio
+   * @returns {Promise<{publicUrl: string, mimeType: string}>} - Public URL of uploaded image
+   */
+  async generateToStorage({ prompt, bucket, filename, anchorImageUrls = [], aspectRatio }) {
+    const result = await this.generate({ prompt, anchorImageUrls, aspectRatio });
+
+    // Decode base64 to buffer
+    const imageBuffer = Buffer.from(result.imageData, 'base64');
+
+    // Upload to Supabase Storage
+    const uploaded = await storage.uploadFile(
+      bucket,
+      filename,
+      imageBuffer,
+      result.mimeType
+    );
+
+    return {
+      publicUrl: uploaded.publicUrl,
+      mimeType: result.mimeType
+    };
+  }
+
+  /**
+   * Prepare image for API from local file
    * @param {string} imagePath - Path to image file
    * @returns {Promise<{imageBytes: string, mimeType: string}>}
    */
@@ -159,6 +208,43 @@ class ImageGenService {
     return {
       imageBytes: base64,
       mimeType: mimeTypes[ext] || 'image/png'
+    };
+  }
+
+  /**
+   * Prepare image for API from URL (download from Supabase Storage)
+   * @param {string} url - URL to download image from
+   * @returns {Promise<{imageBytes: string, mimeType: string}>}
+   */
+  async _prepareImageFromUrl(url) {
+    // Download the image
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
+    const base64 = imageBuffer.toString('base64');
+
+    // Determine mime type from content-type header or URL
+    let mimeType = response.headers.get('content-type') || 'image/png';
+
+    // Fallback to extension if content-type is not specific
+    if (mimeType === 'application/octet-stream') {
+      const ext = path.extname(url.split('?')[0]).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp'
+      };
+      mimeType = mimeTypes[ext] || 'image/png';
+    }
+
+    return {
+      imageBytes: base64,
+      mimeType
     };
   }
 }

@@ -1,9 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
-const path = require('path');
-const fs = require('fs');
 const { jobs: jobDb, videos: videoDb } = require('../db/database');
-
-const STORAGE_DIR = path.join(__dirname, '..', 'storage');
+const storage = require('../services/storage');
+const { BUCKETS } = storage;
 
 class JobManager {
   constructor(veoService) {
@@ -14,29 +12,33 @@ class JobManager {
     this.maxConcurrentJobs = 2; // Max jobs processing at once
     this.pendingQueue = []; // Queue of job IDs waiting to start
 
-    // Resume polling for any processing jobs on startup
+    // Resume polling for any processing jobs on startup (async initialization)
     this._resumeProcessingJobs();
   }
 
   // Resume polling for jobs that were processing when server stopped
-  _resumeProcessingJobs() {
-    const processingJobs = jobDb.getByStatus('processing');
-    for (const job of processingJobs) {
-      if (job.operationName) {
-        console.log(`Resuming polling for job ${job.id}`);
-        this._startPolling(job.id);
+  async _resumeProcessingJobs() {
+    try {
+      const processingJobs = await jobDb.getByStatus('processing');
+      for (const job of processingJobs) {
+        if (job.operationName) {
+          console.log(`Resuming polling for job ${job.id}`);
+          this._startPolling(job.id);
+        }
       }
-    }
 
-    // Also resume any queued jobs
-    const queuedJobs = jobDb.getByStatus('queued');
-    for (const job of queuedJobs) {
-      console.log(`Re-queuing job ${job.id}`);
-      this.pendingQueue.push(job.id);
-    }
+      // Also resume any queued jobs
+      const queuedJobs = await jobDb.getByStatus('queued');
+      for (const job of queuedJobs) {
+        console.log(`Re-queuing job ${job.id}`);
+        this.pendingQueue.push(job.id);
+      }
 
-    // Process queue if capacity available
-    this._processQueue();
+      // Process queue if capacity available
+      this._processQueue();
+    } catch (error) {
+      console.error('Error resuming processing jobs:', error.message);
+    }
   }
 
   // Get count of currently processing jobs
@@ -53,7 +55,7 @@ class JobManager {
   async _processQueue() {
     while (this._hasCapacity() && this.pendingQueue.length > 0) {
       const jobId = this.pendingQueue.shift();
-      const job = jobDb.getById(jobId);
+      const job = await jobDb.getById(jobId);
 
       if (!job) continue;
 
@@ -71,7 +73,7 @@ class JobManager {
   }
 
   // Create a new job
-  createJob(type, params) {
+  async createJob(type, params) {
     const jobId = uuidv4();
     const now = new Date().toISOString();
     const job = {
@@ -85,13 +87,13 @@ class JobManager {
       updatedAt: now
     };
 
-    jobDb.create(job);
+    await jobDb.create(job);
     return job;
   }
 
   // Start a generation job (with queue support)
   async startJob(jobId) {
-    const job = jobDb.getById(jobId);
+    const job = await jobDb.getById(jobId);
     if (!job) throw new Error('Job not found');
 
     // Check if we have capacity
@@ -99,7 +101,7 @@ class JobManager {
       // Queue the job
       job.status = 'queued';
       job.updatedAt = new Date().toISOString();
-      jobDb.update(job);
+      await jobDb.update(job);
 
       this.pendingQueue.push(jobId);
       console.log(`Job ${jobId} queued (position ${this.pendingQueue.length}, ${this._getProcessingCount()}/${this.maxConcurrentJobs} processing)`);
@@ -113,7 +115,7 @@ class JobManager {
 
   // Actually execute a job (internal method)
   async _executeJob(jobId) {
-    const job = jobDb.getById(jobId);
+    const job = await jobDb.getById(jobId);
     if (!job) throw new Error('Job not found');
 
     try {
@@ -143,7 +145,7 @@ class JobManager {
       job.status = 'processing';
       job.updatedAt = new Date().toISOString();
 
-      jobDb.update(job);
+      await jobDb.update(job);
 
       // Start polling for completion
       this._startPolling(jobId);
@@ -153,7 +155,7 @@ class JobManager {
       job.status = 'failed';
       job.error = error.message;
       job.updatedAt = new Date().toISOString();
-      jobDb.update(job);
+      await jobDb.update(job);
 
       // Process queue since this job failed
       this._processQueue();
@@ -171,7 +173,7 @@ class JobManager {
     );
 
     const timeoutId = setTimeout(async () => {
-      const job = jobDb.getById(jobId);
+      const job = await jobDb.getById(jobId);
       if (!job || !job.operationName) {
         this.activePollers.delete(jobId);
         this._processQueue();
@@ -189,20 +191,29 @@ class JobManager {
         if (status.status === 'completed') {
           this.activePollers.delete(jobId);
 
-          // Download videos and create video records
+          // Download videos and upload to Supabase Storage
           for (let i = 0; i < status.videos.length; i++) {
             const video = status.videos[i];
             if (video.uri) {
               const filename = `${jobId}_${i}.mp4`;
-              const outputPath = path.join(STORAGE_DIR, filename);
-              await this.veoService.downloadVideo(video.uri, outputPath);
+
+              // Download video to buffer
+              const videoBuffer = await this.veoService.downloadVideoToBuffer(video.uri);
+
+              // Upload to Supabase Storage
+              const uploaded = await storage.uploadFile(
+                BUCKETS.VIDEOS,
+                filename,
+                videoBuffer,
+                video.mimeType || 'video/mp4'
+              );
 
               // Create video record in database (store source URI for video extension)
-              videoDb.create({
+              await videoDb.create({
                 id: uuidv4(),
                 jobId: jobId,
                 filename: filename,
-                path: `/videos/${filename}`,
+                path: uploaded.publicUrl,
                 mimeType: video.mimeType || 'video/mp4',
                 title: null,
                 folder: null,
@@ -214,7 +225,7 @@ class JobManager {
 
           job.status = 'completed';
           job.updatedAt = new Date().toISOString();
-          jobDb.update(job);
+          await jobDb.update(job);
 
           // Process queue since capacity freed up
           this._processQueue();
@@ -224,14 +235,14 @@ class JobManager {
           job.status = 'failed';
           job.error = status.error;
           job.updatedAt = new Date().toISOString();
-          jobDb.update(job);
+          await jobDb.update(job);
 
           // Process queue since capacity freed up
           this._processQueue();
         } else {
           // Still processing, schedule next poll with backoff
           job.updatedAt = new Date().toISOString();
-          jobDb.update(job);
+          await jobDb.update(job);
 
           this._startPolling(jobId, pollCount + 1);
         }
@@ -246,8 +257,8 @@ class JobManager {
   }
 
   // Get job by ID (includes videos)
-  getJob(jobId) {
-    const job = jobDb.getById(jobId);
+  async getJob(jobId) {
+    const job = await jobDb.getById(jobId);
     if (!job) return null;
 
     // Add queue position if queued
@@ -257,12 +268,12 @@ class JobManager {
     }
 
     // Attach videos to job
-    const videos = videoDb.getByJobId(jobId);
+    const videos = await videoDb.getByJobId(jobId);
     job.videos = videos.map(v => ({
       id: v.id,
       filename: v.filename,
       path: v.path,
-      mimeType: v.mime_type,
+      mimeType: v.mimeType,
       title: v.title,
       folder: v.folder
     }));
@@ -271,8 +282,8 @@ class JobManager {
   }
 
   // Get all jobs (includes videos)
-  getAllJobs() {
-    const jobs = jobDb.getAll();
+  async getAllJobs() {
+    const jobs = await jobDb.getAll();
 
     // Attach videos and queue position to each job
     for (const job of jobs) {
@@ -281,12 +292,12 @@ class JobManager {
         job.queuePosition = queuePosition >= 0 ? queuePosition + 1 : null;
       }
 
-      const videos = videoDb.getByJobId(job.id);
+      const videos = await videoDb.getByJobId(job.id);
       job.videos = videos.map(v => ({
         id: v.id,
         filename: v.filename,
         path: v.path,
-        mimeType: v.mime_type,
+        mimeType: v.mimeType,
         title: v.title,
         folder: v.folder
       }));
@@ -296,8 +307,8 @@ class JobManager {
   }
 
   // Delete a job and its videos
-  deleteJob(jobId) {
-    const job = jobDb.getById(jobId);
+  async deleteJob(jobId) {
+    const job = await jobDb.getById(jobId);
     if (!job) return false;
 
     // Stop polling if active
@@ -313,18 +324,18 @@ class JobManager {
     }
 
     // Get videos before deleting
-    const videos = videoDb.getByJobId(jobId);
+    const videos = await videoDb.getByJobId(jobId);
 
-    // Delete video files from disk
+    // Delete video files from Supabase Storage
     for (const video of videos) {
-      const filePath = path.join(STORAGE_DIR, video.filename);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      const filename = storage.getFilenameFromUrl(video.path);
+      if (filename) {
+        await storage.deleteFile(BUCKETS.VIDEOS, filename);
       }
     }
 
     // Delete from database (cascades to videos)
-    jobDb.delete(jobId);
+    await jobDb.delete(jobId);
 
     // Process queue in case we freed up capacity
     this._processQueue();

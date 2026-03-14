@@ -12,25 +12,8 @@ const ElevenLabsService = require('./services/elevenLabs');
 const JobManager = require('./jobs/jobManager');
 const createRoutes = require('./api/routes');
 
-// Initialize database before anything else
-initDatabase();
-
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-// Ensure storage directories exist
-const storageDir = path.join(__dirname, 'storage');
-const uploadsDir = path.join(storageDir, 'uploads');
-const imagesDir = path.join(storageDir, 'images');
-const anchorsDir = path.join(storageDir, 'anchors');
-const mgVideosDir = path.join(storageDir, 'mg-videos');
-const audioDir = path.join(storageDir, 'audio');
-if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
-if (!fs.existsSync(anchorsDir)) fs.mkdirSync(anchorsDir, { recursive: true });
-if (!fs.existsSync(mgVideosDir)) fs.mkdirSync(mgVideosDir, { recursive: true });
-if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
 // CORS configuration - defaults to permissive, can be restricted via CORS_ORIGINS env var
 const corsOrigins = process.env.CORS_ORIGINS;
@@ -66,9 +49,6 @@ app.post('/auth/verify', (req, res) => {
   }
 });
 
-// Serve generated videos
-app.use('/videos', express.static(storageDir));
-
 // Initialize services
 const apiKey = process.env.GOOGLE_GENAI_API_KEY;
 if (!apiKey) {
@@ -95,18 +75,6 @@ if (!elevenLabsService.isConfigured()) {
 app.set('imageGenService', imageGenService);
 app.set('elevenLabsService', elevenLabsService);
 
-// Serve generated images
-app.use('/images', express.static(imagesDir));
-
-// Serve character anchor images
-app.use('/anchors', express.static(anchorsDir));
-
-// Serve motion graphics final videos
-app.use('/mg-videos', express.static(mgVideosDir));
-
-// Serve generated audio files
-app.use('/audio', express.static(audioDir));
-
 // API routes (protected by auth middleware)
 app.use('/api', authMiddleware, createRoutes(jobManager));
 
@@ -132,37 +100,51 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-app.listen(PORT, () => {
-  console.log(`NOLA.vids server running on http://localhost:${PORT}`);
-  console.log('Powered by VEO 3.1 + Nano Banana 2');
-  console.log('');
-  console.log('Video Generation:');
-  console.log('  POST /api/generate/text     - Text-to-video');
-  console.log('  POST /api/generate/image    - Image-to-video');
-  console.log('  POST /api/generate/frames   - Frame interpolation');
-  console.log('  POST /api/generate/reference - Reference-guided');
-  console.log('  POST /api/generate/extend   - Video extension');
-  console.log('  GET  /api/jobs              - List all jobs');
-  console.log('  GET  /api/jobs/:id          - Get job status');
-  console.log('');
-  console.log('Image Generation:');
-  console.log('  POST /api/asset-lists       - Import asset list from Carl v7');
-  console.log('  GET  /api/asset-lists       - List asset lists');
-  console.log('  GET  /api/asset-lists/:id   - Get asset list with images');
-  console.log('  POST /api/images/generate   - Generate single image');
-  console.log('  GET  /api/images            - List generated images');
-  console.log('  PUT  /api/images/:id/regenerate - Regenerate image');
-  console.log('');
-  console.log('Characters:');
-  console.log('  GET  /api/characters/:module - Get characters for module');
-  console.log('  POST /api/characters         - Create/update character');
-  console.log('  PUT  /api/characters/:id/anchor - Set anchor image');
-  console.log('');
-  console.log('Audio/TTS:');
-  console.log('  GET  /api/voices            - Get available TTS voices');
-  console.log('  POST /api/audio/generate    - Generate audio from text');
-  console.log('  PATCH /api/audio/:id        - Update audio settings');
-  console.log('  PUT  /api/audio/:id/regenerate - Regenerate audio');
-  console.log('');
-  console.log('  GET  /api/templates         - Get prompt templates');
-});
+// Initialize database and start server
+async function startServer() {
+  try {
+    // Initialize Supabase database connection
+    await initDatabase();
+
+    app.listen(PORT, () => {
+      console.log(`NOLA.vids server running on http://localhost:${PORT}`);
+      console.log('Powered by VEO 3.1 + Nano Banana 2');
+      console.log('Using Supabase for database and file storage');
+      console.log('');
+      console.log('Video Generation:');
+      console.log('  POST /api/generate/text     - Text-to-video');
+      console.log('  POST /api/generate/image    - Image-to-video');
+      console.log('  POST /api/generate/frames   - Frame interpolation');
+      console.log('  POST /api/generate/reference - Reference-guided');
+      console.log('  POST /api/generate/extend   - Video extension');
+      console.log('  GET  /api/jobs              - List all jobs');
+      console.log('  GET  /api/jobs/:id          - Get job status');
+      console.log('');
+      console.log('Image Generation:');
+      console.log('  POST /api/asset-lists       - Import asset list from Carl v7');
+      console.log('  GET  /api/asset-lists       - List asset lists');
+      console.log('  GET  /api/asset-lists/:id   - Get asset list with images');
+      console.log('  POST /api/images/generate   - Generate single image');
+      console.log('  GET  /api/images            - List generated images');
+      console.log('  PUT  /api/images/:id/regenerate - Regenerate image');
+      console.log('');
+      console.log('Characters:');
+      console.log('  GET  /api/characters/:module - Get characters for module');
+      console.log('  POST /api/characters         - Create/update character');
+      console.log('  PUT  /api/characters/:id/anchor - Set anchor image');
+      console.log('');
+      console.log('Audio/TTS:');
+      console.log('  GET  /api/voices            - Get available TTS voices');
+      console.log('  POST /api/audio/generate    - Generate audio from text');
+      console.log('  PATCH /api/audio/:id        - Update audio settings');
+      console.log('  PUT  /api/audio/:id/regenerate - Regenerate audio');
+      console.log('');
+      console.log('  GET  /api/templates         - Get prompt templates');
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error.message);
+    process.exit(1);
+  }
+}
+
+startServer();

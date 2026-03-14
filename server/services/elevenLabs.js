@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const storage = require('./storage');
 
 // Hardcoded default voices for MVP
 const DEFAULT_VOICES = [
@@ -23,7 +24,6 @@ class ElevenLabsService {
    * @returns {Promise<Array>} - List of available voices
    */
   async getVoices() {
-    // Return fallback if not configured
     if (!this.isConfigured()) {
       console.log('[ElevenLabs] API not configured, returning default voices');
       return DEFAULT_VOICES;
@@ -50,7 +50,6 @@ class ElevenLabsService {
         return DEFAULT_VOICES;
       }
 
-      // Map to our format, sorted by name
       const voices = data.voices
         .map(v => ({
           voice_id: v.voice_id,
@@ -116,7 +115,7 @@ class ElevenLabsService {
   }
 
   /**
-   * Generate TTS audio and save to disk
+   * Generate TTS audio and save to disk (legacy method for local storage)
    * @param {Object} options - Generation options
    * @param {string} options.text - Text to convert to speech
    * @param {string} options.outputPath - Where to save the generated audio
@@ -146,13 +145,55 @@ class ElevenLabsService {
     fs.writeFileSync(outputPath, audioBuffer);
     console.log(`[ElevenLabs] Audio file written to: ${outputPath}`);
 
-    // Estimate duration based on text length (rough approximation)
-    // Average speaking rate is about 150 words per minute
+    // Estimate duration based on text length
     const wordCount = text.trim().split(/\s+/).length;
     const estimatedDurationMs = Math.round((wordCount / 150) * 60 * 1000);
 
     return {
       path: outputPath,
+      mimeType: 'audio/mpeg',
+      durationMs: estimatedDurationMs
+    };
+  }
+
+  /**
+   * Generate TTS audio and upload to Supabase Storage
+   * @param {Object} options - Generation options
+   * @param {string} options.text - Text to convert to speech
+   * @param {string} options.bucket - Supabase Storage bucket name
+   * @param {string} options.filename - Filename to save in the bucket
+   * @param {string} [options.voiceId] - Voice ID to use
+   * @param {string} [options.modelId] - Model ID to use
+   * @returns {Promise<{publicUrl: string, mimeType: string, durationMs: number}>} - Public URL of uploaded audio
+   */
+  async generateToStorage({ text, bucket, filename, voiceId, modelId }) {
+    console.log(`[ElevenLabs] Starting audio generation for storage: ${bucket}/${filename}`);
+    console.log(`[ElevenLabs] Text length: ${text.length} chars, Voice: ${voiceId || this.defaultVoiceId}`);
+
+    const audioBuffer = await this.generate({ text, voiceId, modelId });
+
+    if (!audioBuffer || audioBuffer.length === 0) {
+      throw new Error('ElevenLabs returned empty audio buffer');
+    }
+
+    console.log(`[ElevenLabs] Received audio buffer: ${audioBuffer.length} bytes`);
+
+    // Upload to Supabase Storage
+    const uploaded = await storage.uploadFile(
+      bucket,
+      filename,
+      audioBuffer,
+      'audio/mpeg'
+    );
+
+    console.log(`[ElevenLabs] Audio uploaded to: ${uploaded.publicUrl}`);
+
+    // Estimate duration based on text length
+    const wordCount = text.trim().split(/\s+/).length;
+    const estimatedDurationMs = Math.round((wordCount / 150) * 60 * 1000);
+
+    return {
+      publicUrl: uploaded.publicUrl,
       mimeType: 'audio/mpeg',
       durationMs: estimatedDurationMs
     };

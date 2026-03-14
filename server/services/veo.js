@@ -199,7 +199,7 @@ class VeoService {
     };
   }
 
-  // Download video to local storage
+  // Download video to local storage (legacy method)
   async downloadVideo(videoUri, outputPath) {
     // The URI is a direct download URL - fetch it with the API key in header
     const response = await fetchWithTimeout(videoUri, {
@@ -214,11 +214,30 @@ class VeoService {
     return outputPath;
   }
 
-  // Prepare image for API
-  async _prepareImage(imagePath) {
-    const imageBuffer = fs.readFileSync(imagePath);
+  // Download video to buffer (for Supabase Storage upload)
+  async downloadVideoToBuffer(videoUri) {
+    // The URI is a direct download URL - fetch it with the API key in header
+    const response = await fetchWithTimeout(videoUri, {
+      headers: { 'x-goog-api-key': this.apiKey }
+    }, TIMEOUTS.DOWNLOAD);
+    if (!response.ok) {
+      throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  // Prepare image for API (supports both local paths and URLs)
+  async _prepareImage(imageSource) {
+    // Check if it's a URL (Supabase Storage URL)
+    if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
+      return this._prepareImageFromUrl(imageSource);
+    }
+
+    // Local file path
+    const imageBuffer = fs.readFileSync(imageSource);
     const base64 = imageBuffer.toString('base64');
-    const ext = path.extname(imagePath).toLowerCase();
+    const ext = path.extname(imageSource).toLowerCase();
 
     const mimeTypes = {
       '.jpg': 'image/jpeg',
@@ -230,6 +249,38 @@ class VeoService {
     return {
       imageBytes: base64,
       mimeType: mimeTypes[ext] || 'image/jpeg'
+    };
+  }
+
+  // Prepare image from URL
+  async _prepareImageFromUrl(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
+    const base64 = imageBuffer.toString('base64');
+
+    // Determine mime type from content-type header or URL
+    let mimeType = response.headers.get('content-type') || 'image/jpeg';
+
+    // Fallback to extension if content-type is not specific
+    if (mimeType === 'application/octet-stream') {
+      const ext = path.extname(url.split('?')[0]).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp'
+      };
+      mimeType = mimeTypes[ext] || 'image/jpeg';
+    }
+
+    return {
+      imageBytes: base64,
+      mimeType
     };
   }
 

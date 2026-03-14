@@ -1,13 +1,23 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const os = require('os');
 
-const { videos: videoDb, folders: folderDb, characters: characterDb, assetLists: assetListDb, generatedImages: generatedImageDb, generationHistory: generationHistoryDb, motionGraphicsVideos: mgVideoDb, generatedAudio: generatedAudioDb } = require('../db/database');
+const {
+  videos: videoDb,
+  folders: folderDb,
+  characters: characterDb,
+  assetLists: assetListDb,
+  generatedImages: generatedImageDb,
+  generationHistory: generationHistoryDb,
+  motionGraphicsVideos: mgVideoDb,
+  generatedAudio: generatedAudioDb
+} = require('../db/database');
+
+const storage = require('../services/storage');
+const { BUCKETS } = storage;
 
 const router = express.Router();
-const STORAGE_DIR = path.join(__dirname, '..', 'storage');
-const DEFAULTS_DIR = path.join(STORAGE_DIR, 'defaults');
 
 // Default images for specific slide types
 // Maps slide title patterns (lowercase) to default image filenames
@@ -19,15 +29,19 @@ const DEFAULT_SLIDE_IMAGES = {
 };
 
 // Check if a slide title matches a default image pattern
-function getDefaultImageForSlide(slideTitle) {
+async function getDefaultImageForSlide(slideTitle) {
   if (!slideTitle) return null;
   const titleLower = slideTitle.toLowerCase().trim();
 
   for (const [pattern, filename] of Object.entries(DEFAULT_SLIDE_IMAGES)) {
     if (titleLower.includes(pattern)) {
-      const defaultPath = path.join(DEFAULTS_DIR, filename);
-      if (fs.existsSync(defaultPath)) {
-        return { filename, path: defaultPath };
+      // Check if default image exists in Supabase Storage
+      const exists = await storage.fileExists(BUCKETS.DEFAULTS, filename);
+      if (exists) {
+        return {
+          filename,
+          publicUrl: storage.getPublicUrl(BUCKETS.DEFAULTS, filename)
+        };
       }
     }
   }
@@ -35,33 +49,27 @@ function getDefaultImageForSlide(slideTitle) {
 }
 
 // Apply default image to a generated image record
-function applyDefaultImage(imageId, defaultImage, cmsFilename) {
+async function applyDefaultImage(imageId, defaultImage, cmsFilename) {
   const ext = path.extname(defaultImage.filename);
   const outputFilename = cmsFilename.replace(/\.[^.]+$/, ext);
-  const outputPath = path.join(STORAGE_DIR, 'images', outputFilename);
 
-  // Ensure images directory exists
-  const imagesDir = path.join(STORAGE_DIR, 'images');
-  if (!fs.existsSync(imagesDir)) {
-    fs.mkdirSync(imagesDir, { recursive: true });
-  }
-
-  // Copy default image to images folder with CMS filename
-  fs.copyFileSync(defaultImage.path, outputPath);
+  // Copy default image to images bucket with CMS filename
+  await storage.copyFile(BUCKETS.DEFAULTS, defaultImage.filename, BUCKETS.IMAGES, outputFilename);
+  const publicUrl = storage.getPublicUrl(BUCKETS.IMAGES, outputFilename);
 
   // Update the record
-  generatedImageDb.update(imageId, {
+  await generatedImageDb.update(imageId, {
     status: 'default',
-    imagePath: outputPath,
+    imagePath: publicUrl,
     cmsFilename: outputFilename
   });
 
-  return { outputPath, outputFilename };
+  return { outputPath: publicUrl, outputFilename };
 }
 
-// Configure multer for file uploads
+// Configure multer for temporary file uploads
 const upload = multer({
-  dest: path.join(__dirname, '..', 'storage', 'uploads'),
+  dest: os.tmpdir(),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'];
@@ -83,7 +91,7 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
-      const job = jobManager.createJob('text-to-video', {
+      const job = await jobManager.createJob('text-to-video', {
         prompt,
         negativePrompt,
         aspectRatio,
@@ -111,8 +119,17 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
-      const job = jobManager.createJob('image-to-video', {
-        image: req.file.path,
+      // Upload image to Supabase Storage
+      const filename = `${Date.now()}_${req.file.originalname}`;
+      const uploaded = await storage.uploadFileFromPath(
+        BUCKETS.UPLOADS,
+        filename,
+        req.file.path,
+        req.file.mimetype
+      );
+
+      const job = await jobManager.createJob('image-to-video', {
+        image: uploaded.publicUrl,
         prompt,
         negativePrompt,
         aspectRatio,
@@ -122,8 +139,14 @@ module.exports = (jobManager) => {
 
       await jobManager.startJob(job.id);
 
+      // Clean up temp file
+      require('fs').unlinkSync(req.file.path);
+
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
+      if (req.file && require('fs').existsSync(req.file.path)) {
+        require('fs').unlinkSync(req.file.path);
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -143,9 +166,27 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
-      const job = jobManager.createJob('frame-interpolation', {
-        firstFrame: req.files.firstFrame[0].path,
-        lastFrame: req.files.lastFrame[0].path,
+      // Upload both frames to Supabase
+      const firstFile = req.files.firstFrame[0];
+      const lastFile = req.files.lastFrame[0];
+
+      const firstUploaded = await storage.uploadFileFromPath(
+        BUCKETS.UPLOADS,
+        `${Date.now()}_first_${firstFile.originalname}`,
+        firstFile.path,
+        firstFile.mimetype
+      );
+
+      const lastUploaded = await storage.uploadFileFromPath(
+        BUCKETS.UPLOADS,
+        `${Date.now()}_last_${lastFile.originalname}`,
+        lastFile.path,
+        lastFile.mimetype
+      );
+
+      const job = await jobManager.createJob('frame-interpolation', {
+        firstFrame: firstUploaded.publicUrl,
+        lastFrame: lastUploaded.publicUrl,
         prompt,
         negativePrompt,
         aspectRatio,
@@ -154,8 +195,19 @@ module.exports = (jobManager) => {
 
       await jobManager.startJob(job.id);
 
+      // Clean up temp files
+      require('fs').unlinkSync(firstFile.path);
+      require('fs').unlinkSync(lastFile.path);
+
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
+      // Clean up on error
+      if (req.files?.firstFrame?.[0]?.path && require('fs').existsSync(req.files.firstFrame[0].path)) {
+        require('fs').unlinkSync(req.files.firstFrame[0].path);
+      }
+      if (req.files?.lastFrame?.[0]?.path && require('fs').existsSync(req.files.lastFrame[0].path)) {
+        require('fs').unlinkSync(req.files.lastFrame[0].path);
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -172,8 +224,21 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Prompt is required' });
       }
 
-      const job = jobManager.createJob('reference-guided', {
-        referenceImages: req.files.map(f => f.path),
+      // Upload all reference images
+      const uploadedUrls = [];
+      for (const file of req.files) {
+        const uploaded = await storage.uploadFileFromPath(
+          BUCKETS.UPLOADS,
+          `${Date.now()}_${file.originalname}`,
+          file.path,
+          file.mimetype
+        );
+        uploadedUrls.push(uploaded.publicUrl);
+        require('fs').unlinkSync(file.path);
+      }
+
+      const job = await jobManager.createJob('reference-guided', {
+        referenceImages: uploadedUrls,
         prompt,
         negativePrompt,
         aspectRatio,
@@ -184,6 +249,14 @@ module.exports = (jobManager) => {
 
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
+      // Clean up on error
+      if (req.files) {
+        for (const file of req.files) {
+          if (require('fs').existsSync(file.path)) {
+            require('fs').unlinkSync(file.path);
+          }
+        }
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -202,19 +275,19 @@ module.exports = (jobManager) => {
       }
 
       // Look up the video in the database to get its source URI
-      const video = videoDb.getByPath(videoPath);
+      const video = await videoDb.getByPath(videoPath);
       if (!video) {
         return res.status(400).json({ error: 'Video not found in library' });
       }
 
-      if (!video.source_uri) {
+      if (!video.sourceUri) {
         return res.status(400).json({
           error: 'This video cannot be extended. Video extension only works with Veo-generated videos that have a stored source URI. Note: Google only retains video URIs for 2 days after generation.'
         });
       }
 
-      const job = jobManager.createJob('video-extension', {
-        videoUri: video.source_uri,
+      const job = await jobManager.createJob('video-extension', {
+        videoUri: video.sourceUri,
         prompt
       });
 
@@ -227,8 +300,8 @@ module.exports = (jobManager) => {
   });
 
   // Get job status
-  router.get('/jobs/:jobId', (req, res) => {
-    const job = jobManager.getJob(req.params.jobId);
+  router.get('/jobs/:jobId', async (req, res) => {
+    const job = await jobManager.getJob(req.params.jobId);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -236,14 +309,14 @@ module.exports = (jobManager) => {
   });
 
   // Get all jobs
-  router.get('/jobs', (req, res) => {
-    const jobs = jobManager.getAllJobs();
+  router.get('/jobs', async (req, res) => {
+    const jobs = await jobManager.getAllJobs();
     res.json(jobs);
   });
 
   // Delete a job
-  router.delete('/jobs/:jobId', (req, res) => {
-    const deleted = jobManager.deleteJob(req.params.jobId);
+  router.delete('/jobs/:jobId', async (req, res) => {
+    const deleted = await jobManager.deleteJob(req.params.jobId);
     if (!deleted) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -260,10 +333,10 @@ module.exports = (jobManager) => {
   // ==========================================
 
   // Get all videos for library
-  router.get('/library', (req, res) => {
+  router.get('/library', async (req, res) => {
     try {
       const { folder, search, limit, offset } = req.query;
-      const videos = videoDb.getAll({
+      const videos = await videoDb.getAll({
         folder,
         search,
         limit: limit ? parseInt(limit) : undefined,
@@ -276,9 +349,9 @@ module.exports = (jobManager) => {
   });
 
   // Get all folders
-  router.get('/library/folders', (req, res) => {
+  router.get('/library/folders', async (req, res) => {
     try {
-      const folders = folderDb.getAll();
+      const folders = await folderDb.getAll();
       res.json(folders);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -286,14 +359,14 @@ module.exports = (jobManager) => {
   });
 
   // Create a folder
-  router.post('/library/folders', (req, res) => {
+  router.post('/library/folders', async (req, res) => {
     try {
       const { name } = req.body;
       if (!name || !name.trim()) {
         return res.status(400).json({ error: 'Folder name is required' });
       }
 
-      const folder = folderDb.create(name.trim());
+      const folder = await folderDb.create(name.trim());
       if (!folder) {
         return res.status(409).json({ error: 'Folder already exists' });
       }
@@ -305,9 +378,9 @@ module.exports = (jobManager) => {
   });
 
   // Delete a folder
-  router.delete('/library/folders/:folderId', (req, res) => {
+  router.delete('/library/folders/:folderId', async (req, res) => {
     try {
-      const deleted = folderDb.delete(req.params.folderId);
+      const deleted = await folderDb.delete(req.params.folderId);
       if (!deleted) {
         return res.status(404).json({ error: 'Folder not found' });
       }
@@ -318,10 +391,10 @@ module.exports = (jobManager) => {
   });
 
   // Update a video (title, folder)
-  router.patch('/videos/:videoId', (req, res) => {
+  router.patch('/videos/:videoId', async (req, res) => {
     try {
       const { title, folder } = req.body;
-      const updated = videoDb.update(req.params.videoId, { title, folder });
+      const updated = await videoDb.update(req.params.videoId, { title, folder });
       if (!updated) {
         return res.status(404).json({ error: 'Video not found' });
       }
@@ -332,17 +405,17 @@ module.exports = (jobManager) => {
   });
 
   // Delete a single video
-  router.delete('/videos/:videoId', (req, res) => {
+  router.delete('/videos/:videoId', async (req, res) => {
     try {
-      const video = videoDb.delete(req.params.videoId);
+      const video = await videoDb.delete(req.params.videoId);
       if (!video) {
         return res.status(404).json({ error: 'Video not found' });
       }
 
-      // Delete the file from disk
-      const filePath = path.join(STORAGE_DIR, video.filename);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      // Delete the file from Supabase Storage
+      const filename = storage.getFilenameFromUrl(video.path);
+      if (filename) {
+        await storage.deleteFile(BUCKETS.VIDEOS, filename);
       }
 
       res.json({ success: true });
@@ -356,7 +429,7 @@ module.exports = (jobManager) => {
   // ==========================================
 
   // Receive asset list from Carl v7
-  router.post('/asset-lists', (req, res) => {
+  router.post('/asset-lists', async (req, res) => {
     try {
       const { moduleName, sessionNumber, sessionTitle, assets, slides, careerCharacter } = req.body;
 
@@ -367,32 +440,32 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'assets array is required' });
       }
 
-      // Keep all assets - they can be fulfilled via Image Gen, Video Gen, or upload
+      // Keep all assets
       const filteredAssets = assets;
 
       // Use slides array if provided, otherwise extract unique slides from assets
       const allSlides = slides || extractSlidesFromAssets(assets);
 
       // Check if asset list already exists for this module+session
-      let assetList = assetListDb.getByModuleAndSession(moduleName, sessionNumber);
+      let assetList = await assetListDb.getByModuleAndSession(moduleName, sessionNumber);
       let isUpdate = false;
       let existingImages = [];
 
       if (assetList) {
         // Update existing asset list
         isUpdate = true;
-        assetListDb.update(assetList.id, {
+        await assetListDb.update(assetList.id, {
           sessionTitle,
           assets,
           slides: allSlides,
           careerCharacter
         });
         // Refresh to get updated data
-        assetList = assetListDb.getById(assetList.id);
-        existingImages = generatedImageDb.getByAssetList(assetList.id);
+        assetList = await assetListDb.getById(assetList.id);
+        existingImages = await generatedImageDb.getByAssetList(assetList.id);
       } else {
         // Create new asset list
-        assetList = assetListDb.create({
+        assetList = await assetListDb.create({
           moduleName,
           sessionNumber,
           sessionTitle,
@@ -406,12 +479,12 @@ module.exports = (jobManager) => {
       let characterId = null;
       let characterAppearsOn = [];
       if (careerCharacter && careerCharacter.name) {
-        const existingChar = characterDb.getByModuleAndName(moduleName, careerCharacter.name);
+        const existingChar = await characterDb.getByModuleAndName(moduleName, careerCharacter.name);
         if (existingChar) {
           const currentSlides = existingChar.appearsOnSlides || [];
           const newSlides = careerCharacter.appearsOn || [];
           const allSlides = [...new Set([...currentSlides, ...newSlides])];
-          characterDb.update(existingChar.id, {
+          await characterDb.update(existingChar.id, {
             appearsOnSlides: allSlides,
             career: careerCharacter.career || existingChar.career,
             appearanceDescription: careerCharacter.appearance || existingChar.appearanceDescription
@@ -419,7 +492,7 @@ module.exports = (jobManager) => {
           characterId = existingChar.id;
           characterAppearsOn = allSlides;
         } else {
-          const newChar = characterDb.create({
+          const newChar = await characterDb.create({
             moduleName,
             characterName: careerCharacter.name,
             career: careerCharacter.career,
@@ -434,22 +507,20 @@ module.exports = (jobManager) => {
       }
 
       // Build map of existing images by slideNumber+assetType+assetNumber
-      // Track duplicates (multiple records with same key - indicates corrupt data)
       const existingByKey = {};
       const duplicateIds = [];
       existingImages.forEach(img => {
         const key = `${img.slideNumber}-${img.assetType}-${img.assetNumber || 1}`;
         if (existingByKey[key]) {
-          // Duplicate key - mark for deletion (keep the first one, delete extras)
           duplicateIds.push(img.id);
         } else {
           existingByKey[key] = img;
         }
       });
 
-      // Delete any duplicates found (cleanup for corrupt data)
+      // Delete any duplicates found
       if (duplicateIds.length > 0) {
-        generatedImageDb.deleteByIds(duplicateIds);
+        await generatedImageDb.deleteByIds(duplicateIds);
       }
 
       // Helper to get assetNumber from either camelCase or snake_case field
@@ -468,7 +539,7 @@ module.exports = (jobManager) => {
 
       // Delete removed images
       if (imagesToDelete.length > 0) {
-        generatedImageDb.deleteByIds(imagesToDelete.map(img => img.id));
+        await generatedImageDb.deleteByIds(imagesToDelete.map(img => img.id));
       }
 
       // Build a map of slide numbers to slide titles for default image lookup
@@ -498,8 +569,8 @@ module.exports = (jobManager) => {
         );
 
         if (existing) {
-          // Update existing image record with new prompt (keep generated image if exists)
-          generatedImageDb.update(existing.id, {
+          // Update existing image record with new prompt
+          await generatedImageDb.update(existing.id, {
             originalPrompt: asset.prompt,
             characterId: hasCharacter ? characterId : existing.characterId
           });
@@ -507,10 +578,10 @@ module.exports = (jobManager) => {
           // If existing record is still pending, check if we should apply a default
           if (existing.status === 'pending') {
             const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
-            const defaultImage = getDefaultImageForSlide(slideTitle);
+            const defaultImage = await getDefaultImageForSlide(slideTitle);
             if (defaultImage) {
               const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset);
-              const result = applyDefaultImage(existing.id, defaultImage, cmsFilename);
+              const result = await applyDefaultImage(existing.id, defaultImage, cmsFilename);
               existing.status = 'default';
               existing.imagePath = result.outputPath;
               existing.cmsFilename = result.outputFilename;
@@ -523,7 +594,7 @@ module.exports = (jobManager) => {
         } else {
           // Create new pending record
           const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset);
-          const image = generatedImageDb.create({
+          const image = await generatedImageDb.create({
             assetListId: assetList.id,
             slideNumber: asset.slideNumber,
             assetType: asset.type,
@@ -536,11 +607,10 @@ module.exports = (jobManager) => {
 
           // Check if this slide has a default image
           const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
-          const defaultImage = getDefaultImageForSlide(slideTitle);
+          const defaultImage = await getDefaultImageForSlide(slideTitle);
 
           if (defaultImage) {
-            // Apply the default image
-            const result = applyDefaultImage(image.id, defaultImage, cmsFilename);
+            const result = await applyDefaultImage(image.id, defaultImage, cmsFilename);
             image.status = 'default';
             image.imagePath = result.outputPath;
             image.cmsFilename = result.outputFilename;
@@ -561,17 +631,14 @@ module.exports = (jobManager) => {
           const narration = slide.narration || slide.narrationText || '';
 
           if (narration && narration.trim().length > 0) {
-            // Upsert audio record
-            const existingAudio = generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
+            const existingAudio = await generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
             if (existingAudio) {
-              // Update narration text if changed
               if (existingAudio.narrationText !== narration) {
-                generatedAudioDb.update(existingAudio.id, { narrationText: narration });
+                await generatedAudioDb.update(existingAudio.id, { narrationText: narration });
               }
               audioKept++;
             } else {
-              // Create new audio record
-              generatedAudioDb.create({
+              await generatedAudioDb.create({
                 assetListId: assetList.id,
                 slideNumber: slideNum,
                 narrationText: narration,
@@ -601,15 +668,15 @@ module.exports = (jobManager) => {
   });
 
   // List all asset lists
-  router.get('/asset-lists', (req, res) => {
+  router.get('/asset-lists', async (req, res) => {
     try {
       const { moduleName } = req.query;
       let assetLists;
 
       if (moduleName) {
-        assetLists = assetListDb.getByModule(moduleName);
+        assetLists = await assetListDb.getByModule(moduleName);
       } else {
-        assetLists = assetListDb.getAll();
+        assetLists = await assetListDb.getAll();
       }
 
       res.json(assetLists);
@@ -619,19 +686,20 @@ module.exports = (jobManager) => {
   });
 
   // Get single asset list with its generated images, motion graphics videos, and audio
-  router.get('/asset-lists/:id', (req, res) => {
+  router.get('/asset-lists/:id', async (req, res) => {
     try {
-      const assetList = assetListDb.getById(req.params.id);
+      const assetList = await assetListDb.getById(req.params.id);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      const generatedImages = generatedImageDb.getByAssetList(assetList.id);
-      const motionGraphicsVideos = mgVideoDb.getByAssetList(assetList.id);
-      const generatedAudio = generatedAudioDb.getByAssetList(assetList.id);
+      const generatedImages = await generatedImageDb.getByAssetList(assetList.id);
+      const motionGraphicsVideos = await mgVideoDb.getByAssetList(assetList.id);
+      const generatedAudio = await generatedAudioDb.getByAssetList(assetList.id);
 
       // Backfill characterId for existing MG scenes that don't have one
-      const character = characterDb.getByModule(assetList.moduleName);
+      const characters = await characterDb.getByModule(assetList.moduleName);
+      const character = characters[0]; // Get first character for module
       if (character) {
         const mgScenes = generatedImages.filter(img =>
           (img.assetType || '').toLowerCase().includes('motion_graphics') &&
@@ -643,8 +711,8 @@ module.exports = (jobManager) => {
             s === slideKey || s === String(scene.slideNumber)
           );
           if (hasCharacter) {
-            generatedImageDb.update(scene.id, { characterId: character.id });
-            scene.characterId = character.id; // Update in-memory for response
+            await generatedImageDb.update(scene.id, { characterId: character.id });
+            scene.characterId = character.id;
           }
         }
       }
@@ -661,15 +729,14 @@ module.exports = (jobManager) => {
   });
 
   // Delete asset list
-  router.delete('/asset-lists/:id', (req, res) => {
+  router.delete('/asset-lists/:id', async (req, res) => {
     try {
-      // First delete all generated images for this asset list
-      const images = generatedImageDb.getByAssetList(req.params.id);
+      const images = await generatedImageDb.getByAssetList(req.params.id);
       if (images.length > 0) {
-        generatedImageDb.deleteByIds(images.map(img => img.id));
+        await generatedImageDb.deleteByIds(images.map(img => img.id));
       }
 
-      const deleted = assetListDb.delete(req.params.id);
+      const deleted = await assetListDb.delete(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
@@ -684,10 +751,9 @@ module.exports = (jobManager) => {
   // ==========================================
 
   // Get characters for a module
-  router.get('/characters/:moduleName', (req, res) => {
+  router.get('/characters/:moduleName', async (req, res) => {
     try {
-      const characters = characterDb.getByModule(req.params.moduleName);
-      // Ensure referenceImages has at least the anchorImagePath if empty
+      const characters = await characterDb.getByModule(req.params.moduleName);
       const enrichedCharacters = characters.map(char => {
         if ((!char.referenceImages || char.referenceImages.length === 0) && char.anchorImagePath) {
           char.referenceImages = [char.anchorImagePath];
@@ -701,7 +767,7 @@ module.exports = (jobManager) => {
   });
 
   // Create or update character
-  router.post('/characters', (req, res) => {
+  router.post('/characters', async (req, res) => {
     try {
       const { moduleName, characterName, career, appearanceDescription, appearsOnSlides } = req.body;
 
@@ -709,19 +775,18 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'moduleName and characterName are required' });
       }
 
-      // Check if character exists
-      const existing = characterDb.getByModuleAndName(moduleName, characterName);
+      const existing = await characterDb.getByModuleAndName(moduleName, characterName);
       if (existing) {
-        characterDb.update(existing.id, {
+        await characterDb.update(existing.id, {
           career,
           appearanceDescription,
           appearsOnSlides
         });
-        const updated = characterDb.getById(existing.id);
+        const updated = await characterDb.getById(existing.id);
         return res.json(updated);
       }
 
-      const character = characterDb.create({
+      const character = await characterDb.create({
         moduleName,
         characterName,
         career,
@@ -736,9 +801,9 @@ module.exports = (jobManager) => {
   });
 
   // Set/add reference images for character (supports multiple files)
-  router.put('/characters/:id/anchor', upload.array('anchor', 3), (req, res) => {
+  router.put('/characters/:id/anchor', upload.array('anchor', 3), async (req, res) => {
     try {
-      const character = characterDb.getById(req.params.id);
+      const character = await characterDb.getById(req.params.id);
       if (!character) {
         return res.status(404).json({ error: 'Character not found' });
       }
@@ -747,14 +812,7 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'At least one reference image file is required' });
       }
 
-      // Ensure anchors directory exists
-      const anchorsDir = path.join(STORAGE_DIR, 'anchors');
-      if (!fs.existsSync(anchorsDir)) {
-        fs.mkdirSync(anchorsDir, { recursive: true });
-      }
-
       // Get existing reference images or initialize empty array
-      // Note: character.referenceImages is already parsed by parseCharacterRow
       let referenceImages = Array.isArray(character.referenceImages) ? character.referenceImages : [];
 
       // Process each uploaded file
@@ -764,34 +822,50 @@ module.exports = (jobManager) => {
         const ext = path.extname(file.originalname) || '.png';
         const timestamp = Date.now();
         const anchorFilename = `anchor_${character.moduleName}_${character.characterName.replace(/\s+/g, '_')}_${timestamp}_${i}${ext}`;
-        const anchorPath = path.join(anchorsDir, anchorFilename);
 
-        // Move file
-        fs.renameSync(file.path, anchorPath);
-        newPaths.push(anchorPath);
+        // Upload to Supabase Storage
+        const uploaded = await storage.uploadFileFromPath(
+          BUCKETS.ANCHORS,
+          anchorFilename,
+          file.path,
+          file.mimetype
+        );
+
+        newPaths.push(uploaded.publicUrl);
+
+        // Clean up temp file
+        require('fs').unlinkSync(file.path);
       }
 
       // Add new paths to existing ones (max 3 total)
       referenceImages = [...referenceImages, ...newPaths].slice(-3);
 
       // Update character with both legacy anchorImagePath (first image) and new referenceImages array
-      characterDb.update(req.params.id, {
+      await characterDb.update(req.params.id, {
         anchorImagePath: referenceImages[0] || null,
         referenceImages: referenceImages
       });
 
-      const updated = characterDb.getById(req.params.id);
+      const updated = await characterDb.getById(req.params.id);
       res.json(updated);
     } catch (error) {
+      // Clean up temp files on error
+      if (req.files) {
+        for (const file of req.files) {
+          if (require('fs').existsSync(file.path)) {
+            require('fs').unlinkSync(file.path);
+          }
+        }
+      }
       res.status(500).json({ error: error.message });
     }
   });
 
   // Remove a specific reference image from character
-  router.delete('/characters/:id/reference-image', (req, res) => {
+  router.delete('/characters/:id/reference-image', async (req, res) => {
     try {
       const { imagePath } = req.body;
-      const character = characterDb.getById(req.params.id);
+      const character = await characterDb.getById(req.params.id);
 
       if (!character) {
         return res.status(404).json({ error: 'Character not found' });
@@ -801,7 +875,7 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'imagePath is required' });
       }
 
-      // Get existing reference images (already parsed by parseCharacterRow)
+      // Get existing reference images
       let referenceImages = Array.isArray(character.referenceImages) ? [...character.referenceImages] : [];
 
       // Remove the specified image
@@ -809,19 +883,20 @@ module.exports = (jobManager) => {
       if (index > -1) {
         referenceImages.splice(index, 1);
 
-        // Delete the file from disk
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
+        // Delete from Supabase Storage
+        const filename = storage.getFilenameFromUrl(imagePath);
+        if (filename) {
+          await storage.deleteFile(BUCKETS.ANCHORS, filename);
         }
       }
 
       // Update character
-      characterDb.update(req.params.id, {
+      await characterDb.update(req.params.id, {
         anchorImagePath: referenceImages[0] || null,
         referenceImages: referenceImages
       });
 
-      const updated = characterDb.getById(req.params.id);
+      const updated = await characterDb.getById(req.params.id);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -856,42 +931,38 @@ module.exports = (jobManager) => {
         filename = `standalone_${timestamp}.png`;
       }
 
-      const outputPath = path.join(STORAGE_DIR, 'images', filename);
-
-      // Ensure images directory exists
-      const imagesDir = path.join(STORAGE_DIR, 'images');
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
-
-      // Get reference image paths if uploaded (supports multiple)
-      const anchorImagePaths = req.files ? req.files.map(f => f.path) : [];
-
-      // Generate the image
-      const result = await imageGenService.generateAndSave({
-        prompt,
-        outputPath,
-        anchorImagePaths
-      });
-
-      // Clean up uploaded reference images after use
+      // Get reference image URLs if uploaded
+      const anchorImageUrls = [];
       if (req.files) {
         for (const file of req.files) {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          const uploaded = await storage.uploadFileFromPath(
+            BUCKETS.UPLOADS,
+            `ref_${Date.now()}_${file.originalname}`,
+            file.path,
+            file.mimetype
+          );
+          anchorImageUrls.push(uploaded.publicUrl);
+          require('fs').unlinkSync(file.path);
         }
       }
 
+      // Generate the image
+      const result = await imageGenService.generateToStorage({
+        prompt,
+        bucket: BUCKETS.IMAGES,
+        filename,
+        anchorImageUrls
+      });
+
       // Save to database so it appears in Library
-      const dbRecord = generatedImageDb.create({
+      const dbRecord = await generatedImageDb.create({
         assetListId: null,
         slideNumber: pageNumber ? parseInt(pageNumber) : null,
         assetType: 'standalone',
         cmsFilename: filename,
         originalPrompt: prompt,
         characterId: null,
-        imagePath: outputPath,
+        imagePath: result.publicUrl,
         status: 'completed'
       });
 
@@ -899,13 +970,17 @@ module.exports = (jobManager) => {
         success: true,
         id: dbRecord.id,
         filename,
-        path: `/images/${filename}`,
+        path: result.publicUrl,
         mimeType: result.mimeType
       });
     } catch (error) {
       // Clean up on error
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.files) {
+        for (const file of req.files) {
+          if (require('fs').existsSync(file.path)) {
+            require('fs').unlinkSync(file.path);
+          }
+        }
       }
       res.status(500).json({ error: error.message });
     }
@@ -920,26 +995,23 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'generatedImageId is required' });
       }
 
-      const genImage = generatedImageDb.getById(generatedImageId);
+      const genImage = await generatedImageDb.getById(generatedImageId);
       if (!genImage) {
         return res.status(404).json({ error: 'Generated image record not found' });
       }
 
-      // Get the asset list to find module/session info
-      const assetList = assetListDb.getById(genImage.assetListId);
+      const assetList = await assetListDb.getById(genImage.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Determine the prompt to use
       const finalPrompt = prompt || genImage.modifiedPrompt || genImage.originalPrompt;
       if (!finalPrompt) {
         return res.status(400).json({ error: 'No prompt available for generation' });
       }
 
       // Check if we should use character anchor
-      // Server-side validation: only use anchor for character-related asset types
-      let anchorImagePaths = [];
+      let anchorImageUrls = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
       const isCharacterAssetType = assetTypeLower.includes('career') ||
                                    assetTypeLower.includes('character') ||
@@ -947,67 +1019,47 @@ module.exports = (jobManager) => {
                                    assetTypeLower.includes('motion_graphics');
 
       if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
-        const character = characterDb.getById(genImage.characterId);
+        const character = await characterDb.getById(genImage.characterId);
         if (character) {
-          // Try to get multiple reference images first, fall back to single anchorImagePath
-          if (character.referenceImages) {
-            try {
-              const refs = JSON.parse(character.referenceImages);
-              if (Array.isArray(refs) && refs.length > 0) {
-                anchorImagePaths = refs;
-              }
-            } catch (e) {
-              // Fallback to single path
-            }
-          }
-          if (anchorImagePaths.length === 0 && character.anchorImagePath) {
-            anchorImagePaths = [character.anchorImagePath];
+          if (character.referenceImages && Array.isArray(character.referenceImages) && character.referenceImages.length > 0) {
+            anchorImageUrls = character.referenceImages;
+          } else if (character.anchorImagePath) {
+            anchorImageUrls = [character.anchorImagePath];
           }
         }
       }
 
       // Update status to generating
-      generatedImageDb.update(generatedImageId, { status: 'generating', modifiedPrompt: finalPrompt });
+      await generatedImageDb.update(generatedImageId, { status: 'generating', modifiedPrompt: finalPrompt });
 
-      // Generate the image (async - respond immediately)
       const imageGenService = req.app.get('imageGenService');
       if (!imageGenService) {
         return res.status(500).json({ error: 'Image generation service not initialized' });
       }
 
-      // Generate filename and path
       const outputFilename = genImage.cmsFilename || `image_${generatedImageId}.png`;
-      const outputPath = path.join(STORAGE_DIR, 'images', outputFilename);
 
-      // Ensure images directory exists
-      const imagesDir = path.join(STORAGE_DIR, 'images');
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
-
-      // Run generation
-      imageGenService.generateAndSave({
+      // Run generation asynchronously
+      imageGenService.generateToStorage({
         prompt: finalPrompt,
-        outputPath,
-        anchorImagePaths
-      }).then(result => {
-        // Update record with success
-        generatedImageDb.update(generatedImageId, {
+        bucket: BUCKETS.IMAGES,
+        filename: outputFilename,
+        anchorImageUrls
+      }).then(async result => {
+        await generatedImageDb.update(generatedImageId, {
           status: 'completed',
-          imagePath: result.path
+          imagePath: result.publicUrl
         });
 
-        // Add to generation history
-        generationHistoryDb.create({
+        await generationHistoryDb.create({
           generatedImageId,
           prompt: finalPrompt,
-          imagePath: result.path
+          imagePath: result.publicUrl
         });
 
         console.log(`Image generated successfully: ${outputFilename}`);
-      }).catch(error => {
-        // Update record with failure
-        generatedImageDb.update(generatedImageId, { status: 'failed' });
+      }).catch(async error => {
+        await generatedImageDb.update(generatedImageId, { status: 'failed' });
         console.error(`Image generation failed for ${generatedImageId}:`, error.message);
       });
 
@@ -1022,18 +1074,16 @@ module.exports = (jobManager) => {
   });
 
   // Get all generated images with filtering
-  router.get('/images', (req, res) => {
+  router.get('/images', async (req, res) => {
     try {
       const { moduleName, sessionNumber, status, limit, offset } = req.query;
-      // Support comma-separated statuses (e.g., "completed,uploaded,imported,default")
-      // Express may parse repeated params as array or comma-separated as string
       let statuses;
       if (Array.isArray(status)) {
         statuses = status.map(s => s.trim());
       } else if (status) {
         statuses = status.split(',').map(s => s.trim());
       }
-      const images = generatedImageDb.getAll({
+      const images = await generatedImageDb.getAll({
         moduleName,
         sessionNumber: sessionNumber ? parseInt(sessionNumber) : undefined,
         statuses,
@@ -1047,15 +1097,14 @@ module.exports = (jobManager) => {
   });
 
   // Get single generated image
-  router.get('/images/:id', (req, res) => {
+  router.get('/images/:id', async (req, res) => {
     try {
-      const image = generatedImageDb.getById(req.params.id);
+      const image = await generatedImageDb.getById(req.params.id);
       if (!image) {
         return res.status(404).json({ error: 'Image not found' });
       }
 
-      // Include generation history
-      const history = generationHistoryDb.getByImageId(image.id);
+      const history = await generationHistoryDb.getByImageId(image.id);
       res.json({ ...image, history });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1063,7 +1112,7 @@ module.exports = (jobManager) => {
   });
 
   // Update image prompt and/or asset type
-  router.patch('/images/:id', (req, res) => {
+  router.patch('/images/:id', async (req, res) => {
     try {
       const { modifiedPrompt, characterId, assetType } = req.body;
 
@@ -1072,10 +1121,9 @@ module.exports = (jobManager) => {
       if (characterId !== undefined) updates.characterId = characterId;
       if (assetType !== undefined) {
         updates.assetType = assetType;
-        // Also update CMS filename to reflect new type
-        const image = generatedImageDb.getById(req.params.id);
+        const image = await generatedImageDb.getById(req.params.id);
         if (image && image.assetListId) {
-          const assetList = assetListDb.getById(image.assetListId);
+          const assetList = await assetListDb.getById(image.assetListId);
           if (assetList) {
             const newCmsFilename = generateCmsFilename(
               assetList.moduleName,
@@ -1087,13 +1135,12 @@ module.exports = (jobManager) => {
         }
       }
 
-      const updated = generatedImageDb.update(req.params.id, updates);
+      const updated = await generatedImageDb.update(req.params.id, updates);
       if (!updated) {
         return res.status(404).json({ error: 'Image not found' });
       }
 
-      // Return the updated image
-      const updatedImage = generatedImageDb.getById(req.params.id);
+      const updatedImage = await generatedImageDb.getById(req.params.id);
       res.json({ success: true, image: updatedImage });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1109,39 +1156,33 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'sourceId and sourceType are required' });
       }
 
-      const genImage = generatedImageDb.getById(req.params.id);
+      const genImage = await generatedImageDb.getById(req.params.id);
       if (!genImage) {
         return res.status(404).json({ error: 'Generated image record not found' });
       }
 
-      const assetList = assetListDb.getById(genImage.assetListId);
+      const assetList = await assetListDb.getById(genImage.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      let sourcePath, sourceFilename;
+      let sourceUrl, sourceFilename;
 
       if (sourceType === 'video') {
-        const video = videoDb.getById(sourceId);
+        const video = await videoDb.getById(sourceId);
         if (!video) {
           return res.status(404).json({ error: 'Source video not found' });
         }
-        sourcePath = path.join(STORAGE_DIR, video.filename);
+        sourceUrl = video.path;
         sourceFilename = video.filename;
-        // Tag the video with the module it's being used for
-        videoDb.update(sourceId, { moduleName: assetList.moduleName });
+        await videoDb.update(sourceId, { moduleName: assetList.moduleName });
       } else {
-        // Image from generated_images table
-        const sourceImage = generatedImageDb.getById(sourceId);
+        const sourceImage = await generatedImageDb.getById(sourceId);
         if (!sourceImage || !sourceImage.imagePath) {
           return res.status(404).json({ error: 'Source image not found' });
         }
-        sourcePath = sourceImage.imagePath;
+        sourceUrl = sourceImage.imagePath;
         sourceFilename = path.basename(sourceImage.imagePath);
-      }
-
-      if (!fs.existsSync(sourcePath)) {
-        return res.status(404).json({ error: 'Source file not found on disk' });
       }
 
       // Determine output filename with CMS pattern
@@ -1157,38 +1198,36 @@ module.exports = (jobManager) => {
         ).replace(/\.png$/, ext);
       }
 
-      const outputPath = path.join(STORAGE_DIR, 'images', outputFilename);
+      // Copy file in Supabase Storage
+      const sourceBucket = storage.getBucketFromUrl(sourceUrl);
+      const sourceFile = storage.getFilenameFromUrl(sourceUrl);
 
-      // Ensure images directory exists
-      const imagesDir = path.join(STORAGE_DIR, 'images');
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
+      if (sourceBucket && sourceFile) {
+        await storage.copyFile(sourceBucket, sourceFile, BUCKETS.IMAGES, outputFilename);
       }
 
-      // Copy file to new location
-      fs.copyFileSync(sourcePath, outputPath);
+      const publicUrl = storage.getPublicUrl(BUCKETS.IMAGES, outputFilename);
 
       // Update the generated image record
-      generatedImageDb.update(req.params.id, {
+      await generatedImageDb.update(req.params.id, {
         status: 'imported',
-        imagePath: outputPath,
+        imagePath: publicUrl,
         cmsFilename: outputFilename
       });
 
-      // Add to generation history
-      generationHistoryDb.create({
+      await generationHistoryDb.create({
         generatedImageId: req.params.id,
         prompt: `[Imported from ${sourceType}: ${sourceFilename}]`,
-        imagePath: outputPath
+        imagePath: publicUrl
       });
 
-      const updatedImage = generatedImageDb.getById(req.params.id);
+      const updatedImage = await generatedImageDb.getById(req.params.id);
 
       res.json({
         success: true,
         image: updatedImage,
         filename: outputFilename,
-        path: `/images/${outputFilename}`
+        path: publicUrl
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1198,7 +1237,7 @@ module.exports = (jobManager) => {
   // Upload an image to fulfill a generated image record
   router.post('/images/:id/upload', upload.single('image'), async (req, res) => {
     try {
-      const genImage = generatedImageDb.getById(req.params.id);
+      const genImage = await generatedImageDb.getById(req.params.id);
       if (!genImage) {
         return res.status(404).json({ error: 'Generated image record not found' });
       }
@@ -1207,17 +1246,14 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Image file is required' });
       }
 
-      // Get the asset list to find module/session info for filename
-      const assetList = assetListDb.getById(genImage.assetListId);
+      const assetList = await assetListDb.getById(genImage.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Determine output filename (use existing cmsFilename or generate one)
       const ext = path.extname(req.file.originalname).toLowerCase() || '.png';
       let outputFilename = genImage.cmsFilename;
       if (outputFilename) {
-        // Replace extension with uploaded file's extension
         outputFilename = outputFilename.replace(/\.[^.]+$/, ext);
       } else {
         outputFilename = generateCmsFilename(
@@ -1227,43 +1263,41 @@ module.exports = (jobManager) => {
         ).replace(/\.png$/, ext);
       }
 
-      const outputPath = path.join(STORAGE_DIR, 'images', outputFilename);
+      // Upload to Supabase Storage
+      const uploaded = await storage.uploadFileFromPath(
+        BUCKETS.IMAGES,
+        outputFilename,
+        req.file.path,
+        req.file.mimetype
+      );
 
-      // Ensure images directory exists
-      const imagesDir = path.join(STORAGE_DIR, 'images');
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
-
-      // Move uploaded file to permanent location
-      fs.renameSync(req.file.path, outputPath);
+      // Clean up temp file
+      require('fs').unlinkSync(req.file.path);
 
       // Update the generated image record
-      generatedImageDb.update(req.params.id, {
+      await generatedImageDb.update(req.params.id, {
         status: 'uploaded',
-        imagePath: outputPath,
+        imagePath: uploaded.publicUrl,
         cmsFilename: outputFilename
       });
 
-      // Add to generation history for tracking
-      generationHistoryDb.create({
+      await generationHistoryDb.create({
         generatedImageId: req.params.id,
         prompt: '[Uploaded]',
-        imagePath: outputPath
+        imagePath: uploaded.publicUrl
       });
 
-      const updatedImage = generatedImageDb.getById(req.params.id);
+      const updatedImage = await generatedImageDb.getById(req.params.id);
 
       res.json({
         success: true,
         image: updatedImage,
         filename: outputFilename,
-        path: `/images/${outputFilename}`
+        path: uploaded.publicUrl
       });
     } catch (error) {
-      // Clean up uploaded file on error
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && require('fs').existsSync(req.file.path)) {
+        require('fs').unlinkSync(req.file.path);
       }
       res.status(500).json({ error: error.message });
     }
@@ -1274,25 +1308,19 @@ module.exports = (jobManager) => {
     try {
       const { prompt, useCharacterAnchor } = req.body;
 
-      const genImage = generatedImageDb.getById(req.params.id);
+      const genImage = await generatedImageDb.getById(req.params.id);
       if (!genImage) {
         return res.status(404).json({ error: 'Image not found' });
       }
 
-      // Forward to generate endpoint logic
-      req.body.generatedImageId = req.params.id;
-      req.body.prompt = prompt || genImage.modifiedPrompt || genImage.originalPrompt;
-
-      // Delegate to generate handler (simulate internal call)
       const imageGenService = req.app.get('imageGenService');
       if (!imageGenService) {
         return res.status(500).json({ error: 'Image generation service not initialized' });
       }
 
-      const finalPrompt = req.body.prompt;
+      const finalPrompt = prompt || genImage.modifiedPrompt || genImage.originalPrompt;
 
-      // Server-side validation: only use anchor for character-related asset types
-      let anchorImagePaths = [];
+      let anchorImageUrls = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
       const isCharacterAssetType = assetTypeLower.includes('career') ||
                                    assetTypeLower.includes('character') ||
@@ -1300,49 +1328,38 @@ module.exports = (jobManager) => {
                                    assetTypeLower.includes('motion_graphics');
 
       if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
-        const character = characterDb.getById(genImage.characterId);
+        const character = await characterDb.getById(genImage.characterId);
         if (character) {
-          // Try to get multiple reference images first, fall back to single anchorImagePath
-          if (character.referenceImages) {
-            try {
-              const refs = JSON.parse(character.referenceImages);
-              if (Array.isArray(refs) && refs.length > 0) {
-                anchorImagePaths = refs;
-              }
-            } catch (e) {
-              // Fallback to single path
-            }
-          }
-          if (anchorImagePaths.length === 0 && character.anchorImagePath) {
-            anchorImagePaths = [character.anchorImagePath];
+          if (character.referenceImages && Array.isArray(character.referenceImages) && character.referenceImages.length > 0) {
+            anchorImageUrls = character.referenceImages;
+          } else if (character.anchorImagePath) {
+            anchorImageUrls = [character.anchorImagePath];
           }
         }
       }
 
-      // Update status
-      generatedImageDb.update(req.params.id, { status: 'generating', modifiedPrompt: finalPrompt });
+      await generatedImageDb.update(req.params.id, { status: 'generating', modifiedPrompt: finalPrompt });
 
       const outputFilename = genImage.cmsFilename || `image_${genImage.id}.png`;
-      const outputPath = path.join(STORAGE_DIR, 'images', outputFilename);
 
-      // Run regeneration
-      imageGenService.generateAndSave({
+      imageGenService.generateToStorage({
         prompt: finalPrompt,
-        outputPath,
-        anchorImagePaths
-      }).then(result => {
-        generatedImageDb.update(req.params.id, {
+        bucket: BUCKETS.IMAGES,
+        filename: outputFilename,
+        anchorImageUrls
+      }).then(async result => {
+        await generatedImageDb.update(req.params.id, {
           status: 'completed',
-          imagePath: result.path
+          imagePath: result.publicUrl
         });
-        generationHistoryDb.create({
+        await generationHistoryDb.create({
           generatedImageId: req.params.id,
           prompt: finalPrompt,
-          imagePath: result.path
+          imagePath: result.publicUrl
         });
         console.log(`Image regenerated successfully: ${outputFilename}`);
-      }).catch(error => {
-        generatedImageDb.update(req.params.id, { status: 'failed' });
+      }).catch(async error => {
+        await generatedImageDb.update(req.params.id, { status: 'failed' });
         console.error(`Image regeneration failed for ${req.params.id}:`, error.message);
       });
 
@@ -1360,21 +1377,18 @@ module.exports = (jobManager) => {
   // Motion Graphics Video endpoints
   // ==========================================
 
-  // Get motion graphics video + scenes for a specific slide
-  router.get('/motion-graphics/:assetListId/:slideNumber', (req, res) => {
+  router.get('/motion-graphics/:assetListId/:slideNumber', async (req, res) => {
     try {
       const { assetListId, slideNumber } = req.params;
 
-      const assetList = assetListDb.getById(assetListId);
+      const assetList = await assetListDb.getById(assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Get the MG video record for this slide
-      const mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+      const mgVideo = await mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
 
-      // Get all scene images for this slide (motion_graphics_scene type)
-      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const allImages = await generatedImageDb.getByAssetList(assetListId);
       const scenes = allImages.filter(img =>
         img.slideNumber === parseInt(slideNumber) &&
         (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
@@ -1392,12 +1406,11 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Upload final video for a motion graphics slide
   router.post('/motion-graphics/:assetListId/:slideNumber/video', upload.single('video'), async (req, res) => {
     try {
       const { assetListId, slideNumber } = req.params;
 
-      const assetList = assetListDb.getById(assetListId);
+      const assetList = await assetListDb.getById(assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
@@ -1406,53 +1419,51 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Video file is required' });
       }
 
-      // Generate CMS filename for the video (VID pattern)
       const cmsFilename = generateMGVideoFilename(
         assetList.moduleName,
         assetList.sessionNumber,
         parseInt(slideNumber)
       );
 
-      const outputPath = path.join(STORAGE_DIR, 'mg-videos', cmsFilename);
+      // Upload to Supabase Storage
+      const uploaded = await storage.uploadFileFromPath(
+        BUCKETS.MG_VIDEOS,
+        cmsFilename,
+        req.file.path,
+        req.file.mimetype
+      );
 
-      // Ensure mg-videos directory exists
-      const mgVideosDir = path.join(STORAGE_DIR, 'mg-videos');
-      if (!fs.existsSync(mgVideosDir)) {
-        fs.mkdirSync(mgVideosDir, { recursive: true });
-      }
+      // Clean up temp file
+      require('fs').unlinkSync(req.file.path);
 
-      // Move uploaded file to permanent location
-      fs.renameSync(req.file.path, outputPath);
-
-      // Count scenes for this slide
-      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const allImages = await generatedImageDb.getByAssetList(assetListId);
       const sceneCount = allImages.filter(img =>
         img.slideNumber === parseInt(slideNumber) &&
         (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
       ).length;
 
-      // Check if record exists
-      let mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+      let mgVideo = await mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
 
       if (mgVideo) {
         // Delete old video file if exists
-        if (mgVideo.videoPath && fs.existsSync(mgVideo.videoPath)) {
-          fs.unlinkSync(mgVideo.videoPath);
+        if (mgVideo.videoPath) {
+          const oldFilename = storage.getFilenameFromUrl(mgVideo.videoPath);
+          if (oldFilename) {
+            await storage.deleteFile(BUCKETS.MG_VIDEOS, oldFilename);
+          }
         }
-        // Update existing record
-        mgVideo = mgVideoDb.update(mgVideo.id, {
+        mgVideo = await mgVideoDb.update(mgVideo.id, {
           cmsFilename,
-          videoPath: outputPath,
+          videoPath: uploaded.publicUrl,
           status: 'uploaded',
           sceneCount
         });
       } else {
-        // Create new record
-        mgVideo = mgVideoDb.create({
+        mgVideo = await mgVideoDb.create({
           assetListId,
           slideNumber: parseInt(slideNumber),
           cmsFilename,
-          videoPath: outputPath,
+          videoPath: uploaded.publicUrl,
           status: 'uploaded',
           sceneCount
         });
@@ -1462,34 +1473,33 @@ module.exports = (jobManager) => {
         success: true,
         video: mgVideo,
         filename: cmsFilename,
-        path: `/mg-videos/${cmsFilename}`
+        path: uploaded.publicUrl
       });
     } catch (error) {
-      // Clean up uploaded file on error
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && require('fs').existsSync(req.file.path)) {
+        require('fs').unlinkSync(req.file.path);
       }
       res.status(500).json({ error: error.message });
     }
   });
 
-  // Delete motion graphics video for a slide
-  router.delete('/motion-graphics/:assetListId/:slideNumber/video', (req, res) => {
+  router.delete('/motion-graphics/:assetListId/:slideNumber/video', async (req, res) => {
     try {
       const { assetListId, slideNumber } = req.params;
 
-      const mgVideo = mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
+      const mgVideo = await mgVideoDb.getByAssetListAndSlide(assetListId, parseInt(slideNumber));
       if (!mgVideo) {
         return res.status(404).json({ error: 'Motion graphics video not found' });
       }
 
-      // Delete the video file
-      if (mgVideo.videoPath && fs.existsSync(mgVideo.videoPath)) {
-        fs.unlinkSync(mgVideo.videoPath);
+      if (mgVideo.videoPath) {
+        const filename = storage.getFilenameFromUrl(mgVideo.videoPath);
+        if (filename) {
+          await storage.deleteFile(BUCKETS.MG_VIDEOS, filename);
+        }
       }
 
-      // Update record to pending (keep the record for tracking)
-      mgVideoDb.update(mgVideo.id, {
+      await mgVideoDb.update(mgVideo.id, {
         videoPath: null,
         status: 'pending'
       });
@@ -1500,31 +1510,27 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Add a new scene to a motion graphics slide
-  router.post('/motion-graphics/:assetListId/:slideNumber/scenes', (req, res) => {
+  router.post('/motion-graphics/:assetListId/:slideNumber/scenes', async (req, res) => {
     try {
       const { assetListId, slideNumber } = req.params;
       const { prompt, assetType = 'motion_graphics' } = req.body;
 
-      const assetList = assetListDb.getById(assetListId);
+      const assetList = await assetListDb.getById(assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Get existing scenes for this slide to determine next assetNumber
-      const allImages = generatedImageDb.getByAssetList(assetListId);
+      const allImages = await generatedImageDb.getByAssetList(assetListId);
       const slideScenes = allImages.filter(img =>
         img.slideNumber === parseInt(slideNumber) &&
         (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
       );
 
-      // Calculate next asset number
       const maxAssetNum = slideScenes.reduce((max, scene) => {
         return Math.max(max, scene.assetNumber || 1);
       }, 0);
       const newAssetNumber = maxAssetNum + 1;
 
-      // Generate CMS filename following MG pattern
       const cmsFilename = generateMGSceneFilename(
         assetList.moduleName,
         assetList.sessionNumber,
@@ -1532,15 +1538,14 @@ module.exports = (jobManager) => {
         newAssetNumber
       );
 
-      // Check if character appears on this slide
-      const character = characterDb.getByModule(assetList.moduleName);
+      const characters = await characterDb.getByModule(assetList.moduleName);
+      const character = characters[0];
       const slideKey = `S${assetList.sessionNumber}-${slideNumber}`;
       const hasCharacter = character && character.appearsOnSlides?.some(s =>
         s === slideKey || s === String(slideNumber)
       );
 
-      // Create the new scene record
-      const newScene = generatedImageDb.create({
+      const newScene = await generatedImageDb.create({
         assetListId,
         slideNumber: parseInt(slideNumber),
         assetType,
@@ -1561,23 +1566,23 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Delete a motion graphics scene
-  router.delete('/motion-graphics/scenes/:sceneId', (req, res) => {
+  router.delete('/motion-graphics/scenes/:sceneId', async (req, res) => {
     try {
       const { sceneId } = req.params;
 
-      const scene = generatedImageDb.getById(sceneId);
+      const scene = await generatedImageDb.getById(sceneId);
       if (!scene) {
         return res.status(404).json({ error: 'Scene not found' });
       }
 
-      // Delete the image file if it exists
-      if (scene.imagePath && fs.existsSync(scene.imagePath)) {
-        fs.unlinkSync(scene.imagePath);
+      if (scene.imagePath) {
+        const filename = storage.getFilenameFromUrl(scene.imagePath);
+        if (filename) {
+          await storage.deleteFile(BUCKETS.IMAGES, filename);
+        }
       }
 
-      // Delete the database record
-      generatedImageDb.deleteByIds([sceneId]);
+      await generatedImageDb.deleteByIds([sceneId]);
 
       res.json({
         success: true,
@@ -1593,12 +1598,10 @@ module.exports = (jobManager) => {
   // Audio/TTS endpoints
   // ==========================================
 
-  // Get available voices
   router.get('/voices', async (req, res) => {
     try {
       const elevenLabsService = req.app.get('elevenLabsService');
       if (!elevenLabsService || !elevenLabsService.isConfigured()) {
-        // Return hardcoded voices even if not configured
         return res.json([
           { voice_id: 'EXAVITQu4vr4xnSDxMaL', name: 'Rachel', description: 'Female, clear and articulate' },
           { voice_id: '29vD33N1CtxCmqQRPOHJ', name: 'Drew', description: 'Male, articulate and professional' },
@@ -1614,7 +1617,6 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Generate audio for a slide
   router.post('/audio/generate', async (req, res) => {
     try {
       const { audioId, text, voiceId, voiceName } = req.body;
@@ -1623,7 +1625,7 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'audioId is required' });
       }
 
-      const audioRecord = generatedAudioDb.getById(audioId);
+      const audioRecord = await generatedAudioDb.getById(audioId);
       if (!audioRecord) {
         return res.status(404).json({ error: 'Audio record not found' });
       }
@@ -1633,56 +1635,44 @@ module.exports = (jobManager) => {
         return res.status(503).json({ error: 'TTS service not configured. Add ELEVENLABS_API_KEY to .env file.' });
       }
 
-      // Use provided text or existing narration
       const narrationText = text || audioRecord.narrationText;
       if (!narrationText || narrationText.trim().length === 0) {
         return res.status(400).json({ error: 'No narration text provided' });
       }
 
-      // Get the asset list to generate filename
-      const assetList = assetListDb.getById(audioRecord.assetListId);
+      const assetList = await assetListDb.getById(audioRecord.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Generate CMS filename
       const cmsFilename = generateAudioFilename(
         assetList.moduleName,
         assetList.sessionNumber,
         audioRecord.slideNumber
       );
 
-      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
-
-      // Update status to generating
-      generatedAudioDb.update(audioId, {
+      await generatedAudioDb.update(audioId, {
         status: 'generating',
         narrationText,
         voiceId: voiceId || audioRecord.voiceId,
         voiceName: voiceName || audioRecord.voiceName
       });
 
-      // Generate audio asynchronously
-      elevenLabsService.generateAndSave({
+      elevenLabsService.generateToStorage({
         text: narrationText,
-        outputPath,
+        bucket: BUCKETS.AUDIO,
+        filename: cmsFilename,
         voiceId: voiceId || audioRecord.voiceId
-      }).then(result => {
-        // Verify file was actually created before marking complete
-        if (fs.existsSync(result.path)) {
-          generatedAudioDb.update(audioId, {
-            status: 'completed',
-            audioPath: result.path,
-            cmsFilename,
-            durationMs: result.durationMs
-          });
-          console.log(`Audio generated successfully: ${cmsFilename}`);
-        } else {
-          generatedAudioDb.update(audioId, { status: 'failed' });
-          console.error(`Audio file not created at expected path: ${result.path}`);
-        }
-      }).catch(error => {
-        generatedAudioDb.update(audioId, { status: 'failed' });
+      }).then(async result => {
+        await generatedAudioDb.update(audioId, {
+          status: 'completed',
+          audioPath: result.publicUrl,
+          cmsFilename,
+          durationMs: result.durationMs
+        });
+        console.log(`Audio generated successfully: ${cmsFilename}`);
+      }).catch(async error => {
+        await generatedAudioDb.update(audioId, { status: 'failed' });
         console.error(`Audio generation failed for ${audioId}:`, error.message);
       });
 
@@ -1696,10 +1686,9 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Upload audio file manually
   router.post('/audio/:id/upload', upload.single('audio'), async (req, res) => {
     try {
-      const audioRecord = generatedAudioDb.getById(req.params.id);
+      const audioRecord = await generatedAudioDb.getById(req.params.id);
       if (!audioRecord) {
         return res.status(404).json({ error: 'Audio record not found' });
       }
@@ -1708,12 +1697,11 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Audio file is required' });
       }
 
-      const assetList = assetListDb.getById(audioRecord.assetListId);
+      const assetList = await assetListDb.getById(audioRecord.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      // Generate CMS filename
       const ext = path.extname(req.file.originalname).toLowerCase() || '.mp3';
       const cmsFilename = generateAudioFilename(
         assetList.moduleName,
@@ -1721,21 +1709,18 @@ module.exports = (jobManager) => {
         audioRecord.slideNumber
       ).replace(/\.mp3$/, ext);
 
-      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
+      const uploaded = await storage.uploadFileFromPath(
+        BUCKETS.AUDIO,
+        cmsFilename,
+        req.file.path,
+        req.file.mimetype
+      );
 
-      // Ensure audio directory exists
-      const audioDir = path.join(STORAGE_DIR, 'audio');
-      if (!fs.existsSync(audioDir)) {
-        fs.mkdirSync(audioDir, { recursive: true });
-      }
+      require('fs').unlinkSync(req.file.path);
 
-      // Move uploaded file
-      fs.renameSync(req.file.path, outputPath);
-
-      // Update record
-      const updated = generatedAudioDb.update(req.params.id, {
+      const updated = await generatedAudioDb.update(req.params.id, {
         status: 'uploaded',
-        audioPath: outputPath,
+        audioPath: uploaded.publicUrl,
         cmsFilename
       });
 
@@ -1743,18 +1728,17 @@ module.exports = (jobManager) => {
         success: true,
         audio: updated,
         filename: cmsFilename,
-        path: `/audio/${cmsFilename}`
+        path: uploaded.publicUrl
       });
     } catch (error) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && require('fs').existsSync(req.file.path)) {
+        require('fs').unlinkSync(req.file.path);
       }
       res.status(500).json({ error: error.message });
     }
   });
 
-  // Update audio settings (narration text, voice)
-  router.patch('/audio/:id', (req, res) => {
+  router.patch('/audio/:id', async (req, res) => {
     try {
       const { narrationText, voiceId, voiceName } = req.body;
 
@@ -1763,7 +1747,7 @@ module.exports = (jobManager) => {
       if (voiceId !== undefined) updates.voiceId = voiceId;
       if (voiceName !== undefined) updates.voiceName = voiceName;
 
-      const updated = generatedAudioDb.update(req.params.id, updates);
+      const updated = await generatedAudioDb.update(req.params.id, updates);
       if (!updated) {
         return res.status(404).json({ error: 'Audio record not found' });
       }
@@ -1774,26 +1758,21 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Regenerate audio
   router.put('/audio/:id/regenerate', async (req, res) => {
     try {
       const { text, voiceId, voiceName } = req.body;
 
-      const audioRecord = generatedAudioDb.getById(req.params.id);
+      const audioRecord = await generatedAudioDb.getById(req.params.id);
       if (!audioRecord) {
         return res.status(404).json({ error: 'Audio record not found' });
       }
-
-      // Forward to generate endpoint
-      req.body.audioId = req.params.id;
-      req.body.text = text || audioRecord.narrationText;
 
       const elevenLabsService = req.app.get('elevenLabsService');
       if (!elevenLabsService || !elevenLabsService.isConfigured()) {
         return res.status(503).json({ error: 'TTS service not configured' });
       }
 
-      const assetList = assetListDb.getById(audioRecord.assetListId);
+      const assetList = await assetListDb.getById(audioRecord.assetListId);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
@@ -1808,37 +1787,29 @@ module.exports = (jobManager) => {
         assetList.sessionNumber,
         audioRecord.slideNumber
       );
-      const outputPath = path.join(STORAGE_DIR, 'audio', cmsFilename);
 
-      // Update status
-      generatedAudioDb.update(req.params.id, {
+      await generatedAudioDb.update(req.params.id, {
         status: 'generating',
         narrationText,
         voiceId: voiceId || audioRecord.voiceId,
         voiceName: voiceName || audioRecord.voiceName
       });
 
-      // Regenerate
-      elevenLabsService.generateAndSave({
+      elevenLabsService.generateToStorage({
         text: narrationText,
-        outputPath,
+        bucket: BUCKETS.AUDIO,
+        filename: cmsFilename,
         voiceId: voiceId || audioRecord.voiceId
-      }).then(result => {
-        // Verify file was actually created before marking complete
-        if (fs.existsSync(result.path)) {
-          generatedAudioDb.update(req.params.id, {
-            status: 'completed',
-            audioPath: result.path,
-            cmsFilename,
-            durationMs: result.durationMs
-          });
-          console.log(`Audio regenerated successfully: ${cmsFilename}`);
-        } else {
-          generatedAudioDb.update(req.params.id, { status: 'failed' });
-          console.error(`Audio file not created at expected path: ${result.path}`);
-        }
-      }).catch(error => {
-        generatedAudioDb.update(req.params.id, { status: 'failed' });
+      }).then(async result => {
+        await generatedAudioDb.update(req.params.id, {
+          status: 'completed',
+          audioPath: result.publicUrl,
+          cmsFilename,
+          durationMs: result.durationMs
+        });
+        console.log(`Audio regenerated successfully: ${cmsFilename}`);
+      }).catch(async error => {
+        await generatedAudioDb.update(req.params.id, { status: 'failed' });
         console.error(`Audio regeneration failed for ${req.params.id}:`, error.message);
       });
 
@@ -1852,37 +1823,35 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Set default voice for an asset list (session)
-  router.patch('/asset-lists/:id/voice', (req, res) => {
+  router.patch('/asset-lists/:id/voice', async (req, res) => {
     try {
       const { voiceId, voiceName } = req.body;
 
-      const assetList = assetListDb.getById(req.params.id);
+      const assetList = await assetListDb.getById(req.params.id);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      assetListDb.update(req.params.id, {
+      await assetListDb.update(req.params.id, {
         defaultVoiceId: voiceId,
         defaultVoiceName: voiceName
       });
 
-      const updated = assetListDb.getById(req.params.id);
+      const updated = await assetListDb.getById(req.params.id);
       res.json({ success: true, assetList: updated });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  // Get audio records for an asset list
-  router.get('/asset-lists/:id/audio', (req, res) => {
+  router.get('/asset-lists/:id/audio', async (req, res) => {
     try {
-      const assetList = assetListDb.getById(req.params.id);
+      const assetList = await assetListDb.getById(req.params.id);
       if (!assetList) {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      const audioRecords = generatedAudioDb.getByAssetList(req.params.id);
+      const audioRecords = await generatedAudioDb.getByAssetList(req.params.id);
       res.json(audioRecords);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1892,8 +1861,7 @@ module.exports = (jobManager) => {
   return router;
 };
 
-// Helper function to generate CMS filename for audio
-// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.NAR1.mp3
+// Helper functions
 function generateAudioFilename(moduleName, sessionNumber, slideNumber) {
   const moduleCodeMap = {
     'Reactions': 'REAC',
@@ -1908,8 +1876,6 @@ function generateAudioFilename(moduleName, sessionNumber, slideNumber) {
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.NAR1.mp3`;
 }
 
-// Helper function to generate CMS filename for motion graphics videos
-// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.VID1.mp4
 function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
   const moduleCodeMap = {
     'Reactions': 'REAC',
@@ -1924,8 +1890,6 @@ function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.VID1.mp4`;
 }
 
-// Helper function to generate CMS filename for motion graphics scene images
-// Pattern: MOD.{MODULE}.{SESSION}.{SLIDE}.MG.{SCENE}.png
 function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNumber) {
   const moduleCodeMap = {
     'Reactions': 'REAC',
@@ -1940,8 +1904,6 @@ function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNu
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.MG.${sceneNumber}.png`;
 }
 
-// Helper function to extract unique slides from assets array
-// Used when Carl doesn't send a separate slides array
 function extractSlidesFromAssets(assets) {
   const slideMap = {};
   for (const asset of assets) {
@@ -1956,10 +1918,7 @@ function extractSlidesFromAssets(assets) {
   return Object.values(slideMap).sort((a, b) => a.slideNumber - b.slideNumber);
 }
 
-// Helper function to generate CMS filename
-// Pattern: MOD.{MODULE}.{SESSION}.{PAGE}.{TYPE}{NUM}.{EXT}
 function generateCmsFilename(moduleName, sessionNumber, asset) {
-  // Module code mapping
   const moduleCodeMap = {
     'Reactions': 'REAC',
     'Energy': 'ENER',
@@ -1973,7 +1932,6 @@ function generateCmsFilename(moduleName, sessionNumber, asset) {
   const session = sessionNumber || 0;
   const slide = asset.slideNumber || 0;
 
-  // Type code mapping
   const typeCodeMap = {
     'ai_generated_image': 'IMG',
     'labeled_diagram': 'DIA',
@@ -1990,7 +1948,6 @@ function generateCmsFilename(moduleName, sessionNumber, asset) {
   return `MOD.${moduleCode}.${session}.${slide}.${typeCode}${assetNum}.png`;
 }
 
-// Prompt templates for common use cases
 const promptTemplates = {
   categories: [
     {
