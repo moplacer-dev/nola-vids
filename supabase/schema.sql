@@ -157,12 +157,15 @@ CREATE INDEX IF NOT EXISTS idx_mg_videos_asset_list ON motion_graphics_videos(as
 
 -- ==========================================
 -- Generated Audio Table
--- TTS audio records
+-- TTS audio records (supports multi-part narration)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS generated_audio (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   asset_list_id UUID REFERENCES asset_lists(id) ON DELETE CASCADE,
-  slide_number INTEGER NOT NULL,
+  assessment_asset_id UUID REFERENCES assessment_assets(id) ON DELETE CASCADE,
+  slide_number INTEGER,
+  question_number INTEGER,
+  narration_type TEXT DEFAULT 'slide_narration',
   cms_filename TEXT,
   narration_text TEXT,
   voice_id TEXT,
@@ -171,12 +174,24 @@ CREATE TABLE IF NOT EXISTS generated_audio (
   duration_ms INTEGER,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(asset_list_id, slide_number)
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Composite unique constraint for multi-part audio
+-- For asset lists: unique by asset_list_id, slide_number, narration_type
+-- For assessments: unique by assessment_asset_id, question_number, narration_type
+CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_audio_asset_list_slide_type
+  ON generated_audio(asset_list_id, slide_number, narration_type)
+  WHERE asset_list_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_audio_assessment_question_type
+  ON generated_audio(assessment_asset_id, question_number, narration_type)
+  WHERE assessment_asset_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_generated_audio_asset_list ON generated_audio(asset_list_id);
+CREATE INDEX IF NOT EXISTS idx_generated_audio_assessment ON generated_audio(assessment_asset_id);
 CREATE INDEX IF NOT EXISTS idx_generated_audio_status ON generated_audio(status);
+CREATE INDEX IF NOT EXISTS idx_generated_audio_narration_type ON generated_audio(narration_type);
 
 -- ==========================================
 -- Row Level Security (RLS) Policies

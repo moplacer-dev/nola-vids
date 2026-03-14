@@ -1,0 +1,268 @@
+import { useState, useRef } from 'react';
+
+/**
+ * AssessmentNarrationPanel - Multi-part narration UI for assessment questions
+ *
+ * Displays all narration parts for a single question:
+ * - Question (scenario + question text)
+ * - Answer A-E (each answer choice)
+ * - Correct Response
+ * - First Incorrect
+ * - Second Incorrect
+ */
+export default function AssessmentNarrationPanel({
+  questionNumber,
+  audioRecords = [],
+  voices = [],
+  defaultVoiceId,
+  onGenerateAudio,
+  onGenerateAll,
+  onUploadAudio,
+  onEditNarration,
+  onSelectAudio,
+  selectedAudioId,
+  loading
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const fileInputRefs = useRef({});
+
+  // Get human-readable label for narration type
+  const getTypeLabel = (narrationType) => {
+    const labels = {
+      'question': 'Question',
+      'answer_a': 'Answer A',
+      'answer_b': 'Answer B',
+      'answer_c': 'Answer C',
+      'answer_d': 'Answer D',
+      'answer_e': 'Answer E',
+      'correct_response': 'Correct Response',
+      'incorrect_1': 'First Incorrect',
+      'incorrect_2': 'Second Incorrect'
+    };
+    return labels[narrationType] || narrationType;
+  };
+
+  // Order of narration types for display
+  const typeOrder = [
+    'question',
+    'answer_a',
+    'answer_b',
+    'answer_c',
+    'answer_d',
+    'answer_e',
+    'correct_response',
+    'incorrect_1',
+    'incorrect_2'
+  ];
+
+  // Sort and filter audio records for this question
+  const sortedRecords = [...audioRecords]
+    .filter(a => a.questionNumber === questionNumber || a.slideNumber === questionNumber)
+    .sort((a, b) => {
+      const aIdx = typeOrder.indexOf(a.narrationType);
+      const bIdx = typeOrder.indexOf(b.narrationType);
+      return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
+    });
+
+  // Calculate progress
+  const completedCount = sortedRecords.filter(a =>
+    ['completed', 'uploaded'].includes(a.status)
+  ).length;
+  const totalCount = sortedRecords.length;
+  const pendingCount = sortedRecords.filter(a => a.status === 'pending').length;
+
+  // Get status badge class
+  const getStatusClass = (status) => {
+    const classes = {
+      'pending': 'status-pending',
+      'generating': 'status-generating',
+      'completed': 'status-completed',
+      'uploaded': 'status-uploaded',
+      'failed': 'status-failed'
+    };
+    return classes[status] || '';
+  };
+
+  const handleFileUpload = (audioId, event) => {
+    const file = event.target.files?.[0];
+    if (file && onUploadAudio) {
+      onUploadAudio(audioId, file);
+      event.target.value = '';
+    }
+  };
+
+  const handleGenerateAll = () => {
+    if (onGenerateAll) {
+      onGenerateAll(questionNumber);
+    }
+  };
+
+  // Show empty state instead of returning null
+  if (sortedRecords.length === 0) {
+    return (
+      <div className="assessment-narration-panel">
+        <div className="narration-panel-header">
+          <div className="narration-panel-header-left">
+            <span className="narration-expand">{'\u25BC'}</span>
+            <span className="narration-label">NARRATIONS</span>
+          </div>
+          <div className="narration-panel-header-right">
+            <span className="narration-progress narration-empty">
+              No audio records - re-import data from Carl v7
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="assessment-narration-panel">
+      {/* Panel Header */}
+      <div
+        className="narration-panel-header"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="narration-panel-header-left">
+          <span className="narration-expand">{expanded ? '\u25BC' : '\u25B6'}</span>
+          <span className="narration-label">NARRATIONS</span>
+        </div>
+        <div className="narration-panel-header-right">
+          <span className="narration-progress">
+            {completedCount}/{totalCount} complete
+          </span>
+          {pendingCount > 0 && (
+            <button
+              className="btn-generate-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleGenerateAll();
+              }}
+              disabled={loading}
+            >
+              GEN ALL
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Panel Content */}
+      {expanded && (
+        <div className="narration-panel-content">
+          {sortedRecords.map((audio) => (
+            <div
+              key={audio.id}
+              className={`narration-part ${selectedAudioId === audio.id ? 'selected' : ''}`}
+              onClick={() => onSelectAudio && onSelectAudio(audio)}
+            >
+              {/* Part Header */}
+              <div className="narration-part-header">
+                <span className="narration-part-label">
+                  {getTypeLabel(audio.narrationType)}
+                </span>
+                <span className={`narration-status ${getStatusClass(audio.status)}`}>
+                  {audio.status?.toUpperCase()}
+                </span>
+              </div>
+
+              {/* Part Text */}
+              <p className="narration-part-text">
+                {audio.narrationText
+                  ? (audio.narrationText.length > 100
+                    ? audio.narrationText.substring(0, 100) + '...'
+                    : audio.narrationText)
+                  : 'No text'}
+              </p>
+
+              {/* Part Actions */}
+              <div className="narration-part-actions">
+                {/* Voice Selector */}
+                <select
+                  className="narration-voice-select"
+                  value={audio.voiceId || defaultVoiceId || ''}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    const voice = voices.find(v => v.voice_id === e.target.value);
+                    if (onEditNarration) {
+                      onEditNarration(audio.id, {
+                        voiceId: e.target.value,
+                        voiceName: voice?.name || ''
+                      });
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {voices.map(v => (
+                    <option key={v.voice_id} value={v.voice_id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Edit Button */}
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onEditNarration) {
+                      onEditNarration(audio.id, { editText: true });
+                    }
+                  }}
+                >
+                  EDIT
+                </button>
+
+                {/* Upload Button */}
+                <input
+                  type="file"
+                  accept="audio/mpeg,audio/mp3,audio/wav"
+                  style={{ display: 'none' }}
+                  ref={el => fileInputRefs.current[audio.id] = el}
+                  onChange={(e) => handleFileUpload(audio.id, e)}
+                />
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRefs.current[audio.id]?.click();
+                  }}
+                  disabled={loading}
+                >
+                  UPLOAD
+                </button>
+
+                {/* Generate/Play Button */}
+                {['completed', 'uploaded'].includes(audio.status) ? (
+                  <button
+                    className="btn-preview btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onSelectAudio) onSelectAudio(audio);
+                    }}
+                  >
+                    PLAY
+                  </button>
+                ) : (
+                  <button
+                    className="btn-primary btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onGenerateAudio) {
+                        onGenerateAudio(audio.id, {
+                          voiceId: audio.voiceId || defaultVoiceId
+                        });
+                      }
+                    }}
+                    disabled={audio.status === 'generating' || loading}
+                  >
+                    {audio.status === 'generating' ? 'GEN...' : 'GEN'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

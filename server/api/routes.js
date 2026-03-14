@@ -18,6 +18,12 @@ const {
 const storage = require('../services/storage');
 const { BUCKETS } = storage;
 
+const {
+  parseNarrationText,
+  isQuestionSlide,
+  narrationTypeToCode
+} = require('../utils/narrationParser');
+
 const router = express.Router();
 
 // Default images for specific slide types
@@ -2053,11 +2059,146 @@ module.exports = (jobManager) => {
         }
       }
 
+      // Process audio for each question
+      // Create multi-part audio records (question, answers, correct/incorrect responses)
+      let audioCreated = 0;
+      let audioKept = 0;
+
+      for (const question of questions) {
+        const qNum = question.questionNumber || (questions.indexOf(question) + 1);
+
+        // Get narration and onscreen text from question data
+        const narration = question.narration || '';
+        const onscreenText = question.onscreen_text || question.scenario || '';
+
+        // Parse into separate parts
+        const parts = parseNarrationText(narration, onscreenText);
+
+        // Create audio record for question
+        if (parts.question) {
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(null, null, 'question');
+          // Check for existing by assessment + question + type
+          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
+          const existingQuestion = existingRecords.find(r => r.narrationType === 'question');
+
+          if (existingQuestion) {
+            if (existingQuestion.narrationText !== parts.question) {
+              await generatedAudioDb.update(existingQuestion.id, { narrationText: parts.question });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assessmentAssetId: assessment.id,
+              questionNumber: qNum,
+              narrationType: 'question',
+              narrationText: parts.question,
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'question'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio records for each answer choice
+        for (const answer of parts.answers) {
+          const narrationType = `answer_${answer.letter.toLowerCase()}`;
+          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
+          const existingAnswer = existingRecords.find(r => r.narrationType === narrationType);
+
+          if (existingAnswer) {
+            if (existingAnswer.narrationText !== answer.text) {
+              await generatedAudioDb.update(existingAnswer.id, { narrationText: answer.text });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assessmentAssetId: assessment.id,
+              questionNumber: qNum,
+              narrationType,
+              narrationText: answer.text,
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, narrationType),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for correct response
+        if (parts.correctResponse) {
+          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
+          const existing = existingRecords.find(r => r.narrationType === 'correct_response');
+
+          if (existing) {
+            if (existing.narrationText !== parts.correctResponse) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.correctResponse });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assessmentAssetId: assessment.id,
+              questionNumber: qNum,
+              narrationType: 'correct_response',
+              narrationText: parts.correctResponse,
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'correct_response'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for first incorrect response
+        if (parts.incorrect1) {
+          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
+          const existing = existingRecords.find(r => r.narrationType === 'incorrect_1');
+
+          if (existing) {
+            if (existing.narrationText !== parts.incorrect1) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect1 });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assessmentAssetId: assessment.id,
+              questionNumber: qNum,
+              narrationType: 'incorrect_1',
+              narrationText: parts.incorrect1,
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'incorrect_1'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for second incorrect response
+        if (parts.incorrect2) {
+          const existingRecords = await generatedAudioDb.getByAssessmentQuestion(assessment.id, qNum);
+          const existing = existingRecords.find(r => r.narrationType === 'incorrect_2');
+
+          if (existing) {
+            if (existing.narrationText !== parts.incorrect2) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect2 });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assessmentAssetId: assessment.id,
+              questionNumber: qNum,
+              narrationType: 'incorrect_2',
+              narrationText: parts.incorrect2,
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, 'incorrect_2'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+      }
+
       const assessmentLabel = assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test';
       const action = isUpdate ? 'Updated' : 'Created';
+      const audioNote = (audioCreated + audioKept) > 0 ? `, ${audioCreated + audioKept} audio parts` : '';
       const details = isUpdate
-        ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed`
-        : `${created} image records`;
+        ? `${kept} kept, ${created} added, ${imagesToDelete.length} removed${audioNote}`
+        : `${created} image records${audioNote}`;
 
       res.json({
         assessmentAsset: {
@@ -2093,7 +2234,7 @@ module.exports = (jobManager) => {
     }
   });
 
-  // Get single assessment asset with its generated images
+  // Get single assessment asset with its generated images and audio
   router.get('/assessment-assets/:id', async (req, res) => {
     try {
       const assessment = await assessmentAssetDb.getById(req.params.id);
@@ -2102,10 +2243,12 @@ module.exports = (jobManager) => {
       }
 
       const generatedImages = await generatedImageDb.getByAssessmentAsset(assessment.id);
+      const generatedAudio = await generatedAudioDb.getByAssessmentAsset(assessment.id);
 
       res.json({
         ...assessment,
-        generatedImages
+        generatedImages,
+        generatedAudio
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -2120,11 +2263,214 @@ module.exports = (jobManager) => {
         await generatedImageDb.deleteByIds(images.map(img => img.id));
       }
 
+      // Also delete associated audio records
+      await generatedAudioDb.deleteByAssessmentAsset(req.params.id);
+
       const deleted = await assessmentAssetDb.delete(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: 'Assessment asset not found' });
       }
       res.json({ success: true, deletedImages: images.length });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all audio for an assessment
+  router.get('/assessment-assets/:id/audio', async (req, res) => {
+    try {
+      const assessment = await assessmentAssetDb.getById(req.params.id);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment asset not found' });
+      }
+
+      const audioRecords = await generatedAudioDb.getByAssessmentAsset(req.params.id);
+      res.json(audioRecords);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Generate audio for a specific assessment question part
+  router.post('/audio/generate-assessment', async (req, res) => {
+    try {
+      const { audioId, text, voiceId, voiceName } = req.body;
+
+      if (!audioId) {
+        return res.status(400).json({ error: 'audioId is required' });
+      }
+
+      const audioRecord = await generatedAudioDb.getById(audioId);
+      if (!audioRecord) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      const elevenLabsService = req.app.get('elevenLabsService');
+      if (!elevenLabsService || !elevenLabsService.isConfigured()) {
+        return res.status(503).json({ error: 'TTS service not configured. Add ELEVENLABS_API_KEY to .env file.' });
+      }
+
+      const narrationText = text || audioRecord.narrationText;
+      if (!narrationText || narrationText.trim().length === 0) {
+        return res.status(400).json({ error: 'No narration text provided' });
+      }
+
+      // Get filename based on whether it's assessment or asset list audio
+      let cmsFilename = audioRecord.cmsFilename;
+      if (!cmsFilename) {
+        if (audioRecord.assessmentAssetId) {
+          const assessment = await assessmentAssetDb.getById(audioRecord.assessmentAssetId);
+          if (assessment) {
+            cmsFilename = generateAssessmentAudioFilename(
+              assessment.moduleName,
+              assessment.assessmentType,
+              audioRecord.questionNumber,
+              audioRecord.narrationType
+            );
+          }
+        } else if (audioRecord.assetListId) {
+          const assetList = await assetListDb.getById(audioRecord.assetListId);
+          if (assetList) {
+            cmsFilename = generateRcpAudioFilename(
+              assetList.moduleName,
+              assetList.sessionNumber,
+              audioRecord.slideNumber,
+              audioRecord.narrationType
+            );
+          }
+        }
+      }
+
+      await generatedAudioDb.update(audioId, {
+        status: 'generating',
+        narrationText,
+        voiceId: voiceId || audioRecord.voiceId,
+        voiceName: voiceName || audioRecord.voiceName,
+        cmsFilename
+      });
+
+      elevenLabsService.generateToStorage({
+        text: narrationText,
+        bucket: BUCKETS.AUDIO,
+        filename: cmsFilename,
+        voiceId: voiceId || audioRecord.voiceId
+      }).then(async result => {
+        await generatedAudioDb.update(audioId, {
+          status: 'completed',
+          audioPath: result.publicUrl,
+          cmsFilename,
+          durationMs: result.durationMs
+        });
+        console.log(`Audio generated successfully: ${cmsFilename}`);
+      }).catch(async error => {
+        await generatedAudioDb.update(audioId, { status: 'failed' });
+        console.error(`Audio generation failed for ${audioId}:`, error.message);
+      });
+
+      res.json({
+        audioId,
+        status: 'generating',
+        message: 'Audio generation started'
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk generate all pending audio for a question
+  router.post('/audio/generate-bulk', async (req, res) => {
+    try {
+      const { assessmentAssetId, assetListId, questionNumber, slideNumber, voiceId } = req.body;
+
+      const elevenLabsService = req.app.get('elevenLabsService');
+      if (!elevenLabsService || !elevenLabsService.isConfigured()) {
+        return res.status(503).json({ error: 'TTS service not configured. Add ELEVENLABS_API_KEY to .env file.' });
+      }
+
+      let audioRecords = [];
+      let moduleName, sessionNumber, assessmentType;
+
+      if (assessmentAssetId && questionNumber !== undefined) {
+        // Assessment audio
+        const assessment = await assessmentAssetDb.getById(assessmentAssetId);
+        if (!assessment) {
+          return res.status(404).json({ error: 'Assessment not found' });
+        }
+        moduleName = assessment.moduleName;
+        assessmentType = assessment.assessmentType;
+        audioRecords = await generatedAudioDb.getByAssessmentQuestion(assessmentAssetId, questionNumber);
+      } else if (assetListId && slideNumber !== undefined) {
+        // RCP slide audio
+        const assetList = await assetListDb.getById(assetListId);
+        if (!assetList) {
+          return res.status(404).json({ error: 'Asset list not found' });
+        }
+        moduleName = assetList.moduleName;
+        sessionNumber = assetList.sessionNumber;
+        audioRecords = await generatedAudioDb.getAllByAssetListAndSlide(assetListId, slideNumber);
+      } else {
+        return res.status(400).json({ error: 'Either (assessmentAssetId, questionNumber) or (assetListId, slideNumber) required' });
+      }
+
+      // Filter to pending records only
+      const pendingRecords = audioRecords.filter(r => r.status === 'pending');
+
+      if (pendingRecords.length === 0) {
+        return res.json({
+          message: 'No pending audio to generate',
+          generated: 0
+        });
+      }
+
+      // Start generation for all pending records
+      let startedCount = 0;
+      for (const record of pendingRecords) {
+        if (!record.narrationText || record.narrationText.trim().length === 0) {
+          continue;
+        }
+
+        // Generate CMS filename
+        let cmsFilename = record.cmsFilename;
+        if (!cmsFilename) {
+          if (assessmentAssetId) {
+            cmsFilename = generateAssessmentAudioFilename(moduleName, assessmentType, questionNumber, record.narrationType);
+          } else {
+            cmsFilename = generateRcpAudioFilename(moduleName, sessionNumber, slideNumber, record.narrationType);
+          }
+        }
+
+        await generatedAudioDb.update(record.id, {
+          status: 'generating',
+          voiceId: voiceId || record.voiceId,
+          cmsFilename
+        });
+
+        // Start async generation
+        elevenLabsService.generateToStorage({
+          text: record.narrationText,
+          bucket: BUCKETS.AUDIO,
+          filename: cmsFilename,
+          voiceId: voiceId || record.voiceId
+        }).then(async result => {
+          await generatedAudioDb.update(record.id, {
+            status: 'completed',
+            audioPath: result.publicUrl,
+            durationMs: result.durationMs
+          });
+          console.log(`Bulk audio generated: ${cmsFilename}`);
+        }).catch(async error => {
+          await generatedAudioDb.update(record.id, { status: 'failed' });
+          console.error(`Bulk audio generation failed for ${record.id}:`, error.message);
+        });
+
+        startedCount++;
+      }
+
+      res.json({
+        message: `Started generation for ${startedCount} audio files`,
+        generated: startedCount,
+        audioIds: pendingRecords.map(r => r.id)
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -2416,15 +2762,129 @@ async function processAssetList({
   }
 
   // Process slides with narration - create/update generated_audio records
+  // For question slides (RCP), create multi-part audio records
   let audioCreated = 0;
   let audioKept = 0;
   if (slides && slides.length > 0) {
     for (const slide of slides) {
       const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
       const narration = slide.narration || slide.narrationText || '';
+      const onscreenText = slide.onscreen_text || slide.onscreenText || '';
+      const slideType = slide.slideType || slide.slide_type || '';
 
-      if (narration && narration.trim().length > 0) {
-        const existingAudio = await generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
+      // Check if this is a question slide
+      if (isQuestionSlide(onscreenText, slideType)) {
+        // Parse the combined text into separate parts
+        const parts = parseNarrationText(narration, onscreenText);
+
+        // Create audio record for question (scenario + question text)
+        if (parts.question) {
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'question');
+          if (existing) {
+            if (existing.narrationText !== parts.question) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.question });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber: slideNum,
+              narrationType: 'question',
+              narrationText: parts.question,
+              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'question'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio records for each answer choice
+        for (const answer of parts.answers) {
+          const narrationType = `answer_${answer.letter.toLowerCase()}`;
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, narrationType);
+          if (existing) {
+            if (existing.narrationText !== answer.text) {
+              await generatedAudioDb.update(existing.id, { narrationText: answer.text });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber: slideNum,
+              narrationType,
+              narrationText: answer.text,
+              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, narrationType),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for correct response
+        if (parts.correctResponse) {
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'correct_response');
+          if (existing) {
+            if (existing.narrationText !== parts.correctResponse) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.correctResponse });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber: slideNum,
+              narrationType: 'correct_response',
+              narrationText: parts.correctResponse,
+              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'correct_response'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for first incorrect response
+        if (parts.incorrect1) {
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'incorrect_1');
+          if (existing) {
+            if (existing.narrationText !== parts.incorrect1) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect1 });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber: slideNum,
+              narrationType: 'incorrect_1',
+              narrationText: parts.incorrect1,
+              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_1'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+
+        // Create audio record for second incorrect response
+        if (parts.incorrect2) {
+          const existing = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'incorrect_2');
+          if (existing) {
+            if (existing.narrationText !== parts.incorrect2) {
+              await generatedAudioDb.update(existing.id, { narrationText: parts.incorrect2 });
+            }
+            audioKept++;
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber: slideNum,
+              narrationType: 'incorrect_2',
+              narrationText: parts.incorrect2,
+              cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_2'),
+              status: 'pending'
+            });
+            audioCreated++;
+          }
+        }
+      } else if (narration && narration.trim().length > 0) {
+        // Regular slide - single narration
+        const existingAudio = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNum, 'slide_narration');
         if (existingAudio) {
           if (existingAudio.narrationText !== narration) {
             await generatedAudioDb.update(existingAudio.id, { narrationText: narration });
@@ -2434,7 +2894,9 @@ async function processAssetList({
           await generatedAudioDb.create({
             assetListId: assetList.id,
             slideNumber: slideNum,
+            narrationType: 'slide_narration',
             narrationText: narration,
+            cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum),
             status: 'pending'
           });
           audioCreated++;
@@ -2523,6 +2985,46 @@ function getAssessmentAssetType(assessmentType, visualType) {
   const prefix = assessmentType === 'pre_test' ? 'pre_test' : 'post_test';
   const type = visualType?.toLowerCase() || 'image';
   return `${prefix}_${type}`;
+}
+
+// Generate CMS filename for assessment audio
+// Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>.mp3
+function generateAssessmentAudioFilename(moduleName, assessmentType, questionNumber, narrationType) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS',
+    'Heat and Energy': 'ENER'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
+  const qNum = String(questionNumber).padStart(2, '0');
+  const typeCode = narrationTypeToCode(narrationType);
+
+  return `MOD.${moduleCode}.${testType}.Q${qNum}.${typeCode}.mp3`;
+}
+
+// Generate CMS filename for RCP audio
+// Format: MOD.<CODE>.<SESSION>R.<SLIDE>.<TYPE>.mp3
+function generateRcpAudioFilename(moduleName, sessionNumber, slideNumber, narrationType) {
+  const moduleCodeMap = {
+    'Reactions': 'REAC',
+    'Energy': 'ENER',
+    'Waves': 'WAVE',
+    'Forces': 'FORC',
+    'Matter': 'MATT',
+    'Ecosystems': 'ECOS',
+    'Heat and Energy': 'ENER'
+  };
+
+  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const typeCode = narrationTypeToCode(narrationType);
+
+  return `MOD.${moduleCode}.${sessionNumber}R.${slideNumber}.${typeCode}.mp3`;
 }
 
 // Build prompt from assessment visual description

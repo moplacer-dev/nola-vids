@@ -23,6 +23,7 @@ export default function AssetList({
   onUploadAudio,
   onEditNarration,
   onSelectAudio,
+  onGenerateAllAudio,  // For multi-part bulk generation
   selectedImageId,
   selectedVideoId,
   selectedAudioId,
@@ -156,6 +157,7 @@ export default function AssetList({
                 assets={slide.assets}
                 mgVideo={mgVideo}
                 audio={mgAudio}
+                audioRecords={generatedAudio}
                 onGenerate={onGenerate}
                 onUpload={onUpload}
                 onImport={onImport}
@@ -170,6 +172,7 @@ export default function AssetList({
                 onUploadAudio={onUploadAudio}
                 onEditNarration={onEditNarration}
                 onSelectAudio={onSelectAudio}
+                onGenerateAllAudio={onGenerateAllAudio}
                 voices={voices}
                 defaultVoiceId={defaultVoiceId}
                 selectedImageId={selectedImageId}

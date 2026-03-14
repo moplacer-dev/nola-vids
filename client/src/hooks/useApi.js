@@ -389,6 +389,32 @@ export function useApi(accessKey) {
     return request(`/assessment-assets/${id}`);
   }, [request]);
 
+  // Assessment Audio endpoints
+  const getAssessmentAudio = useCallback(async (assessmentAssetId) => {
+    return request(`/assessment-assets/${assessmentAssetId}/audio`);
+  }, [request]);
+
+  const generateAssessmentAudio = useCallback(async (audioId, options = {}) => {
+    return request('/audio/generate-assessment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audioId,
+        text: options.text,
+        voiceId: options.voiceId,
+        voiceName: options.voiceName
+      })
+    });
+  }, [request]);
+
+  const generateBulkAudio = useCallback(async (options) => {
+    return request('/audio/generate-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -442,6 +468,10 @@ export function useApi(accessKey) {
     setSessionDefaultVoice,
     // Assessment Assets
     getAssessmentAssets,
-    getAssessmentAsset
+    getAssessmentAsset,
+    // Assessment Audio
+    getAssessmentAudio,
+    generateAssessmentAudio,
+    generateBulkAudio
   };
 }

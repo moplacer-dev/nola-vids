@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import AssessmentNarrationPanel from './AssessmentNarrationPanel';
 
 export default function MotionGraphicsGroup({
   slideNumber,
@@ -6,7 +7,8 @@ export default function MotionGraphicsGroup({
   scenes = [],  // Default to empty array
   assets = [],  // Raw assets with context fields
   mgVideo,
-  audio,
+  audio,  // Single audio record (for regular slides)
+  audioRecords = [],  // All audio records for this slide (for multi-part)
   onGenerate,
   onUpload,
   onImport,
@@ -21,6 +23,7 @@ export default function MotionGraphicsGroup({
   onUploadAudio,
   onEditNarration,
   onSelectAudio,
+  onGenerateAllAudio,  // For multi-part bulk generation
   voices = [],
   defaultVoiceId,
   selectedImageId,
@@ -43,6 +46,12 @@ export default function MotionGraphicsGroup({
   ).length;
   const totalScenes = safeScenes.length;
   const hasVideo = mgVideo?.status === 'uploaded' && mgVideo?.videoPath;
+
+  // Check if this is a question slide (has multi-part audio)
+  const slideAudioRecords = audioRecords.filter(a => a.slideNumber === slideNumber);
+  const isQuestionSlide = slideAudioRecords.some(a =>
+    ['question', 'answer_a', 'answer_b', 'correct_response'].includes(a.narrationType)
+  );
 
   const handleVideoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -301,14 +310,30 @@ export default function MotionGraphicsGroup({
           </div>
 
           {/* Narration Section */}
-          {audio && (
+          {isQuestionSlide ? (
+            /* Multi-part narration panel for question slides */
+            <AssessmentNarrationPanel
+              questionNumber={slideNumber}
+              audioRecords={slideAudioRecords}
+              voices={voices}
+              defaultVoiceId={defaultVoiceId}
+              onGenerateAudio={onGenerateAudio}
+              onGenerateAll={onGenerateAllAudio}
+              onUploadAudio={onUploadAudio}
+              onEditNarration={onEditNarration}
+              onSelectAudio={onSelectAudio}
+              selectedAudioId={selectedAudioId}
+              loading={loading}
+            />
+          ) : audio && (
+            /* Single narration section for regular slides */
             <div className={`narration-section ${narrationExpanded ? 'expanded' : ''} ${selectedAudioId === audio.id ? 'selected' : ''}`}>
               <div
                 className="narration-header"
                 onClick={() => setNarrationExpanded(!narrationExpanded)}
               >
                 <div className="narration-header-left">
-                  <span className="narration-expand">{narrationExpanded ? '▼' : '▶'}</span>
+                  <span className="narration-expand">{narrationExpanded ? '\u25BC' : '\u25B6'}</span>
                   <span className="narration-label">NARRATION</span>
                 </div>
                 <span className={`narration-status status-${audio.status}`}>

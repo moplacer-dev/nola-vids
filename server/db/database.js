@@ -919,8 +919,11 @@ const generatedAudioQueries = {
       .from('generated_audio')
       .insert({
         id,
-        asset_list_id: audio.assetListId,
-        slide_number: audio.slideNumber,
+        asset_list_id: audio.assetListId || null,
+        assessment_asset_id: audio.assessmentAssetId || null,
+        slide_number: audio.slideNumber || null,
+        question_number: audio.questionNumber || null,
+        narration_type: audio.narrationType || 'slide_narration',
         cms_filename: audio.cmsFilename || null,
         narration_text: audio.narrationText || null,
         voice_id: audio.voiceId || null,
@@ -936,6 +939,35 @@ const generatedAudioQueries = {
 
     if (error) throw error;
     return parseGeneratedAudioRow(data);
+  },
+
+  async createBulk(audioRecords) {
+    const now = new Date().toISOString();
+    const records = audioRecords.map(audio => ({
+      id: uuidv4(),
+      asset_list_id: audio.assetListId || null,
+      assessment_asset_id: audio.assessmentAssetId || null,
+      slide_number: audio.slideNumber || null,
+      question_number: audio.questionNumber || null,
+      narration_type: audio.narrationType || 'slide_narration',
+      cms_filename: audio.cmsFilename || null,
+      narration_text: audio.narrationText || null,
+      voice_id: audio.voiceId || null,
+      voice_name: audio.voiceName || null,
+      audio_path: audio.audioPath || null,
+      duration_ms: audio.durationMs || null,
+      status: audio.status || 'pending',
+      created_at: now,
+      updated_at: now
+    }));
+
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .insert(records)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
   },
 
   async getById(id) {
@@ -961,15 +993,80 @@ const generatedAudioQueries = {
   },
 
   async getByAssetListAndSlide(assetListId, slideNumber) {
+    // For backward compatibility, return single record for slides with one audio
+    // For multi-part slides, use getByAssetListSlideAndType
     const { data, error } = await supabase
       .from('generated_audio')
       .select('*')
       .eq('asset_list_id', assetListId)
       .eq('slide_number', slideNumber)
+      .order('narration_type');
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    // Return first record for backward compatibility (slide_narration type)
+    const slideNarration = data?.find(d => d.narration_type === 'slide_narration' || !d.narration_type);
+    return slideNarration ? parseGeneratedAudioRow(slideNarration) : (data?.[0] ? parseGeneratedAudioRow(data[0]) : null);
+  },
+
+  async getAllByAssetListAndSlide(assetListId, slideNumber) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('asset_list_id', assetListId)
+      .eq('slide_number', slideNumber)
+      .order('narration_type');
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async getByAssetListSlideAndType(assetListId, slideNumber, narrationType) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('asset_list_id', assetListId)
+      .eq('slide_number', slideNumber)
+      .eq('narration_type', narrationType)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
     return data ? parseGeneratedAudioRow(data) : null;
+  },
+
+  async getByAssessmentAsset(assessmentAssetId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('assessment_asset_id', assessmentAssetId)
+      .order('question_number')
+      .order('narration_type');
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async getByAssessmentQuestion(assessmentAssetId, questionNumber) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('assessment_asset_id', assessmentAssetId)
+      .eq('question_number', questionNumber)
+      .order('narration_type');
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async deleteByAssessmentAsset(assessmentAssetId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .delete()
+      .eq('assessment_asset_id', assessmentAssetId)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
   },
 
   async update(id, updates) {
@@ -982,6 +1079,9 @@ const generatedAudioQueries = {
     if (updates.audioPath !== undefined) updateData.audio_path = updates.audioPath;
     if (updates.durationMs !== undefined) updateData.duration_ms = updates.durationMs;
     if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.narrationType !== undefined) updateData.narration_type = updates.narrationType;
+    if (updates.questionNumber !== undefined) updateData.question_number = updates.questionNumber;
+    if (updates.assessmentAssetId !== undefined) updateData.assessment_asset_id = updates.assessmentAssetId;
 
     const { data, error } = await supabase
       .from('generated_audio')
@@ -1243,7 +1343,10 @@ function parseGeneratedAudioRow(row) {
   return {
     id: row.id,
     assetListId: row.asset_list_id,
+    assessmentAssetId: row.assessment_asset_id,
     slideNumber: row.slide_number,
+    questionNumber: row.question_number,
+    narrationType: row.narration_type || 'slide_narration',
     cmsFilename: row.cms_filename,
     narrationText: row.narration_text,
     voiceId: row.voice_id,

@@ -4,6 +4,7 @@ import CharacterPanel from './CharacterPanel';
 import PromptEditor from './PromptEditor';
 import ImagePreview from './ImagePreview';
 import LibraryPicker from './LibraryPicker';
+import AssessmentNarrationPanel from './AssessmentNarrationPanel';
 import './ImageGenerator.css';
 
 export default function ImageGenerator({
@@ -32,7 +33,11 @@ export default function ImageGenerator({
   setSessionDefaultVoice,
   // Assessment Assets
   getAssessmentAssets,
-  getAssessmentAsset
+  getAssessmentAsset,
+  // Assessment Audio
+  getAssessmentAudio,
+  generateAssessmentAudio,
+  generateBulkAudio
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -57,6 +62,7 @@ export default function ImageGenerator({
   // Assessment assets state
   const [assessmentAssets, setAssessmentAssets] = useState([]);
   const [selectedAssessment, setSelectedAssessment] = useState(null);
+  const [assessmentAudioList, setAssessmentAudioList] = useState([]);
 
   // Load asset lists and voices on mount
   useEffect(() => {
@@ -99,8 +105,9 @@ export default function ImageGenerator({
   useEffect(() => {
     const hasGeneratingImages = generatedImages.some(img => img.status === 'generating');
     const hasGeneratingAudio = generatedAudioList.some(a => a.status === 'generating');
+    const hasGeneratingAssessmentAudio = assessmentAudioList.some(a => a.status === 'generating');
 
-    if (!hasGeneratingImages && !hasGeneratingAudio) return;
+    if (!hasGeneratingImages && !hasGeneratingAudio && !hasGeneratingAssessmentAudio) return;
 
     const interval = setInterval(async () => {
       if (selectedAssetList) {
@@ -111,7 +118,7 @@ export default function ImageGenerator({
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [generatedImages, generatedAudioList, selectedAssetList, selectedAssessment]);
+  }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment]);
 
   const loadAssetLists = async () => {
     try {
@@ -180,6 +187,8 @@ export default function ImageGenerator({
       setGeneratedImages(data.generatedImages || []);
       setMotionGraphicsVideos([]);
       setGeneratedAudioList([]);
+      // Load assessment audio records
+      setAssessmentAudioList(data.generatedAudio || []);
     } catch (err) {
       console.error('Failed to load assessment:', err);
     } finally {
@@ -422,6 +431,8 @@ export default function ImageGenerator({
       await updateAudio(audioId, { narrationText });
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
       }
       setEditingNarration(null);
     } catch (err) {
@@ -454,6 +465,81 @@ export default function ImageGenerator({
       await loadAssetListDetails(selectedAssetList.id);
     } catch (err) {
       console.error('Failed to set default voice:', err);
+    }
+  };
+
+  // Assessment audio handlers
+  const handleGenerateAssessmentAudio = async (audioId, options = {}) => {
+    if (!generateAssessmentAudio) return;
+    try {
+      await generateAssessmentAudio(audioId, options);
+      // Refresh assessment to get updated status
+      if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
+      }
+    } catch (err) {
+      console.error('Assessment audio generation failed:', err);
+    }
+  };
+
+  const handleGenerateAllAssessmentAudio = async (questionNumber) => {
+    if (!generateBulkAudio || !selectedAssessment) return;
+    try {
+      await generateBulkAudio({
+        assessmentAssetId: selectedAssessment.id,
+        questionNumber,
+        voiceId: selectedAssetList?.defaultVoiceId
+      });
+      // Refresh assessment to get updated status
+      await loadAssessmentDetails(selectedAssessment.id);
+    } catch (err) {
+      console.error('Bulk audio generation failed:', err);
+    }
+  };
+
+  const handleUploadAssessmentAudio = async (audioId, file) => {
+    if (!uploadAudio || !audioId || !file) return;
+    try {
+      await uploadAudio(audioId, file);
+      if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
+      }
+    } catch (err) {
+      console.error('Assessment audio upload failed:', err);
+    }
+  };
+
+  const handleEditAssessmentNarration = async (audioId, updates) => {
+    if (updates.editText) {
+      // Open modal for text editing
+      const audio = assessmentAudioList.find(a => a.id === audioId);
+      setEditingNarration(audio);
+    } else if (updateAudio) {
+      // Direct update (e.g., voice change)
+      try {
+        await updateAudio(audioId, updates);
+        if (selectedAssessment) {
+          await loadAssessmentDetails(selectedAssessment.id);
+        }
+      } catch (err) {
+        console.error('Failed to update assessment narration:', err);
+      }
+    }
+  };
+
+  // Handler for generating all audio for an RCP slide
+  const handleGenerateAllSlideAudio = async (slideNumber) => {
+    if (!generateBulkAudio || !selectedAssetList) return;
+    try {
+      await generateBulkAudio({
+        assetListId: selectedAssetList.id,
+        slideNumber,
+        voiceId: selectedAssetList.defaultVoiceId
+      });
+      // Refresh to get updated status
+      await loadAssetListDetails(selectedAssetList.id);
+    } catch (err) {
+      console.error('Bulk audio generation failed:', err);
     }
   };
 
@@ -603,6 +689,7 @@ export default function ImageGenerator({
             onUploadAudio={handleUploadAudio}
             onEditNarration={handleEditNarration}
             onSelectAudio={handleSelectAudio}
+            onGenerateAllAudio={handleGenerateAllSlideAudio}
             selectedImageId={selectedImage?.id}
             selectedVideoId={selectedImage?.videoPath ? selectedImage?.id : null}
             selectedAudioId={selectedAudio?.id}
@@ -716,6 +803,21 @@ export default function ImageGenerator({
                           {questionImage?.status === 'generating' ? 'Generating...' : 'Generate'}
                         </button>
                       </div>
+
+                      {/* Multi-part Narration Panel for this question */}
+                      <AssessmentNarrationPanel
+                        questionNumber={questionNum}
+                        audioRecords={assessmentAudioList}
+                        voices={voices}
+                        defaultVoiceId={voices[0]?.voice_id}
+                        onGenerateAudio={handleGenerateAssessmentAudio}
+                        onGenerateAll={handleGenerateAllAssessmentAudio}
+                        onUploadAudio={handleUploadAssessmentAudio}
+                        onEditNarration={handleEditAssessmentNarration}
+                        onSelectAudio={handleSelectAudio}
+                        selectedAudioId={selectedAudio?.id}
+                        loading={loading}
+                      />
                     </div>
                   );
                 })
