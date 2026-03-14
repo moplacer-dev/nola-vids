@@ -610,18 +610,22 @@ export default function ImageGenerator({
                 <div className="loading-indicator">Loading assessment...</div>
               ) : (
                 (selectedAssessment.questions || []).map((question, index) => {
-                  const questionImage = generatedImages.find(img => img.questionNumber === (index + 1));
+                  const questionNum = question.questionNumber || (index + 1);
+                  const questionImage = generatedImages.find(img => img.questionNumber === questionNum);
                   return (
                     <div
                       key={question.id || index}
                       className={`assessment-question-card ${selectedImage?.id === questionImage?.id ? 'selected' : ''}`}
                       onClick={() => questionImage && setSelectedImage(questionImage)}
                     >
-                      <div className="question-number">Q{index + 1}</div>
+                      <div className="question-number">Q{questionNum}</div>
                       <div className="question-content">
-                        <p className="question-text">{question.questionText}</p>
-                        {question.visualPrompt && (
-                          <p className="visual-prompt">{question.visualPrompt}</p>
+                        <p className="question-text">{question.scenario}</p>
+                        {question.visual?.description && (
+                          <p className="visual-prompt">{question.visual.description}</p>
+                        )}
+                        {question.visual?.type && (
+                          <span className="visual-type-badge">{question.visual.type}</span>
                         )}
                       </div>
                       <div className="question-image-status">
