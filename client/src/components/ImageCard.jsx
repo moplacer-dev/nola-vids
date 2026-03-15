@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import './ImageCard.css';
 
-export default function ImageCard({
+export default memo(function ImageCard({
   image,
   onDeleteImage,
   onReusePrompt,
@@ -16,14 +16,15 @@ export default function ImageCard({
 
   // Use Supabase image transforms for optimized display (thumbnails)
   // Falls back to original URL if transform fails (rate limit, timeout, etc.)
-  const displayUrl = (() => {
+  // Memoized to prevent recalculation on every render
+  const displayUrl = useMemo(() => {
     if (!imageUrl) return '';
     if (useOriginalUrl) return imageUrl;
     if (imageUrl.includes('supabase.co/storage/v1/object/public/')) {
       return imageUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
     }
     return imageUrl;
-  })();
+  }, [imageUrl, useOriginalUrl]);
   const displayTitle = image.cmsFilename || 'Untitled Image';
   const prompt = image.modifiedPrompt || image.originalPrompt || '';
 
@@ -119,4 +120,4 @@ export default function ImageCard({
       </div>
     </div>
   );
-}
+});

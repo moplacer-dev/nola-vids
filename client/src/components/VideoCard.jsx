@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import './VideoCard.css';
 
-export default function VideoCard({
+export default memo(function VideoCard({
   video,
   folders,
   onUpdateVideo,
@@ -90,7 +90,7 @@ export default function VideoCard({
           muted
           loop
           playsInline
-          preload="auto"
+          preload="metadata"
         />
         {video.folder && (
           <span className="video-card-folder-badge">{video.folder}</span>
@@ -174,4 +174,4 @@ export default function VideoCard({
       </div>
     </div>
   );
-}
+});

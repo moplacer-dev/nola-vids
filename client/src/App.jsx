@@ -146,21 +146,35 @@ export default function App() {
   // Load jobs, templates, videos, and images on mount and after login
   useEffect(() => {
     if (accessKey) {
-      loadJobs();
-      loadTemplates();
-      loadCompletedVideos();
-      loadStandaloneImages();
+      // Parallelize all initial data loading
+      Promise.all([
+        loadJobs(),
+        loadTemplates(),
+        loadCompletedVideos(),
+        loadStandaloneImages()
+      ]);
     }
   }, [accessKey, loadJobs, loadTemplates, loadCompletedVideos, loadStandaloneImages]);
 
-  // Poll for job updates
-  useEffect(() => {
-    const hasActiveJobs = jobs.some(j => j.status === 'processing' || j.status === 'pending' || j.status === 'queued');
-    if (!hasActiveJobs) return;
+  // Track active jobs in a ref to avoid polling restart on every jobs update
+  const hasActiveJobsRef = useRef(false);
 
-    const interval = setInterval(loadJobs, 15000);
+  // Update the ref when jobs change
+  useEffect(() => {
+    hasActiveJobsRef.current = jobs.some(j => j.status === 'processing' || j.status === 'pending' || j.status === 'queued');
+  }, [jobs]);
+
+  // Poll for job updates - only depends on loadJobs, not jobs
+  useEffect(() => {
+    const pollJobs = () => {
+      if (hasActiveJobsRef.current) {
+        loadJobs();
+      }
+    };
+
+    const interval = setInterval(pollJobs, 15000);
     return () => clearInterval(interval);
-  }, [jobs, loadJobs]);
+  }, [loadJobs]);
 
   const handleLogin = (key) => {
     sessionStorage.setItem(STORAGE_KEY, key);

@@ -663,11 +663,10 @@ module.exports = (jobManager) => {
         });
       }
 
-      // Process each asset: update existing or create new
-      const generatedImages = [];
-      let created = 0;
-      let kept = 0;
-      let defaultsApplied = 0;
+      // Process each asset: separate into updates and creates for batch operations
+      const toUpdate = [];
+      const toCreate = [];
+      const pendingDefaultChecks = []; // Track items that need default image checks
 
       for (const asset of filteredAssets) {
         const assetNum = getAssetNumber(asset);
@@ -680,32 +679,29 @@ module.exports = (jobManager) => {
         );
 
         if (existing) {
-          // Update existing image record with new prompt
-          await generatedImageDb.update(existing.id, {
+          // Queue update for existing record
+          toUpdate.push({
+            id: existing.id,
             originalPrompt: asset.prompt,
             characterId: hasCharacter ? characterId : existing.characterId
           });
 
-          // If existing record is still pending, check if we should apply a default
+          // Track for potential default image application
           if (existing.status === 'pending') {
             const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
-            const defaultImage = await getDefaultImageForSlide(slideTitle);
-            if (defaultImage) {
-              const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset);
-              const result = await applyDefaultImage(existing.id, defaultImage, cmsFilename);
-              existing.status = 'default';
-              existing.imagePath = result.outputPath;
-              existing.cmsFilename = result.outputFilename;
-              defaultsApplied++;
-            }
+            pendingDefaultChecks.push({
+              type: 'existing',
+              record: existing,
+              slideTitle,
+              cmsFilename: existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset),
+              asset
+            });
           }
-
-          generatedImages.push({ ...existing, originalPrompt: asset.prompt });
-          kept++;
         } else {
-          // Create new pending record
+          // Queue creation for new record
           const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset);
-          const image = await generatedImageDb.create({
+          const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
+          toCreate.push({
             assetListId: assetList.id,
             slideNumber: asset.slideNumber,
             assetType: asset.type,
@@ -713,51 +709,97 @@ module.exports = (jobManager) => {
             cmsFilename,
             originalPrompt: asset.prompt,
             characterId: hasCharacter ? characterId : null,
-            status: 'pending'
+            status: 'pending',
+            _slideTitle: slideTitle // Temporary field for default check
           });
-
-          // Check if this slide has a default image
-          const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
-          const defaultImage = await getDefaultImageForSlide(slideTitle);
-
-          if (defaultImage) {
-            const result = await applyDefaultImage(image.id, defaultImage, cmsFilename);
-            image.status = 'default';
-            image.imagePath = result.outputPath;
-            image.cmsFilename = result.outputFilename;
-            defaultsApplied++;
-          }
-
-          generatedImages.push(image);
-          created++;
         }
       }
 
-      // Process slides with narration - create/update generated_audio records
+      // Batch update existing records
+      if (toUpdate.length > 0) {
+        await generatedImageDb.updateBulk(toUpdate);
+      }
+
+      // Batch create new records
+      let createdImages = [];
+      if (toCreate.length > 0) {
+        // Remove temporary fields before creating
+        const createData = toCreate.map(({ _slideTitle, ...rest }) => rest);
+        createdImages = await generatedImageDb.createBulk(createData);
+
+        // Map created images back to their slide titles for default checks
+        createdImages.forEach((img, idx) => {
+          const slideTitle = toCreate[idx]._slideTitle;
+          if (slideTitle) {
+            pendingDefaultChecks.push({
+              type: 'created',
+              record: img,
+              slideTitle,
+              cmsFilename: img.cmsFilename
+            });
+          }
+        });
+      }
+
+      // Apply default images in parallel (these require storage ops)
+      let defaultsApplied = 0;
+      const defaultImagePromises = pendingDefaultChecks.map(async (check) => {
+        const defaultImage = await getDefaultImageForSlide(check.slideTitle);
+        if (defaultImage) {
+          const result = await applyDefaultImage(check.record.id, defaultImage, check.cmsFilename);
+          check.record.status = 'default';
+          check.record.imagePath = result.outputPath;
+          check.record.cmsFilename = result.outputFilename;
+          return true; // Indicates a default was applied
+        }
+        return false;
+      });
+      const defaultResults = await Promise.all(defaultImagePromises);
+      defaultsApplied = defaultResults.filter(Boolean).length;
+
+      // Build final generatedImages array
+      const generatedImages = [];
+      const kept = toUpdate.length;
+      const created = createdImages.length;
+
+      // Add updated existing records
+      for (const update of toUpdate) {
+        const existing = existingByKey[Object.keys(existingByKey).find(k => existingByKey[k].id === update.id)];
+        if (existing) {
+          generatedImages.push({ ...existing, originalPrompt: update.originalPrompt });
+        }
+      }
+
+      // Add newly created records
+      generatedImages.push(...createdImages);
+
+      // Process slides with narration - batch operation
       let audioCreated = 0;
       let audioKept = 0;
       if (allSlides && allSlides.length > 0) {
-        for (const slide of allSlides) {
-          const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
-          const narration = slide.narration || slide.narrationText || '';
+        // Fetch all existing audio in one query
+        const existingAudioList = await generatedAudioDb.getByAssetList(assetList.id);
+        const existingAudioBySlide = new Map(
+          existingAudioList.map(a => [a.slideNumber, a])
+        );
 
-          if (narration && narration.trim().length > 0) {
-            const existingAudio = await generatedAudioDb.getByAssetListAndSlide(assetList.id, slideNum);
-            if (existingAudio) {
-              if (existingAudio.narrationText !== narration) {
-                await generatedAudioDb.update(existingAudio.id, { narrationText: narration });
-              }
-              audioKept++;
-            } else {
-              await generatedAudioDb.create({
-                assetListId: assetList.id,
-                slideNumber: slideNum,
-                narrationText: narration,
-                status: 'pending'
-              });
-              audioCreated++;
+        // Collect narration records to upsert
+        const narrationRecords = allSlides
+          .map(slide => {
+            const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
+            const narration = slide.narration || slide.narrationText || '';
+            if (narration && narration.trim().length > 0) {
+              return { slideNumber: slideNum, narrationText: narration };
             }
-          }
+            return null;
+          })
+          .filter(Boolean);
+
+        // Batch upsert
+        if (narrationRecords.length > 0) {
+          const result = await generatedAudioDb.upsertBulk(assetList.id, existingAudioBySlide, narrationRecords);
+          audioCreated = result.created;
+          audioKept = narrationRecords.length - result.created;
         }
       }
 
@@ -814,7 +856,7 @@ module.exports = (jobManager) => {
           characterDb.getByModule(assetList.moduleName)
         ]);
 
-      // Backfill characterId for existing MG scenes that don't have one
+      // Backfill characterId for existing MG scenes that don't have one (batch update)
       try {
         const character = characters[0]; // Get first character for module
         if (character) {
@@ -822,15 +864,22 @@ module.exports = (jobManager) => {
             (img.assetType || '').toLowerCase().includes('motion_graphics') &&
             !img.characterId
           );
-          for (const scene of mgScenes) {
+
+          // Collect all scenes that need character backfill
+          const scenesToUpdate = mgScenes.filter(scene => {
             const slideKey = `S${assetList.sessionNumber}-${scene.slideNumber}`;
-            const hasCharacter = character.appearsOnSlides?.some(s =>
+            return character.appearsOnSlides?.some(s =>
               s === slideKey || s === String(scene.slideNumber)
             );
-            if (hasCharacter) {
-              await generatedImageDb.update(scene.id, { characterId: character.id });
-              scene.characterId = character.id;
-            }
+          });
+
+          // Batch update all at once instead of N individual updates
+          if (scenesToUpdate.length > 0) {
+            await generatedImageDb.updateBulk(
+              scenesToUpdate.map(scene => ({ id: scene.id, characterId: character.id }))
+            );
+            // Update local objects for response
+            scenesToUpdate.forEach(scene => { scene.characterId = character.id; });
           }
         }
       } catch (backfillErr) {

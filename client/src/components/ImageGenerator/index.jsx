@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AssetList from './AssetList';
 import CharacterPanel from './CharacterPanel';
 import PromptEditor from './PromptEditor';
@@ -103,78 +103,84 @@ export default function ImageGenerator({
     }
   };
 
-  // Poll for image and audio generation status (lightweight polling)
+  // Track generating state in refs to avoid polling restart on every state update
+  const generatingStateRef = useRef({
+    hasGeneratingImages: false,
+    generatingAudioIds: [],
+    selectedAssetListId: null,
+    selectedAssessmentId: null
+  });
+
+  // Update refs when state changes
   useEffect(() => {
-    const hasGeneratingImages = generatedImages.some(img => img.status === 'generating');
-    const generatingAudioIds = generatedAudioList.filter(a => a.status === 'generating').map(a => a.id);
-    const generatingAssessmentAudioIds = assessmentAudioList.filter(a => a.status === 'generating').map(a => a.id);
-    const allGeneratingAudioIds = [...generatingAudioIds, ...generatingAssessmentAudioIds];
+    generatingStateRef.current = {
+      hasGeneratingImages: generatedImages.some(img => img.status === 'generating'),
+      generatingAudioIds: [
+        ...generatedAudioList.filter(a => a.status === 'generating').map(a => a.id),
+        ...assessmentAudioList.filter(a => a.status === 'generating').map(a => a.id)
+      ],
+      selectedAssetListId: selectedAssetList?.id,
+      selectedAssessmentId: selectedAssessment?.id
+    };
+  }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment]);
 
-    // If no generating items, no need to poll
-    if (!hasGeneratingImages && allGeneratingAudioIds.length === 0) return;
+  // Stable polling function using refs
+  const pollGenerationStatus = useCallback(async () => {
+    const state = generatingStateRef.current;
+    if (!state.hasGeneratingImages && state.generatingAudioIds.length === 0) return;
 
-    const interval = setInterval(async () => {
-      // Run image and audio polling independently using Promise.all
-      const tasks = [];
+    const tasks = [];
 
-      // Image polling task
-      if (hasGeneratingImages) {
-        if (selectedAssetList) {
-          tasks.push(loadAssetListDetails(selectedAssetList.id));
-        } else if (selectedAssessment) {
-          tasks.push(loadAssessmentDetails(selectedAssessment.id));
-        }
+    // Image polling task
+    if (state.hasGeneratingImages) {
+      if (state.selectedAssetListId) {
+        tasks.push(loadAssetListDetails(state.selectedAssetListId));
+      } else if (state.selectedAssessmentId) {
+        tasks.push(loadAssessmentDetails(state.selectedAssessmentId));
       }
+    }
 
-      // Audio polling task (lightweight status check)
-      if (allGeneratingAudioIds.length > 0 && checkAudioStatus) {
-        tasks.push(
-          checkAudioStatus(allGeneratingAudioIds)
-            .then(result => {
-              if (result?.records) {
-                // Merge status updates into local state
-                const statusMap = new Map(result.records.map(r => [r.id, r]));
+    // Audio polling task (lightweight status check)
+    if (state.generatingAudioIds.length > 0 && checkAudioStatus) {
+      tasks.push(
+        checkAudioStatus(state.generatingAudioIds)
+          .then(result => {
+            if (result?.records) {
+              const statusMap = new Map(result.records.map(r => [r.id, r]));
 
-                // Update generatedAudioList
-                setGeneratedAudioList(prev => prev.map(audio => {
-                  const update = statusMap.get(audio.id);
-                  if (update) {
-                    return { ...audio, ...update };
-                  }
-                  return audio;
-                }));
+              setGeneratedAudioList(prev => prev.map(audio => {
+                const update = statusMap.get(audio.id);
+                return update ? { ...audio, ...update } : audio;
+              }));
 
-                // Update assessmentAudioList
-                setAssessmentAudioList(prev => prev.map(audio => {
-                  const update = statusMap.get(audio.id);
-                  if (update) {
-                    return { ...audio, ...update };
-                  }
-                  return audio;
-                }));
+              setAssessmentAudioList(prev => prev.map(audio => {
+                const update = statusMap.get(audio.id);
+                return update ? { ...audio, ...update } : audio;
+              }));
 
-                // Update selectedAudio if it was updated
-                setSelectedAudio(prev => {
-                  if (!prev) return prev;
-                  const update = statusMap.get(prev.id);
-                  return update ? { ...prev, ...update } : prev;
-                });
-              }
-            })
-            .catch(err => {
-              console.error('Failed to check audio status:', err);
-            })
-        );
-      }
+              setSelectedAudio(prev => {
+                if (!prev) return prev;
+                const update = statusMap.get(prev.id);
+                return update ? { ...prev, ...update } : prev;
+              });
+            }
+          })
+          .catch(err => {
+            console.error('Failed to check audio status:', err);
+          })
+      );
+    }
 
-      // Run all polling tasks in parallel
-      if (tasks.length > 0) {
-        await Promise.all(tasks);
-      }
-    }, 5000); // 5s polling interval - balances responsiveness with server load
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
+    }
+  }, [checkAudioStatus]);
 
+  // Poll for image and audio generation status - stable interval that doesn't restart
+  useEffect(() => {
+    const interval = setInterval(pollGenerationStatus, 5000);
     return () => clearInterval(interval);
-  }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment, checkAudioStatus]);
+  }, [pollGenerationStatus]);
 
   const loadAssetLists = async () => {
     try {

@@ -806,6 +806,72 @@ const generatedImageQueries = {
 
     if (error) throw error;
     return data.map(parseGeneratedImageRow);
+  },
+
+  // Batch create multiple images at once
+  async createBulk(images) {
+    if (!images || images.length === 0) return [];
+    const now = new Date().toISOString();
+
+    const records = images.map(image => ({
+      id: uuidv4(),
+      asset_list_id: image.assetListId || null,
+      assessment_asset_id: image.assessmentAssetId || null,
+      slide_number: image.slideNumber || null,
+      asset_type: image.assetType || null,
+      asset_number: image.assetNumber || 1,
+      cms_filename: image.cmsFilename || null,
+      original_prompt: image.originalPrompt || null,
+      modified_prompt: image.modifiedPrompt || null,
+      character_id: image.characterId || null,
+      image_path: image.imagePath || null,
+      status: image.status || 'pending',
+      created_at: now,
+      updated_at: now
+    }));
+
+    const { data, error } = await supabase
+      .from('generated_images')
+      .insert(records)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  // Batch update multiple images by ID
+  // Takes an array of { id, updates } objects
+  async updateBulk(updates) {
+    if (!updates || updates.length === 0) return [];
+    const now = new Date().toISOString();
+
+    // Supabase doesn't support batch updates natively, so we use Promise.all
+    // but we can at least run them in parallel
+    const results = await Promise.all(
+      updates.map(async ({ id, ...updateFields }) => {
+        const updateData = { updated_at: now };
+
+        if (updateFields.modifiedPrompt !== undefined) updateData.modified_prompt = updateFields.modifiedPrompt;
+        if (updateFields.imagePath !== undefined) updateData.image_path = updateFields.imagePath;
+        if (updateFields.status !== undefined) updateData.status = updateFields.status;
+        if (updateFields.characterId !== undefined) updateData.character_id = updateFields.characterId;
+        if (updateFields.assetType !== undefined) updateData.asset_type = updateFields.assetType;
+        if (updateFields.cmsFilename !== undefined) updateData.cms_filename = updateFields.cmsFilename;
+        if (updateFields.originalPrompt !== undefined) updateData.original_prompt = updateFields.originalPrompt;
+
+        const { data, error } = await supabase
+          .from('generated_images')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+        return data ? parseGeneratedImageRow(data) : null;
+      })
+    );
+
+    return results.filter(Boolean);
   }
 };
 
@@ -1181,6 +1247,52 @@ const generatedAudioQueries = {
     } else {
       return this.create(audio);
     }
+  },
+
+  // Batch upsert: takes existing records map and new records to process
+  // existingBySlide: Map of slideNumber -> existing audio record
+  // newRecords: array of { slideNumber, narrationText, assetListId, ... }
+  // Returns { created: number, updated: number }
+  async upsertBulk(assetListId, existingBySlide, newRecords) {
+    const toCreate = [];
+    const toUpdate = [];
+
+    for (const record of newRecords) {
+      const existing = existingBySlide.get(record.slideNumber);
+      if (existing) {
+        // Only update if narration text changed
+        if (existing.narrationText !== record.narrationText) {
+          toUpdate.push({ id: existing.id, narrationText: record.narrationText });
+        }
+      } else {
+        toCreate.push({
+          assetListId,
+          slideNumber: record.slideNumber,
+          narrationText: record.narrationText,
+          status: 'pending'
+        });
+      }
+    }
+
+    // Batch create new records
+    if (toCreate.length > 0) {
+      await this.createBulk(toCreate);
+    }
+
+    // Batch update existing records (run in parallel)
+    if (toUpdate.length > 0) {
+      const now = new Date().toISOString();
+      await Promise.all(
+        toUpdate.map(({ id, narrationText }) =>
+          supabase
+            .from('generated_audio')
+            .update({ narration_text: narrationText, updated_at: now })
+            .eq('id', id)
+        )
+      );
+    }
+
+    return { created: toCreate.length, updated: toUpdate.length };
   }
 };
 
