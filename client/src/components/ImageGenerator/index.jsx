@@ -826,43 +826,28 @@ export default function ImageGenerator({
                             <span className="question-type-badge two-part">Two-Part</span>
                           )}
 
-                          {/* Two-part question display */}
-                          {question.questionType === 'two_part' ? (
+                          {/* Check if visual is required (type is not 'none') */}
+                          {question.visual?.type && question.visual.type.toLowerCase() !== 'none' ? (
                             <>
-                              {question.partA?.stem && (
-                                <div className="question-part">
-                                  <strong>Part A:</strong> {question.partA.stem}
+                              {/* Show visual requirements prominently */}
+                              <p className="visual-prompt">{question.visual.description || 'Visual required'}</p>
+                              <span className="visual-type-badge">{question.visual.type}</span>
+                              {/* Show question context as secondary info for artist reference */}
+                              {question.questionType === 'two_part' ? (
+                                <div className="question-context secondary">
+                                  {question.partA?.stem && <p><strong>Part A:</strong> {question.partA.stem}</p>}
+                                  {question.partB?.stem && <p><strong>Part B:</strong> {question.partB.stem}</p>}
                                 </div>
-                              )}
-                              {question.partB?.stem && (
-                                <div className="question-part">
-                                  <strong>Part B:</strong> {question.partB.stem}
-                                </div>
-                              )}
-                            </>
-                          ) : question.stem ? (
-                            /* Structured single_select with stem */
-                            <>
-                              <p className="question-text">{question.stem}</p>
-                              {question.choices && question.choices.length > 0 && (
-                                <div className="question-choices-preview">
-                                  {question.choices.slice(0, 2).map((c, i) => (
-                                    <span key={i} className="choice-preview">{c.label}) {c.text?.substring(0, 30)}{c.text?.length > 30 ? '...' : ''}</span>
-                                  ))}
-                                  {question.choices.length > 2 && <span className="choice-more">+{question.choices.length - 2} more</span>}
-                                </div>
+                              ) : question.stem && (
+                                <p className="question-text secondary">{question.stem}</p>
                               )}
                             </>
                           ) : (
-                            /* Legacy format with scenario */
-                            <p className="question-text">{question.scenario}</p>
-                          )}
-
-                          {question.visual?.description && (
-                            <p className="visual-prompt">{question.visual.description}</p>
-                          )}
-                          {question.visual?.type && (
-                            <span className="visual-type-badge">{question.visual.type}</span>
+                            /* No visual required - show minimal info */
+                            <>
+                              <p className="no-visual-message">No visual required for this question</p>
+                              <span className="visual-type-badge none">NONE</span>
+                            </>
                           )}
                         </div>
                         <div className="question-image-status">

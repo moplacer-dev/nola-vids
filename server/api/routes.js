@@ -996,7 +996,7 @@ module.exports = (jobManager) => {
   // Generate a standalone image (one-off, not from asset list)
   router.post('/images/generate-standalone', upload.array('referenceImage', 3), async (req, res) => {
     try {
-      const { prompt, moduleName, sessionNumber, pageNumber } = req.body;
+      const { prompt, moduleName, sessionNumber, pageNumber, aspectRatio, referenceUrls } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: 'prompt is required' });
@@ -1017,8 +1017,18 @@ module.exports = (jobManager) => {
         filename = `standalone_${timestamp}.png`;
       }
 
-      // Get reference image URLs if uploaded
+      // Get reference image URLs - start with any URL references (for refine feature)
       const anchorImageUrls = [];
+      if (referenceUrls) {
+        try {
+          const urls = JSON.parse(referenceUrls);
+          anchorImageUrls.push(...urls);
+        } catch (e) {
+          console.warn('Failed to parse referenceUrls:', e);
+        }
+      }
+
+      // Add uploaded file references
       if (req.files) {
         for (const file of req.files) {
           const uploaded = await storage.uploadFileFromPath(
@@ -1037,7 +1047,8 @@ module.exports = (jobManager) => {
         prompt,
         bucket: BUCKETS.IMAGES,
         filename,
-        anchorImageUrls
+        anchorImageUrls,
+        aspectRatio: aspectRatio || '16:9'
       });
 
       // Save to database so it appears in Library
@@ -1889,21 +1900,49 @@ module.exports = (jobManager) => {
         return res.status(503).json({ error: 'TTS service not configured' });
       }
 
-      const assetList = await assetListDb.getById(audioRecord.assetListId);
-      if (!assetList) {
-        return res.status(404).json({ error: 'Asset list not found' });
-      }
-
       const narrationText = text || audioRecord.narrationText;
       if (!narrationText || narrationText.trim().length === 0) {
         return res.status(400).json({ error: 'No narration text provided' });
       }
 
-      const cmsFilename = generateAudioFilename(
-        assetList.moduleName,
-        assetList.sessionNumber,
-        audioRecord.slideNumber
-      );
+      // Get filename based on whether it's assessment or asset list audio
+      let cmsFilename = audioRecord.cmsFilename;
+      let parentRecord = null;
+
+      if (audioRecord.assessmentAssetId) {
+        parentRecord = await assessmentAssetDb.getById(audioRecord.assessmentAssetId);
+        if (!parentRecord) {
+          return res.status(404).json({ error: 'Assessment not found' });
+        }
+        cmsFilename = cmsFilename || generateAssessmentAudioFilename(
+          parentRecord.moduleName,
+          parentRecord.assessmentType,
+          audioRecord.questionNumber,
+          audioRecord.narrationType
+        );
+      } else if (audioRecord.assetListId) {
+        parentRecord = await assetListDb.getById(audioRecord.assetListId);
+        if (!parentRecord) {
+          return res.status(404).json({ error: 'Asset list not found' });
+        }
+        // Use RCP filename for multi-part, regular for single
+        if (audioRecord.narrationType && audioRecord.narrationType !== 'slide_narration') {
+          cmsFilename = cmsFilename || generateRcpAudioFilename(
+            parentRecord.moduleName,
+            parentRecord.sessionNumber,
+            audioRecord.slideNumber,
+            audioRecord.narrationType
+          );
+        } else {
+          cmsFilename = cmsFilename || generateAudioFilename(
+            parentRecord.moduleName,
+            parentRecord.sessionNumber,
+            audioRecord.slideNumber
+          );
+        }
+      } else {
+        return res.status(400).json({ error: 'Audio record has no parent (assessment or asset list)' });
+      }
 
       await generatedAudioDb.update(req.params.id, {
         status: 'generating',

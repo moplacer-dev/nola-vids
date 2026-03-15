@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import GenerationForm from './components/GenerationForm';
 import JobList from './components/JobList';
 import VideoPlayer from './components/VideoPlayer';
@@ -23,6 +23,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen' | 'library'
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageGenerating, setImageGenerating] = useState(false);
+  const imageGenFormRef = useRef(null);
 
   // State for pre-filling the form from library actions
   const [prefillPrompt, setPrefillPrompt] = useState(null);
@@ -278,6 +279,7 @@ export default function App() {
         <main className="main">
           <div className="left-panel">
             <ImageGenForm
+              ref={imageGenFormRef}
               onGenerate={async (params) => {
                 setImageGenerating(true);
                 setGeneratedImage(null);
@@ -311,6 +313,16 @@ export default function App() {
                     >
                       Download
                     </a>
+                    <button
+                      className="btn-refine-image"
+                      onClick={() => {
+                        if (generatedImage?.path) {
+                          imageGenFormRef.current?.addReferenceUrl(generatedImage.path);
+                        }
+                      }}
+                    >
+                      Refine
+                    </button>
                   </div>
                 </div>
               ) : (

@@ -1906,6 +1906,38 @@
   margin-top: 4px;
 }
 
+.visual-type-badge.none {
+  background: #2a2a2a;
+  color: #666;
+}
+
+.question-text.secondary {
+  font-size: 12px;
+  color: #888;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+
+.question-context.secondary {
+  font-size: 12px;
+  color: #888;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+
+.question-context.secondary p {
+  margin: 0 0 4px 0;
+}
+
+.no-visual-message {
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+  margin: 0 0 6px 0;
+}
+
 .question-type-badge {
   display: inline-block;
   font-size: 10px;

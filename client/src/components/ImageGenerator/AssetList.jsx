@@ -45,10 +45,14 @@ export default function AssetList({
     mgVideoBySlide[v.slideNumber] = v;
   });
 
-  // Build audio map by slide number
+  // Build audio map by slide number (array to support multi-part narration)
   const audioBySlide = {};
   generatedAudio?.forEach(a => {
-    audioBySlide[a.slideNumber] = a;
+    const slideNum = a.slideNumber;
+    if (!audioBySlide[slideNum]) {
+      audioBySlide[slideNum] = [];
+    }
+    audioBySlide[slideNum].push(a);
   });
 
   // Track expanded narration sections
@@ -146,7 +150,10 @@ export default function AssetList({
           if (slide.isMotionGraphics && (slide.assets.length > 0 || mgScenes.length > 0)) {
             const mgVideo = mgVideoBySlide[parseInt(slide.slideNumber)];
 
-            const mgAudio = audioBySlide[parseInt(slide.slideNumber)];
+            // Get all audio records for this slide (now an array)
+            const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
+            // For backward compatibility, find the main slide narration or use first record
+            const mgAudio = slideAudioRecords.find(a => a.narrationType === 'slide_narration') || slideAudioRecords[0];
 
             return (
               <MotionGraphicsGroup
@@ -157,7 +164,7 @@ export default function AssetList({
                 assets={slide.assets}
                 mgVideo={mgVideo}
                 audio={mgAudio}
-                audioRecords={generatedAudio}
+                audioRecords={slideAudioRecords.length > 0 ? slideAudioRecords : generatedAudio}
                 onGenerate={onGenerate}
                 onUpload={onUpload}
                 onImport={onImport}

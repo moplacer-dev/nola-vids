@@ -52,7 +52,70 @@
   opacity: 0.6;
 }
 
-/* Reference Images */
+/* Reference Images Drop Zone */
+.reference-dropzone {
+  width: 100%;
+  min-height: 120px;
+  padding: 24px;
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reference-dropzone:hover,
+.reference-dropzone.dragging {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.dropzone-icon {
+  font-size: 24px;
+  opacity: 0.6;
+}
+
+.dropzone-text {
+  font-size: 14px;
+}
+
+.dropzone-hint {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.add-more-zone {
+  width: 100px;
+  height: 100px;
+  background: var(--bg-primary);
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-more-zone:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Legacy button (kept for compatibility) */
 .btn-upload-reference {
   padding: 12px 20px;
   background: var(--bg-primary);
@@ -270,6 +333,54 @@
 }
 
 .btn-generate-image:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Settings Row */
+.settings-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settings-row .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.settings-row .form-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.settings-row .form-select {
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.settings-row .form-select:hover {
+  border-color: var(--text-secondary);
+}
+
+.settings-row .form-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-row .form-select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

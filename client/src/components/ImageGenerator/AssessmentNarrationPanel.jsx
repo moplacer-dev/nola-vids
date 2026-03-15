@@ -258,8 +258,25 @@ export default function AssessmentNarrationPanel({
                   UPLOAD
                 </button>
 
-                {/* Generate/Play Button */}
-                {['completed', 'uploaded'].includes(audio.status) ? (
+                {/* Generate/Regenerate Button */}
+                <button
+                  className="btn-primary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onGenerateAudio) {
+                      onGenerateAudio(audio.id, {
+                        voiceId: audio.voiceId || defaultVoiceId
+                      });
+                    }
+                  }}
+                  disabled={audio.status === 'generating' || loading}
+                >
+                  {audio.status === 'generating' ? 'GEN...' :
+                   ['completed', 'uploaded'].includes(audio.status) ? 'REGEN' : 'GEN'}
+                </button>
+
+                {/* Play Button - shown when audio is ready */}
+                {['completed', 'uploaded'].includes(audio.status) && (
                   <button
                     className="btn-preview btn-sm"
                     onClick={(e) => {
@@ -268,21 +285,6 @@ export default function AssessmentNarrationPanel({
                     }}
                   >
                     PLAY
-                  </button>
-                ) : (
-                  <button
-                    className="btn-primary btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onGenerateAudio) {
-                        onGenerateAudio(audio.id, {
-                          voiceId: audio.voiceId || defaultVoiceId
-                        });
-                      }
-                    }}
-                    disabled={audio.status === 'generating' || loading}
-                  >
-                    {audio.status === 'generating' ? 'GEN...' : 'GEN'}
                   </button>
                 )}
               </div>

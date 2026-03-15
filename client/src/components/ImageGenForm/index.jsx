@@ -1,21 +1,40 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import './ImageGenForm.css';
 
-export default function ImageGenForm({ onGenerate, disabled }) {
+const ASPECT_RATIOS = [
+  { value: '16:9', label: '16:9 (Landscape)' },
+  { value: '3:2', label: '3:2 (Photo)' },
+  { value: '4:3', label: '4:3 (Standard)' },
+  { value: '1:1', label: '1:1 (Square)' },
+];
+
+const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, ref) {
   const [prompt, setPrompt] = useState('');
   const [referenceImages, setReferenceImages] = useState([]);
   const [referencePreviews, setReferencePreviews] = useState([]);
+  const [referenceUrls, setReferenceUrls] = useState([]); // URL-based references (for refine)
   const [moduleName, setModuleName] = useState('');
   const [sessionNumber, setSessionNumber] = useState('');
   const [pageNumber, setPageNumber] = useState('');
+  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files || []);
+  // Expose method to add reference from URL (for refine feature)
+  useImperativeHandle(ref, () => ({
+    addReferenceUrl: (url) => {
+      const totalRefs = referenceImages.length + referenceUrls.length;
+      if (totalRefs < 3 && url) {
+        setReferenceUrls(prev => [...prev, url]);
+      }
+    }
+  }));
+
+  const handleFilesSelected = (files) => {
     if (files.length === 0) return;
 
-    // Limit to 3 total images
-    const remainingSlots = 3 - referenceImages.length;
+    // Limit to 3 total images (including URL refs)
+    const remainingSlots = 3 - referenceImages.length - referenceUrls.length;
     const filesToAdd = files.slice(0, remainingSlots);
 
     // Add files to state
@@ -36,14 +55,41 @@ export default function ImageGenForm({ onGenerate, disabled }) {
     }
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    handleFilesSelected(files);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    handleFilesSelected(files);
+  };
+
   const handleRemoveImage = (index) => {
     setReferenceImages(prev => prev.filter((_, i) => i !== index));
     setReferencePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleRemoveUrl = (index) => {
+    setReferenceUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleClearAll = () => {
     setReferenceImages([]);
     setReferencePreviews([]);
+    setReferenceUrls([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -56,6 +102,8 @@ export default function ImageGenForm({ onGenerate, disabled }) {
     onGenerate({
       prompt: prompt.trim(),
       referenceImages,
+      referenceUrls,
+      aspectRatio,
       moduleName: moduleName.trim() || null,
       sessionNumber: sessionNumber ? parseInt(sessionNumber) : null,
       pageNumber: pageNumber ? parseInt(pageNumber) : null
@@ -96,43 +144,60 @@ export default function ImageGenForm({ onGenerate, disabled }) {
           style={{ display: 'none' }}
         />
 
-        {referencePreviews.length > 0 ? (
-          <div className="reference-grid">
-            {referencePreviews.map((preview, index) => (
-              <div key={index} className="reference-preview-item">
-                <img src={preview} alt={`Reference ${index + 1}`} />
-                <button
-                  type="button"
-                  className="btn-remove-reference"
-                  onClick={() => handleRemoveImage(index)}
+        <div
+          className={`reference-dropzone ${isDragging ? 'dragging' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {referencePreviews.length === 0 && referenceUrls.length === 0 ? (
+            <div className="dropzone-content">
+              <span className="dropzone-icon">[+]</span>
+              <span className="dropzone-text">Drag images here or click to browse</span>
+              <span className="dropzone-hint">Up to 3 reference images</span>
+            </div>
+          ) : (
+            <div className="reference-grid" onClick={(e) => e.stopPropagation()}>
+              {/* URL-based references (from refine) */}
+              {referenceUrls.map((url, index) => (
+                <div key={`url-${index}`} className="reference-preview-item">
+                  <img src={url} alt={`Reference ${index + 1}`} />
+                  <button
+                    type="button"
+                    className="btn-remove-reference"
+                    onClick={() => handleRemoveUrl(index)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {/* File-based references */}
+              {referencePreviews.map((preview, index) => (
+                <div key={`file-${index}`} className="reference-preview-item">
+                  <img src={preview} alt={`Reference ${referenceUrls.length + index + 1}`} />
+                  <button
+                    type="button"
+                    className="btn-remove-reference"
+                    onClick={() => handleRemoveImage(index)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {referenceImages.length + referenceUrls.length < 3 && (
+                <div
+                  className="add-more-zone"
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  ×
-                </button>
-              </div>
-            ))}
-            {referenceImages.length < 3 && (
-              <button
-                type="button"
-                className="btn-add-more-reference"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled}
-              >
-                + Add
-              </button>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="btn-upload-reference"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-          >
-            Upload Reference Images
-          </button>
-        )}
+                  +
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-        {referenceImages.length > 0 && (
+        {(referenceImages.length > 0 || referenceUrls.length > 0) && (
           <button
             type="button"
             className="btn-clear-all-references"
@@ -141,6 +206,22 @@ export default function ImageGenForm({ onGenerate, disabled }) {
             Clear All
           </button>
         )}
+      </div>
+
+      <div className="settings-row">
+        <div className="form-group">
+          <label className="form-label">Aspect Ratio</label>
+          <select
+            value={aspectRatio}
+            onChange={(e) => setAspectRatio(e.target.value)}
+            className="form-select"
+            disabled={disabled}
+          >
+            {ASPECT_RATIOS.map(ar => (
+              <option key={ar.value} value={ar.value}>{ar.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="form-section">
@@ -196,4 +277,6 @@ export default function ImageGenForm({ onGenerate, disabled }) {
       </button>
     </form>
   );
-}
+});
+
+export default ImageGenForm;

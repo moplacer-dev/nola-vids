@@ -219,7 +219,7 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
-  const generateStandaloneImage = useCallback(async ({ prompt, referenceImage, referenceImages, moduleName, sessionNumber, pageNumber }) => {
+  const generateStandaloneImage = useCallback(async ({ prompt, referenceImage, referenceImages, referenceUrls, aspectRatio, moduleName, sessionNumber, pageNumber }) => {
     const formData = new FormData();
     formData.append('prompt', prompt);
 
@@ -229,6 +229,14 @@ export function useApi(accessKey) {
       formData.append('referenceImage', img);
     }
 
+    // Support URL-based references (for refine feature)
+    if (referenceUrls && referenceUrls.length > 0) {
+      formData.append('referenceUrls', JSON.stringify(referenceUrls));
+    }
+
+    if (aspectRatio) {
+      formData.append('aspectRatio', aspectRatio);
+    }
     if (moduleName) {
       formData.append('moduleName', moduleName);
     }
