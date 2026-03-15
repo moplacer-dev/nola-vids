@@ -120,13 +120,15 @@ const jobQueries = {
   },
 
   async delete(id) {
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('jobs')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   }
 };
 
@@ -236,13 +238,15 @@ const videoQueries = {
 
     if (Object.keys(updateData).length === 0) return false;
 
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('videos')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async delete(id) {
@@ -376,13 +380,15 @@ const folderQueries = {
       .eq('folder', folder.name);
 
     // Delete the folder
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('folders')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   }
 };
 
@@ -464,36 +470,42 @@ const characterQueries = {
     if (updates.referenceImages !== undefined) updateData.reference_images = updates.referenceImages;
     if (updates.appearsOnSlides !== undefined) updateData.appears_on_slides = updates.appearsOnSlides;
 
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('characters')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async setAnchorImage(id, imagePath) {
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('characters')
       .update({
         anchor_image_path: imagePath,
         updated_at: new Date().toISOString()
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async delete(id) {
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('characters')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   }
 };
 
@@ -597,23 +609,27 @@ const assetListQueries = {
     if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
     if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
 
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('asset_lists')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async delete(id) {
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('asset_lists')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   }
 };
 
@@ -734,13 +750,15 @@ const generatedImageQueries = {
     if (updates.originalPrompt !== undefined) updateData.original_prompt = updates.originalPrompt;
     if (updates.assessmentAssetId !== undefined) updateData.assessment_asset_id = updates.assessmentAssetId;
 
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('generated_images')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async delete(id) {
@@ -758,13 +776,14 @@ const generatedImageQueries = {
   async deleteByIds(ids) {
     if (!ids || ids.length === 0) return 0;
 
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('generated_images')
       .delete()
-      .in('id', ids);
+      .in('id', ids)
+      .select();
 
     if (error) throw error;
-    return count || 0;
+    return data?.length || 0;
   },
 
   async getByAssessmentAsset(assessmentAssetId) {
@@ -1259,13 +1278,15 @@ const assessmentAssetQueries = {
   },
 
   async delete(id) {
-    const { error, count } = await supabase
+    const { data, error } = await supabase
       .from('assessment_assets')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) throw error;
-    return count > 0;
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   }
 };
 
