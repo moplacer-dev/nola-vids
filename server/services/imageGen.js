@@ -96,9 +96,6 @@ class ImageGenService {
       }
     });
 
-    // Debug log
-    console.log('Image generation response:', JSON.stringify(response, null, 2));
-
     // Extract image from response
     const candidates = response.candidates || response.response?.candidates;
 

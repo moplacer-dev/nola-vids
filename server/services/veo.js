@@ -119,9 +119,6 @@ class VeoService {
       ...params
     });
 
-    // Debug: log the operation structure
-    console.log('Operation response:', JSON.stringify(operation, null, 2));
-
     // Return operation name for polling
     return {
       operationName: operation.name,
@@ -131,8 +128,6 @@ class VeoService {
 
   // Poll operation status - takes the operation name string
   async checkOperation(operationName) {
-    console.log('checkOperation called with:', operationName);
-
     // Use REST API directly since SDK's getVideosOperation requires the full operation object
     // API key in header instead of URL for security
     const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}`;
@@ -146,9 +141,6 @@ class VeoService {
     }
 
     const operation = await response.json();
-
-    // Debug: log polling response
-    console.log('Poll response:', JSON.stringify(operation, null, 2));
 
     if (operation.done) {
       if (operation.error) {
