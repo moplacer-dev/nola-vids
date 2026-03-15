@@ -1,3 +1,8 @@
+/**
+ * @deprecated This component is no longer used in the UI.
+ * Folder organization has been dropped per plan requirements.
+ * Kept for reference.
+ */
 import { useState } from 'react';
 import './FolderSidebar.css';
 

@@ -4,9 +4,11 @@ import JobList from './components/JobList';
 import VideoPlayer from './components/VideoPlayer';
 import Login from './components/Login';
 import Tips from './components/Tips';
-import Library from './components/Library';
+// Library component kept for reference but no longer used in UI
+// import Library from './components/Library';
 import ImageGenerator from './components/ImageGenerator';
 import ImageGenForm from './components/ImageGenForm';
+import ImageGenQueue from './components/ImageGenQueue';
 import { useApi } from './hooks/useApi';
 import './App.css';
 
@@ -20,10 +22,17 @@ export default function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [templates, setTemplates] = useState(null);
   const [generating, setGenerating] = useState(false);
-  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen' | 'library'
+  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen'
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageGenerating, setImageGenerating] = useState(false);
   const imageGenFormRef = useRef(null);
+
+  // State for completed videos from library (Video Gen queue)
+  const [completedVideos, setCompletedVideos] = useState([]);
+
+  // State for standalone images (Image Gen queue)
+  const [standaloneImages, setStandaloneImages] = useState([]);
+  const [selectedStandaloneImage, setSelectedStandaloneImage] = useState(null);
 
   // State for pre-filling the form from library actions
   const [prefillPrompt, setPrefillPrompt] = useState(null);
@@ -80,7 +89,9 @@ export default function App() {
     // Assessment Audio
     getAssessmentAudio,
     generateAssessmentAudio,
-    generateBulkAudio
+    generateBulkAudio,
+    // Image deletion
+    deleteGeneratedImage
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -112,13 +123,35 @@ export default function App() {
     }
   }, [accessKey, getTemplates]);
 
-  // Load jobs and templates on mount and after login
+  const loadCompletedVideos = useCallback(async () => {
+    if (!accessKey) return;
+    try {
+      const data = await getLibrary();
+      setCompletedVideos(data);
+    } catch (err) {
+      console.error('Failed to load completed videos:', err);
+    }
+  }, [accessKey, getLibrary]);
+
+  const loadStandaloneImages = useCallback(async () => {
+    if (!accessKey) return;
+    try {
+      const data = await getGeneratedImages({ source: 'standalone' });
+      setStandaloneImages(data);
+    } catch (err) {
+      console.error('Failed to load standalone images:', err);
+    }
+  }, [accessKey, getGeneratedImages]);
+
+  // Load jobs, templates, videos, and images on mount and after login
   useEffect(() => {
     if (accessKey) {
       loadJobs();
       loadTemplates();
+      loadCompletedVideos();
+      loadStandaloneImages();
     }
-  }, [accessKey, loadJobs, loadTemplates]);
+  }, [accessKey, loadJobs, loadTemplates, loadCompletedVideos, loadStandaloneImages]);
 
   // Poll for job updates
   useEffect(() => {
@@ -182,15 +215,41 @@ export default function App() {
     }
   };
 
-  const handleDelete = async (jobId) => {
+  const handleDeleteJob = async (jobId) => {
     try {
       await deleteJob(jobId);
       if (selectedJob?.id === jobId) {
         setSelectedJob(null);
       }
       await loadJobs();
+      await loadCompletedVideos();
     } catch (err) {
-      console.error('Delete failed:', err);
+      console.error('Delete job failed:', err);
+    }
+  };
+
+  const handleDeleteVideo = async (videoId) => {
+    try {
+      await deleteVideo(videoId);
+      if (selectedJob?.videos?.[0]?.id === videoId) {
+        setSelectedJob(null);
+      }
+      await loadCompletedVideos();
+    } catch (err) {
+      console.error('Delete video failed:', err);
+    }
+  };
+
+  const handleDeleteStandaloneImage = async (imageId) => {
+    try {
+      await deleteGeneratedImage(imageId);
+      if (selectedStandaloneImage?.id === imageId) {
+        setSelectedStandaloneImage(null);
+        setGeneratedImage(null);
+      }
+      await loadStandaloneImages();
+    } catch (err) {
+      console.error('Delete image failed:', err);
     }
   };
 
@@ -205,10 +264,6 @@ export default function App() {
     setPrefillVideo(video);
     setPrefillPrompt(null);
     setCurrentView('generator');
-  };
-
-  const handleViewLibrary = () => {
-    setCurrentView('library');
   };
 
   return (
@@ -236,12 +291,6 @@ export default function App() {
           >
             Carl Gen
           </button>
-          <button
-            className={`nav-btn ${currentView === 'library' ? 'active' : ''}`}
-            onClick={() => setCurrentView('library')}
-          >
-            Library
-          </button>
         </nav>
 
         <button className="logout-btn" onClick={handleLogout}>Logout</button>
@@ -267,10 +316,13 @@ export default function App() {
             <VideoPlayer job={selectedJob} />
             <JobList
               jobs={jobs}
-              onDelete={handleDelete}
+              completedVideos={completedVideos}
+              onDeleteJob={handleDeleteJob}
+              onDeleteVideo={handleDeleteVideo}
               onSelect={setSelectedJob}
-              selectedJobId={selectedJob?.id}
-              onViewLibrary={handleViewLibrary}
+              selectedId={selectedJob?.id}
+              onReusePrompt={handleReusePrompt}
+              onExtendVideo={handleExtendVideo}
             />
             <Tips />
           </div>
@@ -283,9 +335,12 @@ export default function App() {
               onGenerate={async (params) => {
                 setImageGenerating(true);
                 setGeneratedImage(null);
+                setSelectedStandaloneImage(null);
                 try {
                   const result = await generateStandaloneImage(params);
                   setGeneratedImage(result);
+                  // Refresh the queue to show the new image
+                  await loadStandaloneImages();
                 } catch (err) {
                   console.error('Image generation failed:', err);
                 } finally {
@@ -297,74 +352,93 @@ export default function App() {
           </div>
 
           <div className="right-panel">
-            <div className="image-result-panel">
-              <h3>Generated Image</h3>
-              {imageGenerating ? (
-                <div className="image-result-placeholder">Generating image...</div>
-              ) : generatedImage ? (
-                <div className="image-result">
-                  <img
-                    src={(() => {
-                      // Use Supabase image transforms for optimized display
-                      // Original full-quality image is preserved for downloads
-                      const url = generatedImage.path;
-                      if (url.includes('supabase.co/storage/v1/object/public/')) {
-                        return url.replace(
-                          '/storage/v1/object/public/',
-                          '/storage/v1/render/image/public/'
-                        ) + '?width=1200&quality=80';
-                      }
-                      return url;
-                    })()}
-                    alt="Generated"
-                    className="generated-image"
-                    width={generatedImage.width}
-                    height={generatedImage.height}
-                    loading="eager"
-                    decoding="async"
-                    fetchpriority="high"
-                  />
-                  <div className="image-result-filename">{generatedImage.filename}</div>
-                  <div className="image-result-actions">
-                    <button
-                      className="btn-download-image"
-                      onClick={() => {
-                        const url = generatedImage.path;
-                        const filename = generatedImage.filename;
-                        // Use server proxy for Supabase URLs to handle CORS
-                        if (url.startsWith('http') && url.includes('supabase')) {
-                          const proxyUrl = `/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
-                          window.location.href = proxyUrl;
-                        } else {
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = filename;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        }
-                      }}
-                    >
-                      Download
-                    </button>
-                    <button
-                      className="btn-refine-image"
-                      onClick={() => {
-                        if (generatedImage?.path) {
-                          imageGenFormRef.current?.addReferenceUrl(generatedImage.path);
-                        }
-                      }}
-                    >
-                      Refine
-                    </button>
-                  </div>
+            {(() => {
+              // Show either the selected standalone image or the most recently generated image
+              const displayImage = selectedStandaloneImage || generatedImage;
+              const imagePath = displayImage?.imagePath || displayImage?.path;
+              const imageFilename = displayImage?.cmsFilename || displayImage?.filename || 'Generated Image';
+
+              return (
+                <div className="image-result-panel">
+                  <h3>Generated Image</h3>
+                  {imageGenerating ? (
+                    <div className="image-result-placeholder">Generating image...</div>
+                  ) : imagePath ? (
+                    <div className="image-result">
+                      <img
+                        src={(() => {
+                          // Use Supabase image transforms for optimized display
+                          const url = imagePath;
+                          if (url.includes('supabase.co/storage/v1/object/public/')) {
+                            return url.replace(
+                              '/storage/v1/object/public/',
+                              '/storage/v1/render/image/public/'
+                            ) + '?width=1200&quality=80';
+                          }
+                          return url;
+                        })()}
+                        alt="Generated"
+                        className="generated-image"
+                        width={displayImage?.width}
+                        height={displayImage?.height}
+                        loading="eager"
+                        decoding="async"
+                        fetchPriority="high"
+                      />
+                      <div className="image-result-filename">{imageFilename}</div>
+                      <div className="image-result-actions">
+                        <button
+                          className="btn-download-image"
+                          onClick={() => {
+                            const url = imagePath;
+                            const filename = imageFilename;
+                            if (url.startsWith('http') && url.includes('supabase')) {
+                              const proxyUrl = `/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+                              window.location.href = proxyUrl;
+                            } else {
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = filename;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }
+                          }}
+                        >
+                          Download
+                        </button>
+                        <button
+                          className="btn-refine-image"
+                          onClick={() => {
+                            if (imagePath) {
+                              imageGenFormRef.current?.addReferenceUrl(imagePath);
+                            }
+                          }}
+                        >
+                          Refine
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="image-result-placeholder">
+                      Enter a prompt and click Generate to create an image
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="image-result-placeholder">
-                  Enter a prompt and click Generate to create an image
-                </div>
-              )}
-            </div>
+              );
+            })()}
+            <ImageGenQueue
+              images={standaloneImages}
+              selectedId={selectedStandaloneImage?.id}
+              onSelect={(image) => {
+                setSelectedStandaloneImage(image);
+                setGeneratedImage(null);
+              }}
+              onDelete={handleDeleteStandaloneImage}
+              onReusePrompt={(prompt) => {
+                imageGenFormRef.current?.setPrompt(prompt);
+              }}
+            />
           </div>
         </main>
       ) : currentView === 'carl-gen' ? (
@@ -401,22 +475,7 @@ export default function App() {
             generateBulkAudio={generateBulkAudio}
           />
         </main>
-      ) : (
-        <main className="main-library">
-          <Library
-            accessKey={accessKey}
-            getLibrary={getLibrary}
-            getFolders={getFolders}
-            createFolder={createFolder}
-            deleteFolder={deleteFolder}
-            updateVideo={updateVideo}
-            deleteVideo={deleteVideo}
-            getGeneratedImages={getGeneratedImages}
-            onReusePrompt={handleReusePrompt}
-            onExtendVideo={handleExtendVideo}
-          />
-        </main>
-      )}
+      ) : null}
 
       {error && (
         <div className="error-toast">

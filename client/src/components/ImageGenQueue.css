@@ -1,4 +1,4 @@
-.job-list {
+.image-gen-queue {
   background: var(--bg-secondary);
   border-radius: 2px;
   padding: 24px;
@@ -7,14 +7,14 @@
   overflow: hidden;
 }
 
-.job-list-header {
+.image-gen-queue-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
 
-.job-list-title {
+.image-gen-queue-title {
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 600;
@@ -25,7 +25,7 @@
   margin: 0;
 }
 
-.job-list-title::before {
+.image-gen-queue-title::before {
   content: '';
   display: block;
   width: 2px;
@@ -33,27 +33,8 @@
   background: var(--text-primary);
 }
 
-.job-list-view-all {
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.job-list-view-all:hover {
-  border-color: var(--text-secondary);
-  color: var(--text-primary);
-}
-
 /* Empty state */
-.job-list-empty {
+.image-gen-queue-empty {
   background: var(--bg-secondary);
   border-radius: 2px;
   padding: 48px 32px;
@@ -61,7 +42,7 @@
   border: 1px dashed var(--border);
 }
 
-.job-list-empty p {
+.image-gen-queue-empty p {
   font-family: var(--font-display);
   color: var(--text-primary);
   font-weight: 500;
@@ -69,14 +50,14 @@
   margin-bottom: 6px;
 }
 
-.job-list-empty span {
+.image-gen-queue-empty span {
   color: var(--text-muted);
   font-size: 13px;
   font-style: italic;
 }
 
-/* Jobs container - limited height with scroll */
-.jobs {
+/* Items container - limited height with scroll */
+.image-gen-queue-items {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -86,8 +67,8 @@
   padding-right: 4px;
 }
 
-/* Individual job card */
-.job-card {
+/* Individual card */
+.image-gen-queue-card {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: 2px;
@@ -95,11 +76,11 @@
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
   min-width: 0;
+  flex-shrink: 0;
 }
 
-.job-card::before {
+.image-gen-queue-card::before {
   content: '';
   position: absolute;
   top: 0;
@@ -110,40 +91,40 @@
   transition: background 0.2s ease;
 }
 
-.job-card:hover {
+.image-gen-queue-card:hover {
   border-color: var(--border);
   background: var(--bg-elevated);
 }
 
-.job-card:hover::before {
+.image-gen-queue-card:hover::before {
   background: var(--text-secondary);
 }
 
-.job-card.selected {
+.image-gen-queue-card.selected {
   border-color: var(--text-secondary);
 }
 
-.job-card.selected::before {
+.image-gen-queue-card.selected::before {
   background: var(--text-primary);
 }
 
-/* Job header */
-.job-header {
+/* Card header */
+.image-gen-queue-card-header {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
 }
 
-.job-header .job-status {
+.image-gen-queue-card-header .image-gen-queue-status {
   margin-left: auto;
 }
 
-.job-header .job-delete {
+.image-gen-queue-card-header .image-gen-queue-delete {
   margin-left: 0;
 }
 
-.job-type {
+.image-gen-queue-type {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
@@ -156,7 +137,7 @@
 }
 
 /* Status indicators */
-.job-status {
+.image-gen-queue-status {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -167,24 +148,8 @@
   letter-spacing: 0.05em;
 }
 
-.job-status.pending {
-  color: var(--text-muted);
-}
-
-.job-status.processing {
-  color: var(--processing);
-}
-
-.job-status.completed {
-  color: var(--success);
-}
-
-.job-status.failed {
-  color: var(--error);
-}
-
-/* Spinner - film reel inspired */
-.spinner {
+/* Spinner */
+.image-gen-queue-status .spinner {
   width: 14px;
   height: 14px;
   border: 2px solid transparent;
@@ -198,8 +163,8 @@
   to { transform: rotate(360deg); }
 }
 
-/* Job prompt preview */
-.job-prompt {
+/* Prompt preview */
+.image-gen-queue-prompt {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.4;
@@ -211,8 +176,8 @@
   max-width: 100%;
 }
 
-/* Delete button - X icon */
-.job-delete {
+/* Delete button */
+.image-gen-queue-delete {
   width: 24px;
   height: 24px;
   padding: 0;
@@ -229,25 +194,13 @@
   justify-content: center;
 }
 
-.job-delete:hover {
+.image-gen-queue-delete:hover {
   background: var(--error);
   color: var(--bg-deep);
 }
 
-/* Job error message */
-.job-error {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: var(--bg-elevated);
-  border-radius: 2px;
-  border-left: 2px solid var(--error);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-/* Job action buttons */
-.job-actions {
+/* Action buttons */
+.image-gen-queue-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
@@ -255,11 +208,11 @@
   transition: opacity 0.2s ease;
 }
 
-.job-card:hover .job-actions {
+.image-gen-queue-card:hover .image-gen-queue-actions {
   opacity: 1;
 }
 
-.job-action-btn {
+.image-gen-queue-action-btn {
   padding: 4px 10px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -273,7 +226,7 @@
   transition: all 0.2s ease;
 }
 
-.job-action-btn:hover {
+.image-gen-queue-action-btn:hover {
   border-color: var(--text-secondary);
   color: var(--text-primary);
   background: var(--bg-tertiary);

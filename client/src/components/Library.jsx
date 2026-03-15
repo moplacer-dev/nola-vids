@@ -1,3 +1,9 @@
+/**
+ * @deprecated This component is no longer used in the UI.
+ * Library functionality has been integrated into Video Gen and Image Gen tabs
+ * using their respective queue components (JobList and ImageGenQueue).
+ * Kept for reference.
+ */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import VideoCard from './VideoCard';
 import ImageCard from './ImageCard';

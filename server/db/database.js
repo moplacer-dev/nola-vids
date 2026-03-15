@@ -680,6 +680,13 @@ const generatedImageQueries = {
         asset_lists(module_name, session_number)
       `);
 
+    // Filter for standalone images (no asset list) or Carl Gen images (has asset list)
+    if (options.source === 'standalone') {
+      query = query.is('asset_list_id', null);
+    } else if (options.source === 'carl-gen') {
+      query = query.not('asset_list_id', 'is', null);
+    }
+
     if (options.moduleName) {
       query = query.eq('asset_lists.module_name', options.moduleName);
     }

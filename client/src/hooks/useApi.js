@@ -217,6 +217,7 @@ export function useApi(accessKey) {
     if (options.status) params.set('status', options.status);
     if (options.limit) params.set('limit', options.limit);
     if (options.offset) params.set('offset', options.offset);
+    if (options.source) params.set('source', options.source);
 
     const query = params.toString();
     return request(`/images${query ? `?${query}` : ''}`);
@@ -312,6 +313,10 @@ export function useApi(accessKey) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceId, sourceType })
     });
+  }, [request]);
+
+  const deleteGeneratedImage = useCallback(async (imageId) => {
+    return request(`/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' });
   }, [request]);
 
   // Motion Graphics Video endpoints
@@ -496,6 +501,7 @@ export function useApi(accessKey) {
     updateGeneratedImage,
     uploadGeneratedImage,
     importFromLibrary,
+    deleteGeneratedImage,
     // Motion graphics videos
     getMotionGraphicsSlide,
     uploadMotionGraphicsVideo,

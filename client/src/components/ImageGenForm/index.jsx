@@ -20,13 +20,16 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Expose method to add reference from URL (for refine feature)
+  // Expose methods for external control
   useImperativeHandle(ref, () => ({
     addReferenceUrl: (url) => {
       const totalRefs = referenceImages.length + referenceUrls.length;
       if (totalRefs < 3 && url) {
         setReferenceUrls(prev => [...prev, url]);
       }
+    },
+    setPrompt: (text) => {
+      setPrompt(text || '');
     }
   }));
 

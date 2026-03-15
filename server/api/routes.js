@@ -1197,7 +1197,7 @@ module.exports = (jobManager) => {
   // Get all generated images with filtering
   router.get('/images', async (req, res) => {
     try {
-      const { moduleName, sessionNumber, status, limit, offset } = req.query;
+      const { moduleName, sessionNumber, status, limit, offset, source } = req.query;
       let statuses;
       if (Array.isArray(status)) {
         statuses = status.map(s => s.trim());
@@ -1209,7 +1209,8 @@ module.exports = (jobManager) => {
         sessionNumber: sessionNumber ? parseInt(sessionNumber) : undefined,
         statuses,
         limit: limit ? parseInt(limit) : undefined,
-        offset: offset ? parseInt(offset) : undefined
+        offset: offset ? parseInt(offset) : undefined,
+        source // 'standalone' filters for images with no assetListId
       });
       res.json(images);
     } catch (error) {
@@ -1263,6 +1264,34 @@ module.exports = (jobManager) => {
 
       const updatedImage = await generatedImageDb.getById(req.params.id);
       res.json({ success: true, image: updatedImage });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a generated image
+  router.delete('/images/:id', async (req, res) => {
+    try {
+      const image = await generatedImageDb.getById(req.params.id);
+      if (!image) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      // Delete from storage if path exists
+      if (image.imagePath) {
+        try {
+          const bucket = storage.getBucketFromUrl(image.imagePath);
+          const filename = storage.getFilenameFromUrl(image.imagePath);
+          if (bucket && filename) {
+            await storage.deleteFile(bucket, filename);
+          }
+        } catch (storageErr) {
+          console.error('Failed to delete image from storage:', storageErr);
+        }
+      }
+
+      await generatedImageDb.delete(req.params.id);
+      res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
