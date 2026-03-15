@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import './MediaViewer.css';
 
 export default function MediaViewer({
@@ -13,9 +13,15 @@ export default function MediaViewer({
   onReusePrompt
 }) {
   const videoRef = useRef(null);
+  const [mediaError, setMediaError] = useState(false);
 
   const isVideo = item._type === 'video';
   const isImage = item._type === 'image';
+
+  // Reset error state when item changes
+  useEffect(() => {
+    setMediaError(false);
+  }, [item.id]);
 
   // Get the source URL
   const getSrc = () => {
@@ -23,7 +29,8 @@ export default function MediaViewer({
       return item.path;
     }
     if (isImage) {
-      return `/images/${item.imagePath?.split('/').pop() || item.filename}`;
+      // Use full Supabase URL if available, fallback to local path
+      return item.imagePath || `/images/${item.filename}`;
     }
     return '';
   };
@@ -92,16 +99,22 @@ export default function MediaViewer({
   };
 
   const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = src;
-    if (isVideo) {
-      link.download = item.title ? `${item.title}.mp4` : item.filename;
+    const filename = isVideo
+      ? (item.title ? `${item.title}.mp4` : item.filename)
+      : (item.cmsFilename || item.filename || 'image.png');
+
+    // Use server proxy for Supabase URLs to handle CORS
+    if (src.startsWith('http') && src.includes('supabase')) {
+      const proxyUrl = `/api/download?url=${encodeURIComponent(src)}&filename=${encodeURIComponent(filename)}`;
+      window.location.href = proxyUrl;
     } else {
-      link.download = item.cmsFilename || item.filename || 'image.png';
+      const link = document.createElement('a');
+      link.href = src;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   return (
@@ -126,19 +139,32 @@ export default function MediaViewer({
 
         {/* Media content */}
         <div className="media-viewer-content">
-          {isVideo ? (
+          {mediaError ? (
+            <div className="media-viewer-error">
+              <span className="error-icon">⚠</span>
+              <p>Failed to load {isVideo ? 'video' : 'image'}</p>
+              <button
+                className="media-viewer-btn"
+                onClick={() => setMediaError(false)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : isVideo ? (
             <video
               ref={videoRef}
               src={src}
               controls
               autoPlay
               className="media-viewer-video"
+              onError={() => setMediaError(true)}
             />
           ) : (
             <img
               src={src}
               alt={getTitle()}
               className="media-viewer-image"
+              onError={() => setMediaError(true)}
             />
           )}
         </div>

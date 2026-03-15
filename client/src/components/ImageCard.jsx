@@ -8,18 +8,28 @@ export default function ImageCard({
   onClick
 }) {
   const [showActions, setShowActions] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  const imageUrl = `/images/${image.imagePath?.split('/').pop() || image.filename}`;
+  // Use full Supabase URL if available, fallback to local path
+  const imageUrl = image.imagePath || `/images/${image.filename}`;
   const displayTitle = image.cmsFilename || image.filename || 'Untitled Image';
   const prompt = image.modifiedPrompt || image.originalPrompt || '';
 
   const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = image.cmsFilename || image.filename || 'image.png';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = image.cmsFilename || image.filename || 'image.png';
+
+    // Use server proxy for Supabase URLs to handle CORS
+    if (imageUrl.startsWith('http') && imageUrl.includes('supabase')) {
+      const proxyUrl = `/api/download?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(filename)}`;
+      window.location.href = proxyUrl;
+    } else {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   return (
@@ -29,11 +39,21 @@ export default function ImageCard({
       onMouseLeave={() => setShowActions(false)}
     >
       <div className="image-card-preview" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-        <img
-          src={imageUrl}
-          alt={displayTitle}
-          loading="lazy"
-        />
+        {imageError ? (
+          <div className="image-card-error">
+            <span className="error-icon">⚠</span>
+            <span>Failed to load</span>
+          </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={displayTitle}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
+            onError={() => setImageError(true)}
+          />
+        )}
         <span className="image-card-type-badge">IMAGE</span>
         <div className={`image-card-buttons ${showActions ? 'visible' : ''}`} onClick={(e) => e.stopPropagation()}>
           <button

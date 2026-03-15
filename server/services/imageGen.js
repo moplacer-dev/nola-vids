@@ -194,7 +194,7 @@ class ImageGenService {
    * @returns {Promise<{imageBytes: string, mimeType: string}>}
    */
   async _prepareImage(imagePath) {
-    const imageBuffer = fs.readFileSync(imagePath);
+    const imageBuffer = await fs.promises.readFile(imagePath);
     const base64 = imageBuffer.toString('base64');
     const ext = path.extname(imagePath).toLowerCase();
 

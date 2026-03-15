@@ -1,4 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
 const { jobs: jobDb, videos: videoDb } = require('../db/database');
 const storage = require('../services/storage');
 const { BUCKETS } = storage;
@@ -191,35 +194,45 @@ class JobManager {
         if (status.status === 'completed') {
           this.activePollers.delete(jobId);
 
-          // Download videos and upload to Supabase Storage
+          // Download videos to temp files and upload to Supabase Storage
           for (let i = 0; i < status.videos.length; i++) {
             const video = status.videos[i];
             if (video.uri) {
               const filename = `${jobId}_${i}.mp4`;
+              const tempPath = path.join(os.tmpdir(), `veo_${jobId}_${i}.mp4`);
 
-              // Download video to buffer
-              const videoBuffer = await this.veoService.downloadVideoToBuffer(video.uri);
+              try {
+                // Download video to temp file (memory-efficient streaming)
+                await this.veoService.downloadVideoToFile(video.uri, tempPath);
 
-              // Upload to Supabase Storage
-              const uploaded = await storage.uploadFile(
-                BUCKETS.VIDEOS,
-                filename,
-                videoBuffer,
-                video.mimeType || 'video/mp4'
-              );
+                // Upload from disk to Supabase Storage
+                const uploaded = await storage.uploadFileFromPath(
+                  BUCKETS.VIDEOS,
+                  filename,
+                  tempPath,
+                  video.mimeType || 'video/mp4'
+                );
 
-              // Create video record in database (store source URI for video extension)
-              await videoDb.create({
-                id: uuidv4(),
-                jobId: jobId,
-                filename: filename,
-                path: uploaded.publicUrl,
-                mimeType: video.mimeType || 'video/mp4',
-                title: null,
-                folder: null,
-                sourceUri: video.uri,
-                createdAt: new Date().toISOString()
-              });
+                // Create video record in database (store source URI for video extension)
+                await videoDb.create({
+                  id: uuidv4(),
+                  jobId: jobId,
+                  filename: filename,
+                  path: uploaded.publicUrl,
+                  mimeType: video.mimeType || 'video/mp4',
+                  title: null,
+                  folder: null,
+                  sourceUri: video.uri,
+                  createdAt: new Date().toISOString()
+                });
+              } finally {
+                // Clean up temp file
+                try {
+                  await fs.promises.unlink(tempPath);
+                } catch (unlinkErr) {
+                  console.warn(`Failed to clean up temp file ${tempPath}:`, unlinkErr.message);
+                }
+              }
             }
           }
 
@@ -285,6 +298,26 @@ class JobManager {
   async getAllJobs() {
     const jobs = await jobDb.getAll();
 
+    // Batch fetch all videos for all jobs in a single query
+    const jobIds = jobs.map(job => job.id);
+    const allVideos = await videoDb.getAllWithJobIds(jobIds);
+
+    // Create a map of jobId -> videos for O(1) lookup
+    const videosByJobId = new Map();
+    for (const video of allVideos) {
+      if (!videosByJobId.has(video.jobId)) {
+        videosByJobId.set(video.jobId, []);
+      }
+      videosByJobId.get(video.jobId).push({
+        id: video.id,
+        filename: video.filename,
+        path: video.path,
+        mimeType: video.mimeType,
+        title: video.title,
+        folder: video.folder
+      });
+    }
+
     // Attach videos and queue position to each job
     for (const job of jobs) {
       if (job.status === 'queued') {
@@ -292,15 +325,7 @@ class JobManager {
         job.queuePosition = queuePosition >= 0 ? queuePosition + 1 : null;
       }
 
-      const videos = await videoDb.getByJobId(job.id);
-      job.videos = videos.map(v => ({
-        id: v.id,
-        filename: v.filename,
-        path: v.path,
-        mimeType: v.mimeType,
-        title: v.title,
-        folder: v.folder
-      }));
+      job.videos = videosByJobId.get(job.id) || [];
     }
 
     return jobs;

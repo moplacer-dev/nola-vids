@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 
 const API_BASE = '/api';
+const DEFAULT_TIMEOUT = 25000; // 25 seconds
 
 export function useApi(accessKey) {
   const [loading, setLoading] = useState(false);
@@ -9,6 +10,12 @@ export function useApi(accessKey) {
   const request = useCallback(async (endpoint, options = {}) => {
     setLoading(true);
     setError(null);
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, options.timeout || DEFAULT_TIMEOUT);
 
     try {
       // Add auth header to all requests
@@ -19,8 +26,11 @@ export function useApi(accessKey) {
 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
-        headers
+        headers,
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
       const data = await response.json();
 
       if (!response.ok) {
@@ -29,6 +39,15 @@ export function useApi(accessKey) {
 
       return data;
     } catch (err) {
+      clearTimeout(timeoutId);
+
+      // Handle timeout error with user-friendly message
+      if (err.name === 'AbortError') {
+        const timeoutError = new Error('Request timed out. The server may be busy - please try again.');
+        setError(timeoutError.message);
+        throw timeoutError;
+      }
+
       setError(err.message);
       throw err;
     } finally {

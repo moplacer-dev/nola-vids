@@ -49,8 +49,8 @@ async function uploadFile(bucket, filename, buffer, contentType) {
  * @returns {Promise<{path: string, publicUrl: string}>}
  */
 async function uploadFileFromPath(bucket, filename, localPath, contentType) {
-  const fs = require('fs');
-  const buffer = fs.readFileSync(localPath);
+  const fs = require('fs').promises;
+  const buffer = await fs.readFile(localPath);
   return uploadFile(bucket, filename, buffer, contentType);
 }
 

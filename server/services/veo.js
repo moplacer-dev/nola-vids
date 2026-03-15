@@ -214,7 +214,7 @@ class VeoService {
     return outputPath;
   }
 
-  // Download video to buffer (for Supabase Storage upload)
+  // Download video to buffer (for Supabase Storage upload) - legacy, prefer downloadVideoToFile
   async downloadVideoToBuffer(videoUri) {
     // The URI is a direct download URL - fetch it with the API key in header
     const response = await fetchWithTimeout(videoUri, {
@@ -227,6 +227,26 @@ class VeoService {
     return Buffer.from(await response.arrayBuffer());
   }
 
+  // Download video to file using streams (memory-efficient for large videos)
+  async downloadVideoToFile(videoUri, destPath) {
+    const { Readable } = require('stream');
+    const { pipeline } = require('stream/promises');
+
+    const response = await fetchWithTimeout(videoUri, {
+      headers: { 'x-goog-api-key': this.apiKey }
+    }, TIMEOUTS.DOWNLOAD);
+
+    if (!response.ok) {
+      throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
+    }
+
+    // Stream response body directly to file
+    const writeStream = fs.createWriteStream(destPath);
+    await pipeline(Readable.fromWeb(response.body), writeStream);
+
+    return destPath;
+  }
+
   // Prepare image for API (supports both local paths and URLs)
   async _prepareImage(imageSource) {
     // Check if it's a URL (Supabase Storage URL)
@@ -235,7 +255,7 @@ class VeoService {
     }
 
     // Local file path
-    const imageBuffer = fs.readFileSync(imageSource);
+    const imageBuffer = await fs.promises.readFile(imageSource);
     const base64 = imageBuffer.toString('base64');
     const ext = path.extname(imageSource).toLowerCase();
 

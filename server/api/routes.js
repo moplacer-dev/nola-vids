@@ -2,6 +2,25 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+const fsPromises = require('fs').promises;
+
+// Async helper to clean up temp files without blocking the event loop
+async function cleanupTempFile(filePath) {
+  if (!filePath) return;
+  try {
+    await fsPromises.access(filePath);
+    await fsPromises.unlink(filePath);
+  } catch (err) {
+    // File doesn't exist or already deleted - ignore
+  }
+}
+
+// Async helper to clean up multiple temp files
+async function cleanupTempFiles(files) {
+  if (!files || !Array.isArray(files)) return;
+  await Promise.all(files.map(file => cleanupTempFile(file.path)));
+}
 
 const {
   videos: videoDb,
@@ -24,6 +43,8 @@ const {
   narrationTypeToCode
 } = require('../utils/narrationParser');
 
+const { getModuleCode } = require('../utils/moduleConfig');
+
 const router = express.Router();
 
 // Default images for specific slide types
@@ -35,21 +56,34 @@ const DEFAULT_SLIDE_IMAGES = {
   'lab_safety': 'lab_safety.png'
 };
 
-// Check if a slide title matches a default image pattern
+// Cache for default image existence checks (5-minute TTL)
+const defaultImageCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Check if a slide title matches a default image pattern (with caching)
 async function getDefaultImageForSlide(slideTitle) {
   if (!slideTitle) return null;
   const titleLower = slideTitle.toLowerCase().trim();
 
   for (const [pattern, filename] of Object.entries(DEFAULT_SLIDE_IMAGES)) {
     if (titleLower.includes(pattern)) {
+      // Check cache first
+      const cacheKey = filename;
+      const cached = defaultImageCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.value;
+      }
+
       // Check if default image exists in Supabase Storage
       const exists = await storage.fileExists(BUCKETS.DEFAULTS, filename);
-      if (exists) {
-        return {
-          filename,
-          publicUrl: storage.getPublicUrl(BUCKETS.DEFAULTS, filename)
-        };
-      }
+      const result = exists ? {
+        filename,
+        publicUrl: storage.getPublicUrl(BUCKETS.DEFAULTS, filename)
+      } : null;
+
+      // Cache the result
+      defaultImageCache.set(cacheKey, { value: result, timestamp: Date.now() });
+      return result;
     }
   }
   return null;
@@ -147,13 +181,11 @@ module.exports = (jobManager) => {
       await jobManager.startJob(job.id);
 
       // Clean up temp file
-      require('fs').unlinkSync(req.file.path);
+      await cleanupTempFile(req.file.path);
 
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
-      if (req.file && require('fs').existsSync(req.file.path)) {
-        require('fs').unlinkSync(req.file.path);
-      }
+      await cleanupTempFile(req.file?.path);
       res.status(500).json({ error: error.message });
     }
   });
@@ -203,18 +235,18 @@ module.exports = (jobManager) => {
       await jobManager.startJob(job.id);
 
       // Clean up temp files
-      require('fs').unlinkSync(firstFile.path);
-      require('fs').unlinkSync(lastFile.path);
+      await Promise.all([
+        cleanupTempFile(firstFile.path),
+        cleanupTempFile(lastFile.path)
+      ]);
 
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
       // Clean up on error
-      if (req.files?.firstFrame?.[0]?.path && require('fs').existsSync(req.files.firstFrame[0].path)) {
-        require('fs').unlinkSync(req.files.firstFrame[0].path);
-      }
-      if (req.files?.lastFrame?.[0]?.path && require('fs').existsSync(req.files.lastFrame[0].path)) {
-        require('fs').unlinkSync(req.files.lastFrame[0].path);
-      }
+      await Promise.all([
+        cleanupTempFile(req.files?.firstFrame?.[0]?.path),
+        cleanupTempFile(req.files?.lastFrame?.[0]?.path)
+      ]);
       res.status(500).json({ error: error.message });
     }
   });
@@ -241,7 +273,7 @@ module.exports = (jobManager) => {
           file.mimetype
         );
         uploadedUrls.push(uploaded.publicUrl);
-        require('fs').unlinkSync(file.path);
+        await cleanupTempFile(file.path);
       }
 
       const job = await jobManager.createJob('reference-guided', {
@@ -257,13 +289,7 @@ module.exports = (jobManager) => {
       res.json({ jobId: job.id, status: job.status });
     } catch (error) {
       // Clean up on error
-      if (req.files) {
-        for (const file of req.files) {
-          if (require('fs').existsSync(file.path)) {
-            require('fs').unlinkSync(file.path);
-          }
-        }
-      }
+      await cleanupTempFiles(req.files);
       res.status(500).json({ error: error.message });
     }
   });
@@ -779,28 +805,36 @@ module.exports = (jobManager) => {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      const generatedImages = await generatedImageDb.getByAssetList(assetList.id);
-      const motionGraphicsVideos = await mgVideoDb.getByAssetList(assetList.id);
-      const generatedAudio = await generatedAudioDb.getByAssetList(assetList.id);
+      // Run all queries in parallel for better performance
+      const [generatedImages, motionGraphicsVideos, generatedAudio, characters] =
+        await Promise.all([
+          generatedImageDb.getByAssetList(assetList.id),
+          mgVideoDb.getByAssetList(assetList.id),
+          generatedAudioDb.getByAssetList(assetList.id),
+          characterDb.getByModule(assetList.moduleName)
+        ]);
 
       // Backfill characterId for existing MG scenes that don't have one
-      const characters = await characterDb.getByModule(assetList.moduleName);
-      const character = characters[0]; // Get first character for module
-      if (character) {
-        const mgScenes = generatedImages.filter(img =>
-          (img.assetType || '').toLowerCase().includes('motion_graphics') &&
-          !img.characterId
-        );
-        for (const scene of mgScenes) {
-          const slideKey = `S${assetList.sessionNumber}-${scene.slideNumber}`;
-          const hasCharacter = character.appearsOnSlides?.some(s =>
-            s === slideKey || s === String(scene.slideNumber)
+      try {
+        const character = characters[0]; // Get first character for module
+        if (character) {
+          const mgScenes = generatedImages.filter(img =>
+            (img.assetType || '').toLowerCase().includes('motion_graphics') &&
+            !img.characterId
           );
-          if (hasCharacter) {
-            await generatedImageDb.update(scene.id, { characterId: character.id });
-            scene.characterId = character.id;
+          for (const scene of mgScenes) {
+            const slideKey = `S${assetList.sessionNumber}-${scene.slideNumber}`;
+            const hasCharacter = character.appearsOnSlides?.some(s =>
+              s === slideKey || s === String(scene.slideNumber)
+            );
+            if (hasCharacter) {
+              await generatedImageDb.update(scene.id, { characterId: character.id });
+              scene.characterId = character.id;
+            }
           }
         }
+      } catch (backfillErr) {
+        console.warn('Character backfill failed (non-critical):', backfillErr.message);
       }
 
       res.json({
@@ -920,7 +954,7 @@ module.exports = (jobManager) => {
         newPaths.push(uploaded.publicUrl);
 
         // Clean up temp file
-        require('fs').unlinkSync(file.path);
+        await cleanupTempFile(file.path);
       }
 
       // Add new paths to existing ones (max 3 total)
@@ -936,13 +970,7 @@ module.exports = (jobManager) => {
       res.json(updated);
     } catch (error) {
       // Clean up temp files on error
-      if (req.files) {
-        for (const file of req.files) {
-          if (require('fs').existsSync(file.path)) {
-            require('fs').unlinkSync(file.path);
-          }
-        }
-      }
+      await cleanupTempFiles(req.files);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1038,7 +1066,7 @@ module.exports = (jobManager) => {
             file.mimetype
           );
           anchorImageUrls.push(uploaded.publicUrl);
-          require('fs').unlinkSync(file.path);
+          await cleanupTempFile(file.path);
         }
       }
 
@@ -1072,13 +1100,7 @@ module.exports = (jobManager) => {
       });
     } catch (error) {
       // Clean up on error
-      if (req.files) {
-        for (const file of req.files) {
-          if (require('fs').existsSync(file.path)) {
-            require('fs').unlinkSync(file.path);
-          }
-        }
-      }
+      await cleanupTempFiles(req.files);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1369,7 +1391,7 @@ module.exports = (jobManager) => {
       );
 
       // Clean up temp file
-      require('fs').unlinkSync(req.file.path);
+      await cleanupTempFile(req.file.path);
 
       // Update the generated image record
       await generatedImageDb.update(req.params.id, {
@@ -1393,9 +1415,7 @@ module.exports = (jobManager) => {
         path: uploaded.publicUrl
       });
     } catch (error) {
-      if (req.file && require('fs').existsSync(req.file.path)) {
-        require('fs').unlinkSync(req.file.path);
-      }
+      await cleanupTempFile(req.file?.path);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1531,7 +1551,7 @@ module.exports = (jobManager) => {
       );
 
       // Clean up temp file
-      require('fs').unlinkSync(req.file.path);
+      await cleanupTempFile(req.file.path);
 
       const allImages = await generatedImageDb.getByAssetList(assetListId);
       const sceneCount = allImages.filter(img =>
@@ -1573,9 +1593,7 @@ module.exports = (jobManager) => {
         path: uploaded.publicUrl
       });
     } catch (error) {
-      if (req.file && require('fs').existsSync(req.file.path)) {
-        require('fs').unlinkSync(req.file.path);
-      }
+      await cleanupTempFile(req.file?.path);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1844,7 +1862,7 @@ module.exports = (jobManager) => {
         req.file.mimetype
       );
 
-      require('fs').unlinkSync(req.file.path);
+      await cleanupTempFile(req.file.path);
 
       const updated = await generatedAudioDb.update(req.params.id, {
         status: 'uploaded',
@@ -1859,9 +1877,7 @@ module.exports = (jobManager) => {
         path: uploaded.publicUrl
       });
     } catch (error) {
-      if (req.file && require('fs').existsSync(req.file.path)) {
-        require('fs').unlinkSync(req.file.path);
-      }
+      await cleanupTempFile(req.file?.path);
       res.status(500).json({ error: error.message });
     }
   });
@@ -2547,49 +2563,61 @@ module.exports = (jobManager) => {
     }
   });
 
+  // =============================================
+  // Download Proxy - handles cross-origin downloads
+  // =============================================
+  router.get('/download', async (req, res) => {
+    try {
+      const { url, filename } = req.query;
+
+      if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      // Only allow Supabase URLs for security
+      if (!url.includes('supabase.co')) {
+        return res.status(403).json({ error: 'Only Supabase URLs are allowed' });
+      }
+
+      // Fetch the file
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch file' });
+      }
+
+      // Get content type
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
+      // Set headers for download
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
+
+      // Stream the response
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Download proxy error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
 // Helper functions
 function generateAudioFilename(moduleName, sessionNumber, slideNumber) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.NAR1.mp3`;
 }
 
 function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.VID1.mp4`;
 }
 
 function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNumber) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.MG.${sceneNumber}.png`;
 }
 
@@ -2954,16 +2982,7 @@ async function processAssetList({
 }
 
 function generateCmsFilename(moduleName, sessionNumber, asset) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   const session = sessionNumber || 0;
   const slide = asset.slideNumber || 0;
 
@@ -2986,17 +3005,7 @@ function generateCmsFilename(moduleName, sessionNumber, asset) {
 // Generate CMS filename for assessment visuals
 // Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>1.png
 function generateAssessmentCmsFilename(moduleName, assessmentType, questionNumber, visualType) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS',
-    'Heat and Energy': 'ENER'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
   const qNum = String(questionNumber).padStart(2, '0');
 
@@ -3023,17 +3032,7 @@ function getAssessmentAssetType(assessmentType, visualType) {
 // Generate CMS filename for assessment audio
 // Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>.mp3
 function generateAssessmentAudioFilename(moduleName, assessmentType, questionNumber, narrationType) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS',
-    'Heat and Energy': 'ENER'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
   const qNum = String(questionNumber).padStart(2, '0');
   const typeCode = narrationTypeToCode(narrationType);
@@ -3044,17 +3043,7 @@ function generateAssessmentAudioFilename(moduleName, assessmentType, questionNum
 // Generate CMS filename for RCP audio
 // Format: MOD.<CODE>.<SESSION>R.<SLIDE>.<TYPE>.mp3
 function generateRcpAudioFilename(moduleName, sessionNumber, slideNumber, narrationType) {
-  const moduleCodeMap = {
-    'Reactions': 'REAC',
-    'Energy': 'ENER',
-    'Waves': 'WAVE',
-    'Forces': 'FORC',
-    'Matter': 'MATT',
-    'Ecosystems': 'ECOS',
-    'Heat and Energy': 'ENER'
-  };
-
-  const moduleCode = moduleCodeMap[moduleName] || moduleName.substring(0, 4).toUpperCase();
+  const moduleCode = getModuleCode(moduleName);
   const typeCode = narrationTypeToCode(narrationType);
 
   return `MOD.${moduleCode}.${sessionNumber}R.${slideNumber}.${typeCode}.mp3`;

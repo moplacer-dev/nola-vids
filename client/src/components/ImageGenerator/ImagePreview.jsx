@@ -83,11 +83,11 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
   // Check for video (MG video) - videoPath indicates this is a video asset
   const hasVideo = image.videoPath && image.status === 'uploaded';
-  const videoUrl = hasVideo ? `/mg-videos/${image.cmsFilename}` : null;
+  const videoUrl = hasVideo ? image.videoPath : null;
 
   const hasImage = !hasVideo && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported' || image.status === 'default') && image.imagePath;
-  // Add updatedAt as cache-buster to force reload after regeneration
-  const imageUrl = hasImage ? `/images/${image.imagePath.split('/').pop()}?t=${encodeURIComponent(image.updatedAt || '')}` : null;
+  // Use full Supabase URL directly, add updatedAt as cache-buster
+  const imageUrl = hasImage ? `${image.imagePath}?t=${encodeURIComponent(image.updatedAt || '')}` : null;
 
   // Only use character anchor for character-related asset types
   const assetType = (image.assetType || '').toLowerCase();
@@ -98,7 +98,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
   const handleDownload = () => {
     if (hasVideo && videoUrl) {
-      // Direct download for video
+      // Direct download for video (local path)
       const link = document.createElement('a');
       link.href = videoUrl;
       link.download = image.cmsFilename || `video_${image.id}.mp4`;
@@ -110,12 +110,22 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
     if (!imageUrl) return;
 
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = image.cmsFilename || `image_${image.id}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = image.cmsFilename || `image_${image.id}.png`;
+    // Remove cache buster for download URL
+    const downloadUrl = imageUrl.split('?')[0];
+
+    // Use server proxy for Supabase URLs to handle CORS
+    if (downloadUrl.startsWith('http') && downloadUrl.includes('supabase')) {
+      const proxyUrl = `/api/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
+      window.location.href = proxyUrl;
+    } else {
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   return (

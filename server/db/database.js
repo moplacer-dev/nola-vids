@@ -266,6 +266,19 @@ const videoQueries = {
 
     if (error) throw error;
     return data.map(parseVideoRow);
+  },
+
+  async getAllWithJobIds(jobIds) {
+    if (!jobIds || jobIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('videos')
+      .select('*')
+      .in('job_id', jobIds)
+      .order('created_at');
+
+    if (error) throw error;
+    return data.map(parseVideoRow);
   }
 };
 
@@ -298,32 +311,50 @@ const folderQueries = {
   },
 
   async getAll() {
+    // Use Supabase join with embedded count to get folders with video counts in a single query
     const { data: folders, error } = await supabase
       .from('folders')
-      .select('*')
+      .select(`
+        *,
+        videos!videos_folder_fkey(count)
+      `)
       .order('name');
 
-    if (error) throw error;
+    if (error) {
+      // Fallback if foreign key doesn't exist - use separate count query
+      const { data: foldersOnly, error: folderError } = await supabase
+        .from('folders')
+        .select('*')
+        .order('name');
 
-    // Get video counts for each folder
-    const { data: counts, error: countError } = await supabase
-      .from('videos')
-      .select('folder')
-      .not('folder', 'is', null);
+      if (folderError) throw folderError;
 
-    if (countError) throw countError;
+      // Use RPC or aggregate query for counts
+      const { data: counts, error: countError } = await supabase
+        .from('videos')
+        .select('folder')
+        .not('folder', 'is', null);
 
-    // Count videos per folder
-    const countMap = {};
-    counts.forEach(v => {
-      countMap[v.folder] = (countMap[v.folder] || 0) + 1;
-    });
+      if (countError) throw countError;
+
+      const countMap = {};
+      counts.forEach(v => {
+        countMap[v.folder] = (countMap[v.folder] || 0) + 1;
+      });
+
+      return foldersOnly.map(f => ({
+        id: f.id,
+        name: f.name,
+        createdAt: f.created_at,
+        videoCount: countMap[f.name] || 0
+      }));
+    }
 
     return folders.map(f => ({
       id: f.id,
       name: f.name,
       createdAt: f.created_at,
-      videoCount: countMap[f.name] || 0
+      videoCount: f.videos?.[0]?.count || 0
     }));
   },
 

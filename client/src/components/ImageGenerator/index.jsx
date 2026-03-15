@@ -114,54 +114,64 @@ export default function ImageGenerator({
     if (!hasGeneratingImages && allGeneratingAudioIds.length === 0) return;
 
     const interval = setInterval(async () => {
-      // For images, we still need full refetch (image generation is less frequent)
+      // Run image and audio polling independently using Promise.all
+      const tasks = [];
+
+      // Image polling task
       if (hasGeneratingImages) {
         if (selectedAssetList) {
-          await loadAssetListDetails(selectedAssetList.id);
+          tasks.push(loadAssetListDetails(selectedAssetList.id));
         } else if (selectedAssessment) {
-          await loadAssessmentDetails(selectedAssessment.id);
+          tasks.push(loadAssessmentDetails(selectedAssessment.id));
         }
-        return;
       }
 
-      // For audio, use lightweight status check
+      // Audio polling task (lightweight status check)
       if (allGeneratingAudioIds.length > 0 && checkAudioStatus) {
-        try {
-          const result = await checkAudioStatus(allGeneratingAudioIds);
-          if (result?.records) {
-            // Merge status updates into local state
-            const statusMap = new Map(result.records.map(r => [r.id, r]));
+        tasks.push(
+          checkAudioStatus(allGeneratingAudioIds)
+            .then(result => {
+              if (result?.records) {
+                // Merge status updates into local state
+                const statusMap = new Map(result.records.map(r => [r.id, r]));
 
-            // Update generatedAudioList
-            setGeneratedAudioList(prev => prev.map(audio => {
-              const update = statusMap.get(audio.id);
-              if (update) {
-                return { ...audio, ...update };
+                // Update generatedAudioList
+                setGeneratedAudioList(prev => prev.map(audio => {
+                  const update = statusMap.get(audio.id);
+                  if (update) {
+                    return { ...audio, ...update };
+                  }
+                  return audio;
+                }));
+
+                // Update assessmentAudioList
+                setAssessmentAudioList(prev => prev.map(audio => {
+                  const update = statusMap.get(audio.id);
+                  if (update) {
+                    return { ...audio, ...update };
+                  }
+                  return audio;
+                }));
+
+                // Update selectedAudio if it was updated
+                setSelectedAudio(prev => {
+                  if (!prev) return prev;
+                  const update = statusMap.get(prev.id);
+                  return update ? { ...prev, ...update } : prev;
+                });
               }
-              return audio;
-            }));
-
-            // Update assessmentAudioList
-            setAssessmentAudioList(prev => prev.map(audio => {
-              const update = statusMap.get(audio.id);
-              if (update) {
-                return { ...audio, ...update };
-              }
-              return audio;
-            }));
-
-            // Update selectedAudio if it was updated
-            setSelectedAudio(prev => {
-              if (!prev) return prev;
-              const update = statusMap.get(prev.id);
-              return update ? { ...prev, ...update } : prev;
-            });
-          }
-        } catch (err) {
-          console.error('Failed to check audio status:', err);
-        }
+            })
+            .catch(err => {
+              console.error('Failed to check audio status:', err);
+            })
+        );
       }
-    }, 3000); // Faster polling since it's lightweight
+
+      // Run all polling tasks in parallel
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+    }, 5000); // 5s polling interval - balances responsiveness with server load
 
     return () => clearInterval(interval);
   }, [generatedImages, generatedAudioList, assessmentAudioList, selectedAssetList, selectedAssessment, checkAudioStatus]);
@@ -764,6 +774,13 @@ export default function ImageGenerator({
             onSetAnchor={handleSetAnchor}
             onRemoveReferenceImage={handleRemoveReferenceImage}
           />
+        )}
+
+        {/* Loading state - shown when fetching session/assessment data */}
+        {loading && !selectedAssetList && !selectedAssessment && selectedSession && (
+          <div className="asset-list">
+            <div className="loading-indicator">Loading session data...</div>
+          </div>
         )}
 
         {/* Asset List for regular sessions */}
