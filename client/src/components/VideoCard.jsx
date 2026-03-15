@@ -50,12 +50,21 @@ export default function VideoCard({
   };
 
   const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = video.path;
-    link.download = video.title ? `${video.title}.mp4` : video.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = video.title ? `${video.title}.mp4` : video.filename;
+    const url = video.path;
+
+    // Use server proxy for Supabase URLs to handle CORS
+    if (url.startsWith('http') && url.includes('supabase')) {
+      const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      window.location.href = proxyUrl;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const prompt = video.params?.prompt || '';

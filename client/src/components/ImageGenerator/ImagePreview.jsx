@@ -8,12 +8,20 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
     const handleDownload = () => {
       if (!audioDownloadUrl) return;
-      const link = document.createElement('a');
-      link.href = audioDownloadUrl;
-      link.download = audio.cmsFilename || `audio_${audio.id}.mp3`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const filename = audio.cmsFilename || `audio_${audio.id}.mp3`;
+
+      // Use server proxy for Supabase URLs to handle CORS
+      if (audioDownloadUrl.startsWith('http') && audioDownloadUrl.includes('supabase')) {
+        const proxyUrl = `/api/download?url=${encodeURIComponent(audioDownloadUrl)}&filename=${encodeURIComponent(filename)}`;
+        window.location.href = proxyUrl;
+      } else {
+        const link = document.createElement('a');
+        link.href = audioDownloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
     };
 
     return (
@@ -98,13 +106,20 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
   const handleDownload = () => {
     if (hasVideo && videoUrl) {
-      // Direct download for video (local path)
-      const link = document.createElement('a');
-      link.href = videoUrl;
-      link.download = image.cmsFilename || `video_${image.id}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const filename = image.cmsFilename || `video_${image.id}.mp4`;
+
+      // Use server proxy for Supabase URLs to handle CORS
+      if (videoUrl.startsWith('http') && videoUrl.includes('supabase')) {
+        const proxyUrl = `/api/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
+        window.location.href = proxyUrl;
+      } else {
+        const link = document.createElement('a');
+        link.href = videoUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
       return;
     }
 

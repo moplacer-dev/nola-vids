@@ -52,13 +52,27 @@ export default function VideoPlayer({ job }) {
                 className="video-element"
               />
               <div className="video-actions">
-                <a
-                  href={video.path}
-                  download={video.filename}
+                <button
                   className="download-btn"
+                  onClick={() => {
+                    const url = video.path;
+                    const filename = video.filename;
+                    // Use server proxy for Supabase URLs to handle CORS
+                    if (url.startsWith('http') && url.includes('supabase')) {
+                      const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+                      window.location.href = proxyUrl;
+                    } else {
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = filename;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }
+                  }}
                 >
                   Download MP4
-                </a>
+                </button>
               </div>
             </div>
           ))}

@@ -221,6 +221,7 @@
 .download-btn {
   padding: 12px 24px;
   background: var(--text-primary);
+  border: none;
   border-radius: 2px;
   color: var(--bg-deep);
   text-decoration: none;
@@ -232,6 +233,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
 }
 
 .download-btn:hover {

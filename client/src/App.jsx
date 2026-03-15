@@ -306,13 +306,27 @@ export default function App() {
                   <img src={generatedImage.path} alt="Generated" className="generated-image" />
                   <div className="image-result-filename">{generatedImage.filename}</div>
                   <div className="image-result-actions">
-                    <a
-                      href={generatedImage.path}
-                      download={generatedImage.filename}
+                    <button
                       className="btn-download-image"
+                      onClick={() => {
+                        const url = generatedImage.path;
+                        const filename = generatedImage.filename;
+                        // Use server proxy for Supabase URLs to handle CORS
+                        if (url.startsWith('http') && url.includes('supabase')) {
+                          const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+                          window.location.href = proxyUrl;
+                        } else {
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = filename;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }
+                      }}
                     >
                       Download
-                    </a>
+                    </button>
                     <button
                       className="btn-refine-image"
                       onClick={() => {
