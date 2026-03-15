@@ -997,7 +997,7 @@ export default function ImageGenerator({
                         ? `Q${img.questionNumber || img.slideNumber}`
                         : `S${selectedAssetList?.sessionNumber}.Slide${img.slideNumber}`}
                     </span>
-                    <span className="queue-status">{img.status.toUpperCase()}</span>
+                    <span className="queue-status">{(img.status || 'pending').toUpperCase()}</span>
                   </div>
                 ))
             )}

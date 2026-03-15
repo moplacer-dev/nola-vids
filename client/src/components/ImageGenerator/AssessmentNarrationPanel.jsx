@@ -187,8 +187,8 @@ export default function AssessmentNarrationPanel({
                 <span className="narration-part-label">
                   {getTypeLabel(audio.narrationType)}
                 </span>
-                <span className={`narration-status ${getStatusClass(audio.status)}`}>
-                  {audio.status?.toUpperCase()}
+                <span className={`narration-status ${getStatusClass(audio.status || 'pending')}`}>
+                  {(audio.status || 'pending').toUpperCase()}
                 </span>
               </div>
 

@@ -349,7 +349,8 @@ export default function AssetList({
 
             {/* Narration Section */}
             {(() => {
-              const audio = audioBySlide[parseInt(slide.slideNumber)];
+              const audioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
+              const audio = audioRecords.find(a => a.narrationType === 'slide_narration') || audioRecords[0];
               if (!audio) return null;
 
               const isExpanded = expandedNarrations[slide.slideNumber];
@@ -366,8 +367,8 @@ export default function AssetList({
                       <span className="narration-expand">{isExpanded ? '▼' : '▶'}</span>
                       <span className="narration-label">NARRATION</span>
                     </div>
-                    <span className={`narration-status status-${audio.status}`}>
-                      {audio.status.toUpperCase()}
+                    <span className={`narration-status status-${audio.status || 'pending'}`}>
+                      {(audio.status || 'pending').toUpperCase()}
                     </span>
                   </div>
 

@@ -336,8 +336,8 @@ export default function MotionGraphicsGroup({
                   <span className="narration-expand">{narrationExpanded ? '\u25BC' : '\u25B6'}</span>
                   <span className="narration-label">NARRATION</span>
                 </div>
-                <span className={`narration-status status-${audio.status}`}>
-                  {audio.status.toUpperCase()}
+                <span className={`narration-status status-${audio.status || 'pending'}`}>
+                  {(audio.status || 'pending').toUpperCase()}
                 </span>
               </div>
 
