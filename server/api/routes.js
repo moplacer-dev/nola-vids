@@ -1091,13 +1091,10 @@ module.exports = (jobManager) => {
         status: 'completed'
       });
 
-      // Filename may have changed from .png to .jpg due to compression
-      const finalFilename = result.publicUrl.split('/').pop();
-
       res.json({
         success: true,
         id: dbRecord.id,
-        filename: finalFilename,
+        filename,
         path: result.publicUrl,
         mimeType: result.mimeType,
         width: result.width,

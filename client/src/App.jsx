@@ -304,7 +304,18 @@ export default function App() {
               ) : generatedImage ? (
                 <div className="image-result">
                   <img
-                    src={generatedImage.path}
+                    src={(() => {
+                      // Use Supabase image transforms for optimized display
+                      // Original full-quality image is preserved for downloads
+                      const url = generatedImage.path;
+                      if (url.includes('supabase.co/storage/v1/object/public/')) {
+                        return url.replace(
+                          '/storage/v1/object/public/',
+                          '/storage/v1/render/image/public/'
+                        ) + '?width=1200&quality=80';
+                      }
+                      return url;
+                    })()}
                     alt="Generated"
                     className="generated-image"
                     width={generatedImage.width}

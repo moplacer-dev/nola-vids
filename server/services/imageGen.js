@@ -161,63 +161,39 @@ class ImageGenService {
 
   /**
    * Generate an image and upload it to Supabase Storage
+   * Stores the original full-quality image. Use Supabase image transforms for optimized display.
    * @param {Object} options - Generation options
    * @param {string} options.prompt - The image generation prompt
    * @param {string} options.bucket - Supabase Storage bucket name
    * @param {string} options.filename - Filename to save in the bucket
    * @param {string[]} [options.anchorImageUrls] - Array of URLs to reference images
    * @param {string} [options.aspectRatio] - Aspect ratio
-   * @param {boolean} [options.compress] - Whether to compress the image (default: true)
    * @returns {Promise<{publicUrl: string, mimeType: string, width: number, height: number}>} - Public URL and dimensions
    */
-  async generateToStorage({ prompt, bucket, filename, anchorImageUrls = [], aspectRatio, compress = true }) {
+  async generateToStorage({ prompt, bucket, filename, anchorImageUrls = [], aspectRatio }) {
     const result = await this.generate({ prompt, anchorImageUrls, aspectRatio });
 
     // Decode base64 to buffer
-    let imageBuffer = Buffer.from(result.imageData, 'base64');
-    let finalMimeType = result.mimeType;
-    let width, height;
+    const imageBuffer = Buffer.from(result.imageData, 'base64');
 
-    // Get original dimensions and optionally compress
-    const sharpImage = sharp(imageBuffer);
-    const metadata = await sharpImage.metadata();
-    width = metadata.width;
-    height = metadata.height;
+    // Get image dimensions using sharp (without modifying the image)
+    const metadata = await sharp(imageBuffer).metadata();
+    const width = metadata.width;
+    const height = metadata.height;
 
-    if (compress) {
-      // Compress: convert to JPEG at 80% quality, max 1920px width
-      const maxWidth = 1920;
-      let pipeline = sharp(imageBuffer);
+    console.log(`Image generated: ${width}x${height}, size: ${imageBuffer.length} bytes`);
 
-      if (width > maxWidth) {
-        pipeline = pipeline.resize(maxWidth, null, { withoutEnlargement: true });
-        // Recalculate dimensions after resize
-        height = Math.round(height * (maxWidth / width));
-        width = maxWidth;
-      }
-
-      imageBuffer = await pipeline
-        .jpeg({ quality: 80, progressive: true })
-        .toBuffer();
-
-      finalMimeType = 'image/jpeg';
-      // Update filename extension to .jpg
-      filename = filename.replace(/\.png$/i, '.jpg');
-
-      console.log(`Image compressed: ${metadata.width}x${metadata.height} -> ${width}x${height}, size: ${imageBuffer.length} bytes`);
-    }
-
-    // Upload to Supabase Storage
+    // Upload original full-quality image to Supabase Storage
     const uploaded = await storage.uploadFile(
       bucket,
       filename,
       imageBuffer,
-      finalMimeType
+      result.mimeType
     );
 
     return {
       publicUrl: uploaded.publicUrl,
-      mimeType: finalMimeType,
+      mimeType: result.mimeType,
       width,
       height
     };
