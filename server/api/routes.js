@@ -1091,12 +1091,17 @@ module.exports = (jobManager) => {
         status: 'completed'
       });
 
+      // Filename may have changed from .png to .jpg due to compression
+      const finalFilename = result.publicUrl.split('/').pop();
+
       res.json({
         success: true,
         id: dbRecord.id,
-        filename,
+        filename: finalFilename,
         path: result.publicUrl,
-        mimeType: result.mimeType
+        mimeType: result.mimeType,
+        width: result.width,
+        height: result.height
       });
     } catch (error) {
       // Clean up on error

@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 const storage = require('./storage');
 
 // Gemini 3.1 Flash with native image generation
@@ -166,25 +167,59 @@ class ImageGenService {
    * @param {string} options.filename - Filename to save in the bucket
    * @param {string[]} [options.anchorImageUrls] - Array of URLs to reference images
    * @param {string} [options.aspectRatio] - Aspect ratio
-   * @returns {Promise<{publicUrl: string, mimeType: string}>} - Public URL of uploaded image
+   * @param {boolean} [options.compress] - Whether to compress the image (default: true)
+   * @returns {Promise<{publicUrl: string, mimeType: string, width: number, height: number}>} - Public URL and dimensions
    */
-  async generateToStorage({ prompt, bucket, filename, anchorImageUrls = [], aspectRatio }) {
+  async generateToStorage({ prompt, bucket, filename, anchorImageUrls = [], aspectRatio, compress = true }) {
     const result = await this.generate({ prompt, anchorImageUrls, aspectRatio });
 
     // Decode base64 to buffer
-    const imageBuffer = Buffer.from(result.imageData, 'base64');
+    let imageBuffer = Buffer.from(result.imageData, 'base64');
+    let finalMimeType = result.mimeType;
+    let width, height;
+
+    // Get original dimensions and optionally compress
+    const sharpImage = sharp(imageBuffer);
+    const metadata = await sharpImage.metadata();
+    width = metadata.width;
+    height = metadata.height;
+
+    if (compress) {
+      // Compress: convert to JPEG at 80% quality, max 1920px width
+      const maxWidth = 1920;
+      let pipeline = sharp(imageBuffer);
+
+      if (width > maxWidth) {
+        pipeline = pipeline.resize(maxWidth, null, { withoutEnlargement: true });
+        // Recalculate dimensions after resize
+        height = Math.round(height * (maxWidth / width));
+        width = maxWidth;
+      }
+
+      imageBuffer = await pipeline
+        .jpeg({ quality: 80, progressive: true })
+        .toBuffer();
+
+      finalMimeType = 'image/jpeg';
+      // Update filename extension to .jpg
+      filename = filename.replace(/\.png$/i, '.jpg');
+
+      console.log(`Image compressed: ${metadata.width}x${metadata.height} -> ${width}x${height}, size: ${imageBuffer.length} bytes`);
+    }
 
     // Upload to Supabase Storage
     const uploaded = await storage.uploadFile(
       bucket,
       filename,
       imageBuffer,
-      result.mimeType
+      finalMimeType
     );
 
     return {
       publicUrl: uploaded.publicUrl,
-      mimeType: result.mimeType
+      mimeType: finalMimeType,
+      width,
+      height
     };
   }
 

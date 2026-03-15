@@ -303,7 +303,16 @@ export default function App() {
                 <div className="image-result-placeholder">Generating image...</div>
               ) : generatedImage ? (
                 <div className="image-result">
-                  <img src={generatedImage.path} alt="Generated" className="generated-image" />
+                  <img
+                    src={generatedImage.path}
+                    alt="Generated"
+                    className="generated-image"
+                    width={generatedImage.width}
+                    height={generatedImage.height}
+                    loading="eager"
+                    decoding="async"
+                    fetchpriority="high"
+                  />
                   <div className="image-result-filename">{generatedImage.filename}</div>
                   <div className="image-result-actions">
                     <button

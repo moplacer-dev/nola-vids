@@ -246,6 +246,15 @@
   object-fit: contain;
   border-radius: 4px;
   background: var(--bg-primary);
+  /* Prevent layout shift by reserving space based on aspect ratio */
+  aspect-ratio: attr(width) / attr(height);
+}
+
+/* Fallback for browsers that don't support attr() in aspect-ratio */
+@supports not (aspect-ratio: attr(width) / attr(height)) {
+  .generated-image {
+    min-height: 200px;
+  }
 }
 
 .image-result-filename {
