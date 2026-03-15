@@ -115,7 +115,13 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                         {refImages.map((imgPath, index) => (
                           <div key={index} className="character-modal-image-item">
                             <img
-                              src={imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`}
+                              src={(() => {
+                                const url = imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`;
+                                if (url.includes('supabase.co/storage/v1/object/public/')) {
+                                  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
+                                }
+                                return url;
+                              })()}
                               alt={`${viewingCharacter.characterName} ref ${index + 1}`}
                             />
                             {onRemoveReferenceImage && (

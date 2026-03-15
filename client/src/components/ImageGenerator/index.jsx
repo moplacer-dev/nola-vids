@@ -870,7 +870,13 @@ export default function ImageGenerator({
                         <div className="question-image-status">
                           {questionImage?.imagePath ? (
                             <img
-                              src={questionImage.imagePath}
+                              src={(() => {
+                                const url = questionImage.imagePath;
+                                if (url.includes('supabase.co/storage/v1/object/public/')) {
+                                  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
+                                }
+                                return url;
+                              })()}
                               alt={`Q${index + 1}`}
                               className="question-thumbnail"
                             />

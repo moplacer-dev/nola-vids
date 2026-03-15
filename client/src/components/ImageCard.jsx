@@ -12,6 +12,14 @@ export default function ImageCard({
 
   // Use full Supabase URL if available, fallback to local path
   const imageUrl = image.imagePath || `/images/${image.filename}`;
+
+  // Use Supabase image transforms for optimized display (thumbnails)
+  const displayUrl = (() => {
+    if (imageUrl.includes('supabase.co/storage/v1/object/public/')) {
+      return imageUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
+    }
+    return imageUrl;
+  })();
   const displayTitle = image.cmsFilename || image.filename || 'Untitled Image';
   const prompt = image.modifiedPrompt || image.originalPrompt || '';
 
@@ -46,7 +54,7 @@ export default function ImageCard({
           </div>
         ) : (
           <img
-            src={imageUrl}
+            src={displayUrl}
             alt={displayTitle}
             loading="lazy"
             decoding="async"

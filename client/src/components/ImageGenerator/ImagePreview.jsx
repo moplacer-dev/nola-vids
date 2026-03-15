@@ -94,8 +94,18 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
   const videoUrl = hasVideo ? image.videoPath : null;
 
   const hasImage = !hasVideo && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported' || image.status === 'default') && image.imagePath;
-  // Use full Supabase URL directly, add updatedAt as cache-buster
-  const imageUrl = hasImage ? `${image.imagePath}?t=${encodeURIComponent(image.updatedAt || '')}` : null;
+  // Use Supabase image transforms for optimized display, original preserved for downloads
+  const imageUrl = hasImage ? (() => {
+    const url = image.imagePath;
+    const cacheBuster = `t=${encodeURIComponent(image.updatedAt || '')}`;
+    if (url.includes('supabase.co/storage/v1/object/public/')) {
+      return url.replace(
+        '/storage/v1/object/public/',
+        '/storage/v1/render/image/public/'
+      ) + `?width=1200&quality=80&${cacheBuster}`;
+    }
+    return `${url}?${cacheBuster}`;
+  })() : null;
 
   // Only use character anchor for character-related asset types
   const assetType = (image.assetType || '').toLowerCase();

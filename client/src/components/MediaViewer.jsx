@@ -37,6 +37,14 @@ export default function MediaViewer({
 
   const src = getSrc();
 
+  // Use Supabase image transforms for optimized display (full view = larger width)
+  const displaySrc = (() => {
+    if (isImage && src.includes('supabase.co/storage/v1/object/public/')) {
+      return src.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=1600&quality=85';
+    }
+    return src;
+  })();
+
   // Get display info
   const getTitle = () => {
     if (isVideo) {
@@ -161,7 +169,7 @@ export default function MediaViewer({
             />
           ) : (
             <img
-              src={src}
+              src={displaySrc}
               alt={getTitle()}
               className="media-viewer-image"
               onError={() => setMediaError(true)}
