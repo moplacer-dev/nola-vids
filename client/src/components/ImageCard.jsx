@@ -9,22 +9,26 @@ export default function ImageCard({
 }) {
   const [showActions, setShowActions] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [useOriginalUrl, setUseOriginalUrl] = useState(false);
 
-  // Use full Supabase URL if available, fallback to local path
-  const imageUrl = image.imagePath || `/images/${image.filename}`;
+  // Use full Supabase URL if available
+  const imageUrl = image.imagePath || '';
 
   // Use Supabase image transforms for optimized display (thumbnails)
+  // Falls back to original URL if transform fails (rate limit, timeout, etc.)
   const displayUrl = (() => {
+    if (!imageUrl) return '';
+    if (useOriginalUrl) return imageUrl;
     if (imageUrl.includes('supabase.co/storage/v1/object/public/')) {
       return imageUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
     }
     return imageUrl;
   })();
-  const displayTitle = image.cmsFilename || image.filename || 'Untitled Image';
+  const displayTitle = image.cmsFilename || 'Untitled Image';
   const prompt = image.modifiedPrompt || image.originalPrompt || '';
 
   const handleDownload = () => {
-    const filename = image.cmsFilename || image.filename || 'image.png';
+    const filename = image.cmsFilename || `image_${image.id}.png`;
 
     // Use server proxy for Supabase URLs to handle CORS
     if (imageUrl.startsWith('http') && imageUrl.includes('supabase')) {
@@ -58,8 +62,15 @@ export default function ImageCard({
             alt={displayTitle}
             loading="lazy"
             decoding="async"
-            fetchPriority="low"
-            onError={() => setImageError(true)}
+            fetchpriority="low"
+            onError={() => {
+              // If transform URL failed, try original URL
+              if (!useOriginalUrl && displayUrl.includes('/render/image/')) {
+                setUseOriginalUrl(true);
+              } else {
+                setImageError(true);
+              }
+            }}
           />
         )}
         <span className="image-card-type-badge">IMAGE</span>

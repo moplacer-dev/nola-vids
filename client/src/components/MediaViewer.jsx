@@ -14,6 +14,7 @@ export default function MediaViewer({
 }) {
   const videoRef = useRef(null);
   const [mediaError, setMediaError] = useState(false);
+  const [useOriginalUrl, setUseOriginalUrl] = useState(false);
 
   const isVideo = item._type === 'video';
   const isImage = item._type === 'image';
@@ -21,6 +22,7 @@ export default function MediaViewer({
   // Reset error state when item changes
   useEffect(() => {
     setMediaError(false);
+    setUseOriginalUrl(false);
   }, [item.id]);
 
   // Get the source URL
@@ -29,8 +31,7 @@ export default function MediaViewer({
       return item.path;
     }
     if (isImage) {
-      // Use full Supabase URL if available, fallback to local path
-      return item.imagePath || `/images/${item.filename}`;
+      return item.imagePath || '';
     }
     return '';
   };
@@ -38,7 +39,10 @@ export default function MediaViewer({
   const src = getSrc();
 
   // Use Supabase image transforms for optimized display (full view = larger width)
+  // Falls back to original URL if transform fails
   const displaySrc = (() => {
+    if (!src) return '';
+    if (useOriginalUrl) return src;
     if (isImage && src.includes('supabase.co/storage/v1/object/public/')) {
       return src.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=1600&quality=85';
     }
@@ -50,7 +54,7 @@ export default function MediaViewer({
     if (isVideo) {
       return item.title || item.params?.prompt?.slice(0, 60) || 'Untitled Video';
     }
-    return item.cmsFilename || item.filename || 'Untitled Image';
+    return item.cmsFilename || 'Untitled Image';
   };
 
   const getPrompt = () => {
@@ -108,8 +112,8 @@ export default function MediaViewer({
 
   const handleDownload = () => {
     const filename = isVideo
-      ? (item.title ? `${item.title}.mp4` : item.filename)
-      : (item.cmsFilename || item.filename || 'image.png');
+      ? (item.title ? `${item.title}.mp4` : `video_${item.id}.mp4`)
+      : (item.cmsFilename || `image_${item.id}.png`);
 
     // Use server proxy for Supabase URLs to handle CORS
     if (src.startsWith('http') && src.includes('supabase')) {
@@ -172,7 +176,14 @@ export default function MediaViewer({
               src={displaySrc}
               alt={getTitle()}
               className="media-viewer-image"
-              onError={() => setMediaError(true)}
+              onError={() => {
+                // If transform URL failed, try original URL
+                if (!useOriginalUrl && displaySrc.includes('/render/image/')) {
+                  setUseOriginalUrl(true);
+                } else {
+                  setMediaError(true);
+                }
+              }}
             />
           )}
         </div>
