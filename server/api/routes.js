@@ -2579,23 +2579,37 @@ module.exports = (jobManager) => {
         return res.status(403).json({ error: 'Only Supabase URLs are allowed' });
       }
 
-      // Fetch the file
-      const response = await fetch(url);
+      // Extract bucket and file path from Supabase URL
+      const bucket = storage.getBucketFromUrl(url);
+      const filePath = storage.getFilenameFromUrl(url);
 
-      if (!response.ok) {
-        return res.status(response.status).json({ error: 'Failed to fetch file' });
+      if (!bucket || !filePath) {
+        return res.status(400).json({ error: 'Invalid Supabase storage URL' });
       }
 
-      // Get content type
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      // Download using authenticated Supabase SDK
+      const buffer = await storage.downloadFile(bucket, filePath);
+
+      // Determine content type from extension
+      const ext = path.extname(filePath).toLowerCase();
+      const contentTypes = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+        '.mp4': 'video/mp4',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav'
+      };
+      const contentType = contentTypes[ext] || 'application/octet-stream';
 
       // Set headers for download
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
 
-      // Stream the response
-      const buffer = await response.arrayBuffer();
-      res.send(Buffer.from(buffer));
+      // Send the buffer
+      res.send(buffer);
     } catch (error) {
       console.error('Download proxy error:', error);
       res.status(500).json({ error: error.message });
