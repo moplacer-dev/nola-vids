@@ -20,7 +20,7 @@ export default function ImageCard({
 
     // Use server proxy for Supabase URLs to handle CORS
     if (imageUrl.startsWith('http') && imageUrl.includes('supabase')) {
-      const proxyUrl = `/api/download?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(filename)}`;
+      const proxyUrl = `/download?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(filename)}`;
       window.location.href = proxyUrl;
     } else {
       const link = document.createElement('a');

@@ -105,7 +105,7 @@ export default function MediaViewer({
 
     // Use server proxy for Supabase URLs to handle CORS
     if (src.startsWith('http') && src.includes('supabase')) {
-      const proxyUrl = `/api/download?url=${encodeURIComponent(src)}&filename=${encodeURIComponent(filename)}`;
+      const proxyUrl = `/download?url=${encodeURIComponent(src)}&filename=${encodeURIComponent(filename)}`;
       window.location.href = proxyUrl;
     } else {
       const link = document.createElement('a');

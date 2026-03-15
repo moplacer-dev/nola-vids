@@ -12,7 +12,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
       // Use server proxy for Supabase URLs to handle CORS
       if (audioDownloadUrl.startsWith('http') && audioDownloadUrl.includes('supabase')) {
-        const proxyUrl = `/api/download?url=${encodeURIComponent(audioDownloadUrl)}&filename=${encodeURIComponent(filename)}`;
+        const proxyUrl = `/download?url=${encodeURIComponent(audioDownloadUrl)}&filename=${encodeURIComponent(filename)}`;
         window.location.href = proxyUrl;
       } else {
         const link = document.createElement('a');
@@ -110,7 +110,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
       // Use server proxy for Supabase URLs to handle CORS
       if (videoUrl.startsWith('http') && videoUrl.includes('supabase')) {
-        const proxyUrl = `/api/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
+        const proxyUrl = `/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
         window.location.href = proxyUrl;
       } else {
         const link = document.createElement('a');
@@ -131,7 +131,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
     // Use server proxy for Supabase URLs to handle CORS
     if (downloadUrl.startsWith('http') && downloadUrl.includes('supabase')) {
-      const proxyUrl = `/api/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
+      const proxyUrl = `/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
       window.location.href = proxyUrl;
     } else {
       const link = document.createElement('a');

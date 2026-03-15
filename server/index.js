@@ -75,6 +75,58 @@ if (!elevenLabsService.isConfigured()) {
 app.set('imageGenService', imageGenService);
 app.set('elevenLabsService', elevenLabsService);
 
+// Download route - MUST be before auth middleware since browser redirects can't send headers
+const storage = require('./services/storage');
+app.get('/download', async (req, res) => {
+  try {
+    const { url, filename } = req.query;
+
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Only allow Supabase URLs for security
+    if (!url.includes('supabase.co')) {
+      return res.status(403).json({ error: 'Only Supabase URLs are allowed' });
+    }
+
+    // Extract bucket and file path from Supabase URL
+    const bucket = storage.getBucketFromUrl(url);
+    const filePath = storage.getFilenameFromUrl(url);
+
+    if (!bucket || !filePath) {
+      return res.status(400).json({ error: 'Invalid Supabase storage URL' });
+    }
+
+    // Download using authenticated Supabase SDK
+    const buffer = await storage.downloadFile(bucket, filePath);
+
+    // Determine content type from extension
+    const ext = path.extname(filePath).toLowerCase();
+    const contentTypes = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.gif': 'image/gif',
+      '.mp4': 'video/mp4',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav'
+    };
+    const contentType = contentTypes[ext] || 'application/octet-stream';
+
+    // Set headers for download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
+
+    // Send the buffer
+    res.send(buffer);
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API routes (protected by auth middleware)
 app.use('/api', authMiddleware, createRoutes(jobManager));
 

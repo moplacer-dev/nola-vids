@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001',
       '/auth': 'http://localhost:3001',
+      '/download': 'http://localhost:3001',
       '/videos': 'http://localhost:3001',
       '/images': 'http://localhost:3001',
       '/anchors': 'http://localhost:3001',
