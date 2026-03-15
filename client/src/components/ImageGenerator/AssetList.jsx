@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import MotionGraphicsGroup from './MotionGraphicsGroup';
+import AssessmentNarrationPanel from './AssessmentNarrationPanel';
 
 export default function AssetList({
   assets,
@@ -349,8 +350,36 @@ export default function AssetList({
 
             {/* Narration Section */}
             {(() => {
-              const audioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
-              const audio = audioRecords.find(a => a.narrationType === 'slide_narration') || audioRecords[0];
+              const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
+              if (slideAudioRecords.length === 0) return null;
+
+              // Check if this is a question slide (has multi-part audio)
+              const isQuestionSlide = slideAudioRecords.some(a =>
+                ['question', 'answer_a', 'answer_b', 'answer_c', 'answer_d', 'answer_e', 'correct_response', 'incorrect_1', 'incorrect_2',
+                 'part_a_question', 'part_a_answer_a', 'part_a_answer_b', 'part_a_answer_c', 'part_a_answer_d',
+                 'part_b_question', 'part_b_answer_a', 'part_b_answer_b', 'part_b_answer_c', 'part_b_answer_d'].includes(a.narrationType)
+              );
+
+              if (isQuestionSlide) {
+                return (
+                  <AssessmentNarrationPanel
+                    questionNumber={parseInt(slide.slideNumber)}
+                    audioRecords={slideAudioRecords}
+                    voices={voices}
+                    defaultVoiceId={defaultVoiceId}
+                    onGenerateAudio={onGenerateAudio}
+                    onGenerateAll={onGenerateAllAudio}
+                    onUploadAudio={onUploadAudio}
+                    onEditNarration={onEditNarration}
+                    onSelectAudio={onSelectAudio}
+                    selectedAudioId={selectedAudioId}
+                    loading={loading}
+                  />
+                );
+              }
+
+              // Regular slide - use simple narration section
+              const audio = slideAudioRecords.find(a => a.narrationType === 'slide_narration') || slideAudioRecords[0];
               if (!audio) return null;
 
               const isExpanded = expandedNarrations[slide.slideNumber];
