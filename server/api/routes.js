@@ -789,7 +789,11 @@ module.exports = (jobManager) => {
             const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
             const narration = slide.narration || slide.narrationText || '';
             if (narration && narration.trim().length > 0) {
-              return { slideNumber: slideNum, narrationText: narration };
+              return {
+                slideNumber: slideNum,
+                narrationText: narration,
+                cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum)
+              };
             }
             return null;
           })

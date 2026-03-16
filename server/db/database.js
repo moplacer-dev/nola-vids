@@ -1269,6 +1269,7 @@ const generatedAudioQueries = {
           assetListId,
           slideNumber: record.slideNumber,
           narrationText: record.narrationText,
+          cmsFilename: record.cmsFilename,
           status: 'pending'
         });
       }
