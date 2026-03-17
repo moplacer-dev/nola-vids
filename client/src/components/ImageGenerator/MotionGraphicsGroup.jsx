@@ -214,7 +214,9 @@ export default function MotionGraphicsGroup({
                     <div className="mg-scene-thumbnail">
                       {scene.imagePath ? (
                         <img
-                          src={`/images/${scene.cmsFilename}`}
+                          src={scene.imagePath.includes('supabase.co/storage/v1/object/public/')
+                            ? scene.imagePath.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=200&quality=80'
+                            : scene.imagePath}
                           alt={`Scene ${sceneNum}`}
                         />
                       ) : (
