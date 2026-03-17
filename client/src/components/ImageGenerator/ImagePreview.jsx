@@ -136,8 +136,8 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
     if (!imageUrl) return;
 
     const filename = image.cmsFilename || `image_${image.id}.png`;
-    // Remove cache buster for download URL
-    const downloadUrl = imageUrl.split('?')[0];
+    // Use original imagePath for downloads (not the render/transform URL)
+    const downloadUrl = image.imagePath;
 
     // Use server proxy for Supabase URLs to handle CORS
     if (downloadUrl.startsWith('http') && downloadUrl.includes('supabase')) {

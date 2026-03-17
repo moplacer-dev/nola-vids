@@ -235,7 +235,8 @@ export function useApi(accessKey) {
         generatedImageId,
         prompt: options.prompt,
         useCharacterAnchor: options.useCharacterAnchor
-      })
+      }),
+      timeout: 90000 // 90 seconds - image generation can take 30-60s
     });
   }, [request]);
 
@@ -269,7 +270,8 @@ export function useApi(accessKey) {
 
     return request('/images/generate-standalone', {
       method: 'POST',
-      body: formData
+      body: formData,
+      timeout: 90000 // 90 seconds - image generation can take 30-60s
     });
   }, [request]);
 
@@ -280,7 +282,8 @@ export function useApi(accessKey) {
       body: JSON.stringify({
         prompt: options.prompt,
         useCharacterAnchor: options.useCharacterAnchor
-      })
+      }),
+      timeout: 90000 // 90 seconds - image generation can take 30-60s
     });
   }, [request]);
 
