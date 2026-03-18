@@ -20,6 +20,8 @@ export default function AssessmentNarrationPanel({
   onUploadAudio,
   onEditNarration,
   onSelectAudio,
+  onAddNarration,
+  onDeleteNarration,
   selectedAudioId,
   loading
 }) {
@@ -170,6 +172,20 @@ export default function AssessmentNarrationPanel({
               GEN ALL
             </button>
           )}
+          {onAddNarration && (
+            <button
+              className="btn-add-narration"
+              onClick={(e) => {
+                e.stopPropagation();
+                // Pass both questionNumber and slideNumber - the parent will use the appropriate one
+                onAddNarration({ questionNumber, slideNumber: questionNumber, narrationType: 'slide_narration' });
+              }}
+              disabled={loading}
+              title="Add narration part"
+            >
+              +
+            </button>
+          )}
         </div>
       </div>
 
@@ -182,6 +198,19 @@ export default function AssessmentNarrationPanel({
               className={`narration-part ${selectedAudioId === audio.id ? 'selected' : ''}`}
               onClick={() => onSelectAudio && onSelectAudio(audio)}
             >
+              {/* Delete Button */}
+              {onDeleteNarration && (
+                <button
+                  className="narration-part-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteNarration(audio.id);
+                  }}
+                  title="Delete narration"
+                >
+                  ×
+                </button>
+              )}
               {/* Part Header */}
               <div className="narration-part-header">
                 <span className="narration-part-label">

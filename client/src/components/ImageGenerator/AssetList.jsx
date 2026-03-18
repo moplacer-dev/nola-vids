@@ -25,6 +25,8 @@ export default function AssetList({
   onEditNarration,
   onSelectAudio,
   onGenerateAllAudio,  // For multi-part bulk generation
+  onAddNarration,
+  onDeleteNarration,
   selectedImageId,
   selectedVideoId,
   selectedAudioId,
@@ -181,6 +183,8 @@ export default function AssetList({
                 onEditNarration={onEditNarration}
                 onSelectAudio={onSelectAudio}
                 onGenerateAllAudio={onGenerateAllAudio}
+                onAddNarration={onAddNarration}
+                onDeleteNarration={onDeleteNarration}
                 voices={voices}
                 defaultVoiceId={defaultVoiceId}
                 selectedImageId={selectedImageId}
@@ -372,6 +376,8 @@ export default function AssetList({
                     onUploadAudio={onUploadAudio}
                     onEditNarration={onEditNarration}
                     onSelectAudio={onSelectAudio}
+                    onAddNarration={onAddNarration}
+                    onDeleteNarration={onDeleteNarration}
                     selectedAudioId={selectedAudioId}
                     loading={loading}
                   />
@@ -396,9 +402,37 @@ export default function AssetList({
                       <span className="narration-expand">{isExpanded ? '▼' : '▶'}</span>
                       <span className="narration-label">NARRATION</span>
                     </div>
-                    <span className={`narration-status status-${audio.status || 'pending'}`}>
-                      {(audio.status || 'pending').toUpperCase()}
-                    </span>
+                    <div className="narration-header-right">
+                      <span className={`narration-status status-${audio.status || 'pending'}`}>
+                        {(audio.status || 'pending').toUpperCase()}
+                      </span>
+                      {onAddNarration && (
+                        <button
+                          className="btn-add-narration"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddNarration({ slideNumber: parseInt(slide.slideNumber), narrationType: 'slide_narration' });
+                          }}
+                          disabled={loading}
+                          title="Add narration part"
+                        >
+                          +
+                        </button>
+                      )}
+                      {onDeleteNarration && (
+                        <button
+                          className="btn-delete-narration"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteNarration(audio.id);
+                          }}
+                          disabled={loading}
+                          title="Delete narration"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {isExpanded && (

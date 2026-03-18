@@ -1642,6 +1642,52 @@
   min-height: 200px;
 }
 
+.narration-editor .prompt-editor-body label {
+  display: block;
+  font-family: monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5a5a5a;
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+.narration-editor .prompt-editor-body label:first-child {
+  margin-top: 0;
+}
+
+.narration-type-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.narration-type-select:focus {
+  outline: none;
+  border-color: #4a6a4a;
+}
+
+.narration-type-select optgroup {
+  background: #1a1a1a;
+  color: #7a9a7a;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.narration-type-select option {
+  background: #141414;
+  color: #ffffff;
+  padding: 8px;
+}
+
 @media (max-width: 1200px) {
   .image-generator {
     grid-template-columns: 1fr;
@@ -2238,4 +2284,118 @@
 .narration-part .narration-status.status-failed {
   background: #2a1a1a;
   color: #9a5a5a;
+}
+
+/* ==========================================
+   ADD/DELETE NARRATION BUTTONS
+   ========================================== */
+
+/* Add Narration Button (+) */
+.btn-add-narration {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a3a2a;
+  border: 1px solid #3a5a3a;
+  border-radius: 3px;
+  color: #7a9a7a;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-add-narration:hover:not(:disabled) {
+  background: #3a4a3a;
+  border-color: #5a7a5a;
+  color: #9acf9a;
+}
+
+.btn-add-narration:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Delete Narration Button (x) in header */
+.btn-delete-narration {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #3a2a2a;
+  border-radius: 3px;
+  color: #7a5a5a;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0;
+}
+
+.narration-header:hover .btn-delete-narration {
+  opacity: 1;
+}
+
+.btn-delete-narration:hover:not(:disabled) {
+  background: #3a2a2a;
+  border-color: #5a3a3a;
+  color: #aa6a6a;
+}
+
+.btn-delete-narration:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Delete button on narration parts (assessment panels) */
+.narration-part {
+  position: relative;
+}
+
+.narration-part-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #4a3a3a;
+  border-radius: 3px;
+  color: #8a5a5a;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0;
+  z-index: 5;
+}
+
+.narration-part:hover .narration-part-delete {
+  opacity: 1;
+}
+
+.narration-part-delete:hover {
+  background: #4a2a2a;
+  border-color: #6a4a4a;
+  color: #ff8a8a;
+}
+
+/* Narration header right section */
+.narration-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

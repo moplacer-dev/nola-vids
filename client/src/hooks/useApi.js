@@ -415,6 +415,20 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const createAudio = useCallback(async (data) => {
+    return request('/audio/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  }, [request]);
+
+  const deleteAudio = useCallback(async (id) => {
+    return request(`/audio/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  }, [request]);
+
   const setSessionDefaultVoice = useCallback(async (assetListId, voiceId, voiceName) => {
     return request(`/asset-lists/${encodeURIComponent(assetListId)}/voice`, {
       method: 'PATCH',
@@ -519,6 +533,8 @@ export function useApi(accessKey) {
     uploadAudio,
     updateAudio,
     regenerateAudio,
+    createAudio,
+    deleteAudio,
     setSessionDefaultVoice,
     setAssessmentDefaultVoice,
     // Assessment Assets

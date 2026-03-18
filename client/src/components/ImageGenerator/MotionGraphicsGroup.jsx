@@ -24,6 +24,8 @@ export default function MotionGraphicsGroup({
   onEditNarration,
   onSelectAudio,
   onGenerateAllAudio,  // For multi-part bulk generation
+  onAddNarration,
+  onDeleteNarration,
   voices = [],
   defaultVoiceId,
   selectedImageId,
@@ -324,6 +326,8 @@ export default function MotionGraphicsGroup({
               onUploadAudio={onUploadAudio}
               onEditNarration={onEditNarration}
               onSelectAudio={onSelectAudio}
+              onAddNarration={onAddNarration}
+              onDeleteNarration={onDeleteNarration}
               selectedAudioId={selectedAudioId}
               loading={loading}
             />
@@ -338,9 +342,37 @@ export default function MotionGraphicsGroup({
                   <span className="narration-expand">{narrationExpanded ? '\u25BC' : '\u25B6'}</span>
                   <span className="narration-label">NARRATION</span>
                 </div>
-                <span className={`narration-status status-${audio.status || 'pending'}`}>
-                  {(audio.status || 'pending').toUpperCase()}
-                </span>
+                <div className="narration-header-right">
+                  <span className={`narration-status status-${audio.status || 'pending'}`}>
+                    {(audio.status || 'pending').toUpperCase()}
+                  </span>
+                  {onAddNarration && (
+                    <button
+                      className="btn-add-narration"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddNarration({ slideNumber: parseInt(slideNumber), narrationType: 'slide_narration' });
+                      }}
+                      disabled={loading}
+                      title="Add narration part"
+                    >
+                      +
+                    </button>
+                  )}
+                  {onDeleteNarration && (
+                    <button
+                      className="btn-delete-narration"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteNarration(audio.id);
+                      }}
+                      disabled={loading}
+                      title="Delete narration"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               {narrationExpanded && (

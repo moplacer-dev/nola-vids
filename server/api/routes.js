@@ -1968,12 +1968,13 @@ module.exports = (jobManager) => {
 
   router.patch('/audio/:id', async (req, res) => {
     try {
-      const { narrationText, voiceId, voiceName } = req.body;
+      const { narrationText, voiceId, voiceName, narrationType } = req.body;
 
       const updates = {};
       if (narrationText !== undefined) updates.narrationText = narrationText;
       if (voiceId !== undefined) updates.voiceId = voiceId;
       if (voiceName !== undefined) updates.voiceName = voiceName;
+      if (narrationType !== undefined) updates.narrationType = narrationType;
 
       const updated = await generatedAudioDb.update(req.params.id, updates);
       if (!updated) {
@@ -1981,6 +1982,106 @@ module.exports = (jobManager) => {
       }
 
       res.json({ success: true, audio: updated });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a new audio record
+  router.post('/audio/create', async (req, res) => {
+    try {
+      const { assetListId, assessmentAssetId, slideNumber, questionNumber, narrationType, narrationText } = req.body;
+
+      // Validate: need either assetListId OR assessmentAssetId
+      if (!assetListId && !assessmentAssetId) {
+        return res.status(400).json({ error: 'Either assetListId or assessmentAssetId is required' });
+      }
+
+      // Generate CMS filename based on parent type
+      let cmsFilename = null;
+      let parentRecord = null;
+
+      if (assessmentAssetId) {
+        parentRecord = await assessmentAssetDb.getById(assessmentAssetId);
+        if (!parentRecord) {
+          return res.status(404).json({ error: 'Assessment not found' });
+        }
+        cmsFilename = generateAssessmentAudioFilename(
+          parentRecord.moduleName,
+          parentRecord.assessmentType,
+          questionNumber,
+          narrationType
+        );
+      } else if (assetListId) {
+        parentRecord = await assetListDb.getById(assetListId);
+        if (!parentRecord) {
+          return res.status(404).json({ error: 'Asset list not found' });
+        }
+        // Use RCP filename for multi-part, regular for single
+        if (narrationType && narrationType !== 'slide_narration') {
+          cmsFilename = generateRcpAudioFilename(
+            parentRecord.moduleName,
+            parentRecord.sessionNumber,
+            slideNumber,
+            narrationType
+          );
+        } else {
+          cmsFilename = generateAudioFilename(
+            parentRecord.moduleName,
+            parentRecord.sessionNumber,
+            slideNumber
+          );
+        }
+      }
+
+      const audioRecord = await generatedAudioDb.create({
+        assetListId,
+        assessmentAssetId,
+        slideNumber,
+        questionNumber,
+        narrationType: narrationType || 'slide_narration',
+        narrationText: narrationText || '',
+        status: 'pending',
+        voiceId: parentRecord?.defaultVoiceId || null,
+        voiceName: parentRecord?.defaultVoiceName || null,
+        cmsFilename
+      });
+
+      res.json({ success: true, audio: audioRecord });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete an audio record
+  router.delete('/audio/:id', async (req, res) => {
+    try {
+      const audioRecord = await generatedAudioDb.getById(req.params.id);
+      if (!audioRecord) {
+        return res.status(404).json({ error: 'Audio record not found' });
+      }
+
+      // Delete audio file from Supabase storage if exists
+      if (audioRecord.audioPath) {
+        try {
+          // Extract the path from the full URL
+          const url = audioRecord.audioPath;
+          if (url.includes(BUCKETS.AUDIO)) {
+            const pathMatch = url.match(new RegExp(`${BUCKETS.AUDIO}/(.+)$`));
+            if (pathMatch) {
+              const filePath = pathMatch[1];
+              await storage.deleteFile(BUCKETS.AUDIO, filePath);
+            }
+          }
+        } catch (storageError) {
+          console.error('Failed to delete audio file from storage:', storageError.message);
+          // Continue with database deletion even if storage deletion fails
+        }
+      }
+
+      // Delete database record
+      const deleted = await generatedAudioDb.delete(req.params.id);
+      res.json({ success: true, deleted: !!deleted });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

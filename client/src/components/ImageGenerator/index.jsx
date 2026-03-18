@@ -31,6 +31,8 @@ export default function ImageGenerator({
   uploadAudio,
   updateAudio,
   regenerateAudio,
+  createAudio,
+  deleteAudio,
   setSessionDefaultVoice,
   setAssessmentDefaultVoice,
   // Assessment Assets
@@ -56,6 +58,7 @@ export default function ImageGenerator({
   const [importingForImage, setImportingForImage] = useState(null); // image ID we're importing for
   const [deletingScene, setDeletingScene] = useState(null); // scene being deleted (confirmation)
   const [addingSceneForSlide, setAddingSceneForSlide] = useState(null); // slideNumber when adding scene
+  const [deletingAudio, setDeletingAudio] = useState(null); // audio being deleted (confirmation)
 
   // Module/Session filters
   const [selectedModule, setSelectedModule] = useState('');
@@ -497,10 +500,14 @@ export default function ImageGenerator({
     }
   };
 
-  const handleSaveNarration = async (audioId, narrationText) => {
+  const handleSaveNarration = async (audioId, narrationText, narrationType) => {
     if (!updateAudio) return;
     try {
-      await updateAudio(audioId, { narrationText });
+      const updates = { narrationText };
+      if (narrationType) {
+        updates.narrationType = narrationType;
+      }
+      await updateAudio(audioId, updates);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
       } else if (selectedAssessment) {
@@ -653,6 +660,43 @@ export default function ImageGenerator({
       await loadAssetListDetails(selectedAssetList.id);
     } catch (err) {
       console.error('Bulk audio generation failed:', err);
+    }
+  };
+
+  // Handler for adding a new narration part
+  const handleAddNarration = async (context) => {
+    if (!createAudio) return;
+    try {
+      await createAudio(context);
+      // Refresh data
+      if (selectedAssetList) {
+        await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
+      }
+    } catch (err) {
+      console.error('Failed to create audio:', err);
+    }
+  };
+
+  // Handler for deleting a narration part
+  const handleDeleteNarration = async (audioId) => {
+    if (!deleteAudio) return;
+    try {
+      // Clear selection if this was the selected audio
+      if (selectedAudio?.id === audioId) {
+        setSelectedAudio(null);
+      }
+      await deleteAudio(audioId);
+      setDeletingAudio(null);
+      // Refresh data
+      if (selectedAssetList) {
+        await loadAssetListDetails(selectedAssetList.id);
+      } else if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
+      }
+    } catch (err) {
+      console.error('Failed to delete audio:', err);
     }
   };
 
@@ -814,6 +858,8 @@ export default function ImageGenerator({
             onEditNarration={handleEditNarration}
             onSelectAudio={handleSelectAudio}
             onGenerateAllAudio={handleGenerateAllSlideAudio}
+            onAddNarration={(context) => handleAddNarration({ ...context, assetListId: selectedAssetList?.id })}
+            onDeleteNarration={(audioId) => setDeletingAudio({ id: audioId })}
             selectedImageId={selectedImage?.id}
             selectedVideoId={selectedImage?.videoPath ? selectedImage?.id : null}
             selectedAudioId={selectedAudio?.id}
@@ -966,6 +1012,8 @@ export default function ImageGenerator({
                         onUploadAudio={handleUploadAssessmentAudio}
                         onEditNarration={handleEditAssessmentNarration}
                         onSelectAudio={handleSelectAudio}
+                        onAddNarration={(context) => handleAddNarration({ ...context, assessmentAssetId: selectedAssessment?.id })}
+                        onDeleteNarration={(audioId) => setDeletingAudio({ id: audioId })}
                         selectedAudioId={selectedAudio?.id}
                         loading={loading}
                       />
@@ -1077,10 +1125,52 @@ export default function ImageGenerator({
         <div className="prompt-editor-overlay" onClick={() => setEditingNarration(null)}>
           <div className="prompt-editor narration-editor" onClick={(e) => e.stopPropagation()}>
             <div className="prompt-editor-header">
-              <h3>Edit Narration - Slide {editingNarration.slideNumber}</h3>
+              <h3>Edit Narration - Slide {editingNarration.slideNumber || editingNarration.questionNumber}</h3>
               <button className="btn-close" onClick={() => setEditingNarration(null)}>×</button>
             </div>
             <div className="prompt-editor-body">
+              <label>Narration Type</label>
+              <select
+                id="narration-type-input"
+                defaultValue={editingNarration.narrationType || 'slide_narration'}
+                className="narration-type-select"
+              >
+                <optgroup label="Basic">
+                  <option value="slide_narration">Slide Narration</option>
+                  <option value="question">Question</option>
+                </optgroup>
+                <optgroup label="Answer Choices">
+                  <option value="answer_a">Answer A</option>
+                  <option value="answer_b">Answer B</option>
+                  <option value="answer_c">Answer C</option>
+                  <option value="answer_d">Answer D</option>
+                  <option value="answer_e">Answer E</option>
+                  <option value="answer_f">Answer F</option>
+                </optgroup>
+                <optgroup label="Feedback">
+                  <option value="correct_response">Correct Response</option>
+                  <option value="incorrect_1">First Incorrect</option>
+                  <option value="incorrect_2">Second Incorrect</option>
+                </optgroup>
+                <optgroup label="RCP Parts">
+                  <option value="scenario">Scenario</option>
+                  <option value="questions">Questions</option>
+                  <option value="answers">Answers</option>
+                </optgroup>
+                <optgroup label="Two-Part Questions">
+                  <option value="part_a_question">Part A - Question</option>
+                  <option value="part_a_answer_a">Part A - Answer A</option>
+                  <option value="part_a_answer_b">Part A - Answer B</option>
+                  <option value="part_a_answer_c">Part A - Answer C</option>
+                  <option value="part_a_answer_d">Part A - Answer D</option>
+                  <option value="part_b_question">Part B - Question</option>
+                  <option value="part_b_answer_a">Part B - Answer A</option>
+                  <option value="part_b_answer_b">Part B - Answer B</option>
+                  <option value="part_b_answer_c">Part B - Answer C</option>
+                  <option value="part_b_answer_d">Part B - Answer D</option>
+                </optgroup>
+              </select>
+
               <label>Narration Text</label>
               <textarea
                 defaultValue={editingNarration.narrationText || ''}
@@ -1096,12 +1186,36 @@ export default function ImageGenerator({
                 className="btn-save"
                 onClick={() => {
                   const textarea = document.getElementById('narration-text-input');
-                  if (textarea) {
-                    handleSaveNarration(editingNarration.id, textarea.value);
+                  const typeSelect = document.getElementById('narration-type-input');
+                  if (textarea && typeSelect) {
+                    handleSaveNarration(editingNarration.id, textarea.value, typeSelect.value);
                   }
                 }}
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Audio Confirmation Dialog */}
+      {deletingAudio && (
+        <div className="prompt-editor-overlay" onClick={() => setDeletingAudio(null)}>
+          <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-confirm-header">
+              <h3>Delete Narration</h3>
+            </div>
+            <div className="delete-confirm-body">
+              <p>Are you sure you want to delete this narration part?</p>
+              <p className="delete-warning">This action cannot be undone.</p>
+            </div>
+            <div className="delete-confirm-footer">
+              <button className="btn-cancel" onClick={() => setDeletingAudio(null)}>
+                Cancel
+              </button>
+              <button className="btn-danger-confirm" onClick={() => handleDeleteNarration(deletingAudio.id)}>
+                Delete
               </button>
             </div>
           </div>
