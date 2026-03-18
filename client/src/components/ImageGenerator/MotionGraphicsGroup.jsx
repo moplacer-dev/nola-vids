@@ -49,10 +49,14 @@ export default function MotionGraphicsGroup({
   const totalScenes = safeScenes.length;
   const hasVideo = mgVideo?.status === 'uploaded' && mgVideo?.videoPath;
 
-  // Check if this is a question slide (has multi-part audio)
-  const slideAudioRecords = audioRecords.filter(a => a.slideNumber === slideNumber);
-  const isQuestionSlide = slideAudioRecords.some(a =>
-    ['question', 'answer_a', 'answer_b', 'correct_response'].includes(a.narrationType)
+  // Check if this is a multi-part slide (has multiple audio records or multi-part types)
+  // Use parseInt for comparison since slideNumber prop is string but server returns number
+  const slideAudioRecords = audioRecords.filter(a => parseInt(a.slideNumber, 10) === parseInt(slideNumber, 10));
+  const isMultiPartSlide = slideAudioRecords.length > 1 || slideAudioRecords.some(a =>
+    ['question', 'answer_a', 'answer_b', 'answer_c', 'answer_d', 'answer_e', 'correct_response', 'incorrect_1', 'incorrect_2',
+     'part_a_question', 'part_a_answer_a', 'part_a_answer_b', 'part_a_answer_c', 'part_a_answer_d',
+     'part_b_question', 'part_b_answer_a', 'part_b_answer_b', 'part_b_answer_c', 'part_b_answer_d',
+     'popup_1', 'popup_2', 'popup_3', 'scenario', 'questions', 'answers'].includes(a.narrationType)
   );
 
   const handleVideoUpload = (e) => {
@@ -314,8 +318,8 @@ export default function MotionGraphicsGroup({
           </div>
 
           {/* Narration Section */}
-          {isQuestionSlide ? (
-            /* Multi-part narration panel for question slides */
+          {isMultiPartSlide ? (
+            /* Multi-part narration panel */
             <AssessmentNarrationPanel
               questionNumber={slideNumber}
               audioRecords={slideAudioRecords}
@@ -351,7 +355,7 @@ export default function MotionGraphicsGroup({
                       className="btn-add-narration"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onAddNarration({ slideNumber: parseInt(slideNumber), narrationType: 'slide_narration' });
+                        onAddNarration({ slideNumber: parseInt(slideNumber) });
                       }}
                       disabled={loading}
                       title="Add narration part"

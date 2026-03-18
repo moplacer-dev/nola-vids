@@ -357,14 +357,15 @@ export default function AssetList({
               const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
               if (slideAudioRecords.length === 0) return null;
 
-              // Check if this is a question slide (has multi-part audio)
-              const isQuestionSlide = slideAudioRecords.some(a =>
+              // Check if this is a multi-part slide (has question types, popup types, or multiple audio records)
+              const isMultiPartSlide = slideAudioRecords.length > 1 || slideAudioRecords.some(a =>
                 ['question', 'answer_a', 'answer_b', 'answer_c', 'answer_d', 'answer_e', 'correct_response', 'incorrect_1', 'incorrect_2',
                  'part_a_question', 'part_a_answer_a', 'part_a_answer_b', 'part_a_answer_c', 'part_a_answer_d',
-                 'part_b_question', 'part_b_answer_a', 'part_b_answer_b', 'part_b_answer_c', 'part_b_answer_d'].includes(a.narrationType)
+                 'part_b_question', 'part_b_answer_a', 'part_b_answer_b', 'part_b_answer_c', 'part_b_answer_d',
+                 'popup_1', 'popup_2', 'popup_3', 'scenario', 'questions', 'answers'].includes(a.narrationType)
               );
 
-              if (isQuestionSlide) {
+              if (isMultiPartSlide) {
                 return (
                   <AssessmentNarrationPanel
                     questionNumber={parseInt(slide.slideNumber)}
@@ -411,7 +412,7 @@ export default function AssetList({
                           className="btn-add-narration"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onAddNarration({ slideNumber: parseInt(slide.slideNumber), narrationType: 'slide_narration' });
+                            onAddNarration({ slideNumber: parseInt(slide.slideNumber) });
                           }}
                           disabled={loading}
                           title="Add narration part"

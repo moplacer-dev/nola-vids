@@ -137,6 +137,9 @@ function isQuestionSlide(onscreenText, slideType) {
 function narrationTypeToCode(narrationType) {
   const typeMap = {
     'slide_narration': 'NAR1',
+    'popup_1': 'POP1',
+    'popup_2': 'POP2',
+    'popup_3': 'POP3',
     'question': 'QUESTION',
     'answer_a': 'ANS_A',
     'answer_b': 'ANS_B',
@@ -170,6 +173,9 @@ function narrationTypeToCode(narrationType) {
 function getNarrationTypeLabel(narrationType) {
   const labelMap = {
     'slide_narration': 'Narration',
+    'popup_1': 'Pop Up 1',
+    'popup_2': 'Pop Up 2',
+    'popup_3': 'Pop Up 3',
     'question': 'Question',
     'answer_a': 'Answer A',
     'answer_b': 'Answer B',

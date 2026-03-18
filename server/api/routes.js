@@ -1990,11 +1990,39 @@ module.exports = (jobManager) => {
   // Create a new audio record
   router.post('/audio/create', async (req, res) => {
     try {
-      const { assetListId, assessmentAssetId, slideNumber, questionNumber, narrationType, narrationText } = req.body;
+      let { assetListId, assessmentAssetId, slideNumber, questionNumber, narrationType, narrationText } = req.body;
 
       // Validate: need either assetListId OR assessmentAssetId
       if (!assetListId && !assessmentAssetId) {
         return res.status(400).json({ error: 'Either assetListId or assessmentAssetId is required' });
+      }
+
+      // If narrationType not specified and this is an asset list, find first available type for this slide
+      if (!narrationType && assetListId) {
+        const existingAudio = await generatedAudioDb.getByAssetList(assetListId);
+        const slideNum = parseInt(slideNumber, 10);
+        const existingTypes = existingAudio
+          .filter(a => parseInt(a.slideNumber, 10) === slideNum)
+          .map(a => a.narrationType);
+
+        const availableTypes = ['slide_narration', 'popup_1', 'popup_2', 'popup_3', 'scenario', 'questions', 'answers'];
+        narrationType = availableTypes.find(t => !existingTypes.includes(t)) || 'slide_narration';
+      }
+
+      // If narrationType not specified and this is an assessment, find first available type for this question
+      if (!narrationType && assessmentAssetId) {
+        const existingAudio = await generatedAudioDb.getByAssessmentAsset(assessmentAssetId);
+        const qNum = parseInt(questionNumber, 10);
+        const existingTypes = existingAudio
+          .filter(a => parseInt(a.questionNumber, 10) === qNum)
+          .map(a => a.narrationType);
+
+        const availableTypes = [
+          'slide_narration', 'question',
+          'answer_a', 'answer_b', 'answer_c', 'answer_d', 'answer_e', 'answer_f',
+          'correct_response', 'incorrect_1', 'incorrect_2'
+        ];
+        narrationType = availableTypes.find(t => !existingTypes.includes(t)) || 'slide_narration';
       }
 
       // Generate CMS filename based on parent type
@@ -2049,6 +2077,7 @@ module.exports = (jobManager) => {
 
       res.json({ success: true, audio: audioRecord });
     } catch (error) {
+      console.error('[audio/create] Error:', error.message);
       res.status(500).json({ error: error.message });
     }
   });

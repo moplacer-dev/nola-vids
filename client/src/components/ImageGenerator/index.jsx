@@ -667,12 +667,14 @@ export default function ImageGenerator({
   const handleAddNarration = async (context) => {
     if (!createAudio) return;
     try {
-      await createAudio(context);
-      // Refresh data
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      } else if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
+      const result = await createAudio(context);
+      // Optimistically add the new audio record to the correct state (prevents scroll reset)
+      if (result?.audio) {
+        if (context.assessmentAssetId) {
+          setAssessmentAudioList(prev => [...prev, result.audio]);
+        } else {
+          setGeneratedAudioList(prev => [...prev, result.audio]);
+        }
       }
     } catch (err) {
       console.error('Failed to create audio:', err);
@@ -689,11 +691,11 @@ export default function ImageGenerator({
       }
       await deleteAudio(audioId);
       setDeletingAudio(null);
-      // Refresh data
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      } else if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
+      // Optimistically remove the audio record from the correct state (prevents scroll reset)
+      if (selectedAssessment) {
+        setAssessmentAudioList(prev => prev.filter(a => a.id !== audioId));
+      } else {
+        setGeneratedAudioList(prev => prev.filter(a => a.id !== audioId));
       }
     } catch (err) {
       console.error('Failed to delete audio:', err);
@@ -1137,6 +1139,9 @@ export default function ImageGenerator({
               >
                 <optgroup label="Basic">
                   <option value="slide_narration">Slide Narration</option>
+                  <option value="popup_1">Pop Up 1</option>
+                  <option value="popup_2">Pop Up 2</option>
+                  <option value="popup_3">Pop Up 3</option>
                   <option value="question">Question</option>
                 </optgroup>
                 <optgroup label="Answer Choices">

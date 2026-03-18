@@ -31,6 +31,13 @@ export default function AssessmentNarrationPanel({
   // Get human-readable label for narration type
   const getTypeLabel = (narrationType) => {
     const labels = {
+      'slide_narration': 'Slide Narration',
+      'popup_1': 'Pop Up 1',
+      'popup_2': 'Pop Up 2',
+      'popup_3': 'Pop Up 3',
+      'scenario': 'Scenario',
+      'questions': 'Questions',
+      'answers': 'Answers',
       'question': 'Question',
       'answer_a': 'Answer A',
       'answer_b': 'Answer B',
@@ -58,6 +65,16 @@ export default function AssessmentNarrationPanel({
 
   // Order of narration types for display
   const typeOrder = [
+    // Regular slide narration types
+    'slide_narration',
+    'popup_1',
+    'popup_2',
+    'popup_3',
+    // RCP types
+    'scenario',
+    'questions',
+    'answers',
+    // Question types
     'question',
     // Two-part question types (Part A)
     'part_a_question',
@@ -86,7 +103,7 @@ export default function AssessmentNarrationPanel({
 
   // Sort and filter audio records for this question
   const sortedRecords = [...audioRecords]
-    .filter(a => a.questionNumber === questionNumber || a.slideNumber === questionNumber)
+    .filter(a => parseInt(a.questionNumber, 10) === parseInt(questionNumber, 10) || parseInt(a.slideNumber, 10) === parseInt(questionNumber, 10))
     .sort((a, b) => {
       const aIdx = typeOrder.indexOf(a.narrationType);
       const bIdx = typeOrder.indexOf(b.narrationType);
@@ -178,7 +195,7 @@ export default function AssessmentNarrationPanel({
               onClick={(e) => {
                 e.stopPropagation();
                 // Pass both questionNumber and slideNumber - the parent will use the appropriate one
-                onAddNarration({ questionNumber, slideNumber: questionNumber, narrationType: 'slide_narration' });
+                onAddNarration({ questionNumber, slideNumber: questionNumber });
               }}
               disabled={loading}
               title="Add narration part"
