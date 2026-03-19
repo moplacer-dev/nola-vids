@@ -422,14 +422,10 @@ class DirectusCMSClient {
       throw new Error('CMS client not configured');
     }
 
-    // Use FormData for multipart upload
-    const FormData = require('form-data');
+    // Use native FormData with Blob for Node.js 18+
     const formData = new FormData();
-
-    formData.append('file', fileBuffer, {
-      filename: filename,
-      contentType: mimeType
-    });
+    const blob = new Blob([fileBuffer], { type: mimeType });
+    formData.append('file', blob, filename);
 
     if (folder) {
       formData.append('folder', folder);
@@ -439,8 +435,8 @@ class DirectusCMSClient {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.apiToken}`,
-        ...formData.getHeaders()
+        'Authorization': `Bearer ${this.apiToken}`
+        // Don't set Content-Type - fetch sets it automatically with boundary
       },
       body: formData
     });

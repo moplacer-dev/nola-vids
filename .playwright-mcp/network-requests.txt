@@ -1,0 +1,66 @@
+[GET] http://localhost:5173/ => [200] OK
+[GET] http://localhost:5173/@vite/client => [200] OK
+[GET] https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap => [200] 
+[GET] http://localhost:5173/src/main.jsx => [200] OK
+[GET] http://localhost:5173/@react-refresh => [200] OK
+[GET] http://localhost:5173/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=4b08181a => [200] OK
+[GET] http://localhost:5173/node_modules/.vite/deps/react.js?v=4b08181a => [200] OK
+[GET] http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4b08181a => [200] OK
+[GET] http://localhost:5173/src/App.jsx => [200] OK
+[GET] http://localhost:5173/src/index.css => [200] OK
+[GET] http://localhost:5173/node_modules/vite/dist/client/env.mjs => [200] OK
+[GET] http://localhost:5173/node_modules/.vite/deps/chunk-REFQX4J5.js?v=4b08181a => [200] OK
+[GET] http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a => [200] OK
+[GET] http://localhost:5173/src/components/GenerationForm.jsx => [200] OK
+[GET] http://localhost:5173/src/components/JobList.jsx => [200] OK
+[GET] http://localhost:5173/src/components/VideoPlayer.jsx => [200] OK
+[GET] http://localhost:5173/src/components/Login.jsx => [200] OK
+[GET] http://localhost:5173/src/components/Tips.jsx => [200] OK
+[GET] http://localhost:5173/src/components/Library.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/index.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenForm/index.jsx => [200] OK
+[GET] http://localhost:5173/src/hooks/useApi.js => [200] OK
+[GET] http://localhost:5173/src/App.css => [200] OK
+[GET] http://localhost:5173/src/components/GenerationForm.css => [200] OK
+[GET] http://localhost:5173/src/components/JobList.css => [200] OK
+[GET] http://localhost:5173/src/components/VideoPlayer.css => [200] OK
+[GET] http://localhost:5173/src/components/Login.css => [200] OK
+[GET] http://localhost:5173/src/components/Tips.css => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenForm/ImageGenForm.css => [200] OK
+[GET] http://localhost:5173/src/components/VideoCard.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageCard.jsx => [200] OK
+[GET] http://localhost:5173/src/components/FolderSidebar.jsx => [200] OK
+[GET] http://localhost:5173/src/components/MediaViewer.jsx => [200] OK
+[GET] http://localhost:5173/src/components/Library.css => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/AssetList.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/CharacterPanel.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/PromptEditor.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/ImagePreview.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/LibraryPicker.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/AssessmentNarrationPanel.jsx => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/ImageGenerator.css => [200] OK
+[GET] http://localhost:5173/src/components/ImageCard.css => [200] OK
+[GET] http://localhost:5173/src/components/FolderSidebar.css => [200] OK
+[GET] http://localhost:5173/src/components/MediaViewer.css => [200] OK
+[GET] http://localhost:5173/src/components/VideoCard.css => [200] OK
+[GET] http://localhost:5173/src/components/ImageGenerator/MotionGraphicsGroup.jsx => [200] OK
+[GET] https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2 => [200] 
+[GET] https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2 => [200] 
+[POST] http://localhost:5173/auth/verify => [200] OK
+[GET] https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2 => [200] 
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/templates => [200] OK
+[POST] http://localhost:5173/api/images/generate-standalone => [200] OK
+[GET] https://wzkrpircqrhkulymozhz.supabase.co/storage/v1/object/public/images/standalone_1773583179674.png => [200] 
+[GET] https://wzkrpircqrhkulymozhz.supabase.co/storage/v1/object/public/images/standalone_1773583179674.png => [200] 
+[POST] http://localhost:5173/api/generate/text => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] http://localhost:5173/api/jobs => [200] OK
+[GET] https://wzkrpircqrhkulymozhz.supabase.co/storage/v1/object/public/images/standalone_1773583179674.png => [200] 
+[GET] http://localhost:5173/api/jobs => [200] OK

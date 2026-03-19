@@ -1,0 +1,13 @@
+[   15194ms] [ERROR] Warning: React does not recognize the `%s` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `%s` instead. If you accidentally passed it from a parent component, remove it from the DOM element.%s fetchPriority fetchpriority 
+    at img
+    at div
+    at div
+    at ImageCard (http://localhost:5173/src/components/ImageCard.jsx:21:3)
+    at div
+    at div
+    at div
+    at div
+    at Library (http://localhost:5173/src/components/Library.jsx:25:3)
+    at main
+    at div
+    at App (http://localhost:5173/src/App.jsx:32:37) @ http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:518

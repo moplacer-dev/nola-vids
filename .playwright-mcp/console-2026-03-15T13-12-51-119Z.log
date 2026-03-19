@@ -1,0 +1,22 @@
+[   52279ms] [ERROR] TypeError: Cannot read properties of undefined (reading 'toUpperCase')
+    at https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:106860
+    at https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:108266
+    at Array.map (<anonymous>)
+    at ym (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:102265)
+    at mi (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:38:17000)
+    at Xc (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:43963)
+    at Kc (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39727)
+    at Up (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39655)
+    at Hl (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39508)
+    at Aa (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:35875) @ https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:39
+[   52288ms] TypeError: Cannot read properties of undefined (reading 'toUpperCase')
+    at https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:106860
+    at https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:108266
+    at Array.map (<anonymous>)
+    at ym (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:102265)
+    at mi (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:38:17000)
+    at Xc (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:43963)
+    at Kc (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39727)
+    at Up (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39655)
+    at Hl (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:39508)
+    at Aa (https://nola-vids.onrender.com/assets/index-BU2EYhNl.js:40:35875)

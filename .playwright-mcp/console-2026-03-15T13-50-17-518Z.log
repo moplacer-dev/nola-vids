@@ -1,0 +1,19 @@
+[   14428ms] [ERROR] Warning: React does not recognize the `%s` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `%s` instead. If you accidentally passed it from a parent component, remove it from the DOM element.%s fetchPriority fetchpriority 
+    at img
+    at div
+    at div
+    at ImageCard (http://localhost:5173/src/components/ImageCard.jsx:21:3)
+    at div
+    at div
+    at div
+    at div
+    at Library (http://localhost:5173/src/components/Library.jsx:25:3)
+    at main
+    at div
+    at App (http://localhost:5173/src/App.jsx:32:37) @ http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:518
+[   65926ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/api/library?search=REAC:0
+[   65927ms] [ERROR] Failed to load videos: Error: "failed to parse logic tree ((title.ilike.%REAC%,jobs.params.ilike.%REAC%))" (line 1, column 28)
+    at http://localhost:5173/src/hooks/useApi.js:37:15
+    at async http://localhost:5173/src/components/Library.jsx:65:20
+    at async Promise.all (index 0)
+    at async load (http://localhost:5173/src/components/Library.jsx:102:38) @ http://localhost:5173/src/components/Library.jsx:70

@@ -1,0 +1,40 @@
+[     258ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/favicon.ico:0
+[   58228ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/api/voices:0
+[   58229ms] [ERROR] Failed to load voices: SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input
+    at http://localhost:5173/src/hooks/useApi.js:34:35
+    at async loadVoices (http://localhost:5173/src/components/ImageGenerator/index.jsx:88:27) @ http://localhost:5173/src/components/ImageGenerator/index.jsx:91
+[   58231ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/api/asset-lists:0
+[   58231ms] [ERROR] Failed to load asset lists: SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input
+    at http://localhost:5173/src/hooks/useApi.js:34:35
+    at async loadAssetLists (http://localhost:5173/src/components/ImageGenerator/index.jsx:165:21) @ http://localhost:5173/src/components/ImageGenerator/index.jsx:171
+[   58240ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/api/asset-lists:0
+[   58241ms] [ERROR] Failed to load asset lists: TypeError: Failed to fetch
+    at http://localhost:5173/src/hooks/useApi.js:27:30
+    at http://localhost:5173/src/hooks/useApi.js:154:12
+    at loadAssetLists (http://localhost:5173/src/components/ImageGenerator/index.jsx:165:27)
+    at http://localhost:5173/src/components/ImageGenerator/index.jsx:82:5
+    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:16913:34)
+    at invokePassiveEffectMountInDEV (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:18322:19)
+    at invokeEffectsInDev (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:19699:19)
+    at commitDoubleInvokeEffectsInDEV (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:19684:15)
+    at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:19501:13)
+    at flushPassiveEffects (http://localhost:5173/node_modules/.vite/deps/chunk-373CG7ZK.js?v=4b08181a:19445:22) @ http://localhost:5173/src/components/ImageGenerator/index.jsx:171
+[   58241ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   59244ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   60250ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   61255ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   62261ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   63266ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   64271ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   65276ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   66280ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   67283ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   68286ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   69291ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   70297ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   71305ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   72311ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   73316ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   74321ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   75324ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[   76326ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
