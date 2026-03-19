@@ -51,6 +51,33 @@
   cursor: pointer;
 }
 
+.sync-button-group {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.btn-sync-cms {
+  padding: 10px 16px;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-sync-cms:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btn-sync-cms:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .character-panel {
   padding: 20px;
   background: #141414;

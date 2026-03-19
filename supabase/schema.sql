@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS asset_lists (
   career_character_json JSONB,
   default_voice_id TEXT,
   default_voice_name TEXT,
+  cms_page_mapping JSONB DEFAULT '{}',  -- Maps slide_number to CMS content_page id
   imported_at TIMESTAMPTZ DEFAULT NOW()
 );
 

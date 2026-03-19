@@ -481,9 +481,48 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // CMS Sync hooks
+  const checkCmsStatus = useCallback(async () => {
+    return request('/cms/status');
+  }, [request]);
+
+  const fetchCmsSync = useCallback(async (assetListId) => {
+    return request(`/cms/sync/${assetListId}/fetch`, { method: 'POST' });
+  }, [request]);
+
+  const addSlideFromCms = useCallback(async (assetListId, slideNumber, cmsPageId) => {
+    return request(`/cms/sync/${assetListId}/add-slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slideNumber, cmsPageId })
+    });
+  }, [request]);
+
+  const deleteSlideFromNola = useCallback(async (assetListId, slideNumber) => {
+    return request(`/cms/sync/${assetListId}/delete-slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slideNumber })
+    });
+  }, [request]);
+
+  const updateNarrationFromCms = useCallback(async (assetListId, slideNumber, narrationText, pageId) => {
+    return request(`/cms/sync/${assetListId}/update-narration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slideNumber, narrationText, pageId })
+    });
+  }, [request]);
+
   return {
     loading,
     error,
+    // CMS Sync
+    checkCmsStatus,
+    fetchCmsSync,
+    addSlideFromCms,
+    deleteSlideFromNola,
+    updateNarrationFromCms,
     // Video generation
     generateTextToVideo,
     generateImageToVideo,

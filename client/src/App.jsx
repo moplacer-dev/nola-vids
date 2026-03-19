@@ -41,6 +41,13 @@ export default function App() {
   const {
     loading,
     error,
+    // CMS Sync
+    checkCmsStatus,
+    fetchCmsSync,
+    addSlideFromCms,
+    deleteSlideFromNola,
+    updateNarrationFromCms,
+    // Video generation
     generateTextToVideo,
     generateImageToVideo,
     generateFrameInterpolation,
@@ -491,6 +498,11 @@ export default function App() {
             getAssessmentAudio={getAssessmentAudio}
             generateAssessmentAudio={generateAssessmentAudio}
             generateBulkAudio={generateBulkAudio}
+            checkCmsStatus={checkCmsStatus}
+            fetchCmsSync={fetchCmsSync}
+            addSlideFromCms={addSlideFromCms}
+            deleteSlideFromNola={deleteSlideFromNola}
+            updateNarrationFromCms={updateNarrationFromCms}
           />
         </main>
       ) : null}

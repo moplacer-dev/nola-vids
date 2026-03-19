@@ -5,6 +5,7 @@ import PromptEditor from './PromptEditor';
 import ImagePreview from './ImagePreview';
 import LibraryPicker from './LibraryPicker';
 import AssessmentNarrationPanel from './AssessmentNarrationPanel';
+import CmsSyncModal from './CmsSyncModal';
 import './ImageGenerator.css';
 
 export default function ImageGenerator({
@@ -41,7 +42,13 @@ export default function ImageGenerator({
   // Assessment Audio
   getAssessmentAudio,
   generateAssessmentAudio,
-  generateBulkAudio
+  generateBulkAudio,
+  // CMS Sync
+  checkCmsStatus,
+  fetchCmsSync,
+  addSlideFromCms,
+  deleteSlideFromNola,
+  updateNarrationFromCms
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -60,6 +67,12 @@ export default function ImageGenerator({
   const [addingSceneForSlide, setAddingSceneForSlide] = useState(null); // slideNumber when adding scene
   const [deletingAudio, setDeletingAudio] = useState(null); // audio being deleted (confirmation)
 
+  // CMS Sync state
+  const [cmsAvailable, setCmsAvailable] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncData, setSyncData] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
   // Module/Session filters
   const [selectedModule, setSelectedModule] = useState('');
   const [selectedSession, setSelectedSession] = useState('');
@@ -69,11 +82,24 @@ export default function ImageGenerator({
   const [selectedAssessment, setSelectedAssessment] = useState(null);
   const [assessmentAudioList, setAssessmentAudioList] = useState([]);
 
-  // Load asset lists and voices on mount
+  // Load asset lists, voices, and check CMS status on mount
   useEffect(() => {
     loadAssetLists();
     loadVoices();
+    loadCmsStatus();
   }, []);
+
+  const loadCmsStatus = async () => {
+    try {
+      if (checkCmsStatus) {
+        const result = await checkCmsStatus();
+        setCmsAvailable(result?.available || false);
+      }
+    } catch (err) {
+      console.error('Failed to check CMS status:', err);
+      setCmsAvailable(false);
+    }
+  };
 
   const loadVoices = async () => {
     try {
@@ -702,6 +728,73 @@ export default function ImageGenerator({
     }
   };
 
+  // CMS Sync handlers
+  const handleOpenSyncModal = async () => {
+    if (!selectedAssetList?.id || !fetchCmsSync) return;
+
+    setSyncing(true);
+    setSyncModalOpen(true);
+    setSyncData(null);
+
+    try {
+      const data = await fetchCmsSync(selectedAssetList.id);
+      setSyncData(data);
+    } catch (err) {
+      console.error('Failed to fetch sync data:', err);
+      setSyncData({ error: err.message });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleAddSlideFromCms = async (slideNumber, cmsPageId) => {
+    if (!selectedAssetList?.id || !addSlideFromCms) return;
+
+    try {
+      await addSlideFromCms(selectedAssetList.id, slideNumber, cmsPageId);
+      // Refresh sync data and asset list
+      const [syncResult] = await Promise.all([
+        fetchCmsSync(selectedAssetList.id),
+        loadAssetListDetails(selectedAssetList.id)
+      ]);
+      setSyncData(syncResult);
+    } catch (err) {
+      console.error('Failed to add slide from CMS:', err);
+    }
+  };
+
+  const handleDeleteSlideFromNola = async (slideNumber) => {
+    if (!selectedAssetList?.id || !deleteSlideFromNola) return;
+
+    try {
+      await deleteSlideFromNola(selectedAssetList.id, slideNumber);
+      // Refresh sync data and asset list
+      const [syncResult] = await Promise.all([
+        fetchCmsSync(selectedAssetList.id),
+        loadAssetListDetails(selectedAssetList.id)
+      ]);
+      setSyncData(syncResult);
+    } catch (err) {
+      console.error('Failed to delete slide:', err);
+    }
+  };
+
+  const handleUpdateNarration = async (slideNumber, narrationText, pageId) => {
+    if (!selectedAssetList?.id || !updateNarrationFromCms) return;
+
+    try {
+      await updateNarrationFromCms(selectedAssetList.id, slideNumber, narrationText, pageId);
+      // Refresh sync data and asset list
+      const [syncResult] = await Promise.all([
+        fetchCmsSync(selectedAssetList.id),
+        loadAssetListDetails(selectedAssetList.id)
+      ]);
+      setSyncData(syncResult);
+    } catch (err) {
+      console.error('Failed to update narration:', err);
+    }
+  };
+
   // Get unique modules and sessions from asset lists
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
@@ -817,6 +910,19 @@ export default function ImageGenerator({
               ))}
             </select>
           </div>
+
+          {/* Sync with CMS button - only show for regular sessions (not assessments) */}
+          {selectedAssetList && !selectedAssessment && cmsAvailable && (
+            <div className="selector-group sync-button-group">
+              <button
+                className="btn-sync-cms"
+                onClick={handleOpenSyncModal}
+                disabled={syncing}
+              >
+                {syncing ? 'Syncing...' : 'Sync with CMS'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Character Panel - hide when assessment is selected */}
@@ -1225,6 +1331,18 @@ export default function ImageGenerator({
             </div>
           </div>
         </div>
+      )}
+
+      {/* CMS Sync Modal */}
+      {syncModalOpen && (
+        <CmsSyncModal
+          syncData={syncData}
+          onAddSlide={handleAddSlideFromCms}
+          onDeleteSlide={handleDeleteSlideFromNola}
+          onUpdateNarration={handleUpdateNarration}
+          onClose={() => setSyncModalOpen(false)}
+          loading={syncing}
+        />
       )}
     </div>
   );
