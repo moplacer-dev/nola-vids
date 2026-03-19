@@ -877,12 +877,10 @@ module.exports = (jobManager) => {
       if (allSlides && allSlides.length > 0) {
         // Fetch all existing audio in one query
         const existingAudioList = await generatedAudioDb.getByAssetList(assetList.id);
-        // For RCP, key by slideNumber-narrationType; for regular, just slideNumber
+        // Always key by slideNumber-narrationType to support both RCP and regular sessions with structuredNarration
         const existingAudioByKey = new Map(
           existingAudioList.map(a => {
-            const key = sessionType === 'rcp'
-              ? `${a.slideNumber}-${a.narrationType}`
-              : a.slideNumber;
+            const key = `${a.slideNumber}-${a.narrationType}`;
             return [key, a];
           })
         );
@@ -964,8 +962,69 @@ module.exports = (jobManager) => {
                 cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'question')
               });
             }
+          } else if (slide.structuredNarration) {
+            // Regular session slide with structuredNarration (e.g., "apply" slides)
+            // Store all narration parts: question, answers, correct/incorrect responses
+            const sn = slide.structuredNarration;
+
+            // Question text
+            const questionText = sn.question || slide.narration || '';
+            if (questionText && questionText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'question',
+                narrationText: questionText.trim(),
+                cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum, 'question')
+              });
+            }
+
+            // Answer choices
+            if (sn.answerChoices && Array.isArray(sn.answerChoices)) {
+              for (const choice of sn.answerChoices) {
+                const label = (choice.label || '').toLowerCase();
+                const narrationType = `answer_${label}`;
+                if (choice.text && choice.text.trim().length > 0) {
+                  narrationRecords.push({
+                    slideNumber: slideNum,
+                    narrationType,
+                    narrationText: choice.text.trim(),
+                    cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum, narrationType)
+                  });
+                }
+              }
+            }
+
+            // Correct response
+            if (sn.correctResponseText && sn.correctResponseText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'correct_response',
+                narrationText: sn.correctResponseText.trim(),
+                cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum, 'correct_response')
+              });
+            }
+
+            // First incorrect response
+            if (sn.firstIncorrectText && sn.firstIncorrectText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'incorrect_1',
+                narrationText: sn.firstIncorrectText.trim(),
+                cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_1')
+              });
+            }
+
+            // Second incorrect response
+            if (sn.secondIncorrectText && sn.secondIncorrectText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'incorrect_2',
+                narrationText: sn.secondIncorrectText.trim(),
+                cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_2')
+              });
+            }
           } else {
-            // For regular slides, single narration record
+            // For regular slides without structuredNarration, single narration record
             const narration = slide.narration || slide.narrationText || '';
             if (narration && narration.trim().length > 0) {
               narrationRecords.push({
@@ -3303,8 +3362,14 @@ module.exports = (jobManager) => {
 };
 
 // Helper functions
-function generateAudioFilename(moduleName, sessionNumber, slideNumber) {
+function generateAudioFilename(moduleName, sessionNumber, slideNumber, narrationType) {
   const moduleCode = getModuleCode(moduleName);
+  // If narrationType is provided (for structured narration slides), use type code
+  if (narrationType) {
+    const typeCode = narrationTypeToCode(narrationType);
+    return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.${typeCode}.mp3`;
+  }
+  // Default: single narration file
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.NAR1.mp3`;
 }
 

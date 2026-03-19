@@ -1420,17 +1420,16 @@ const generatedAudioQueries = {
     return { created: toCreate.length, updated: toUpdate.length };
   },
 
-  // Upsert with RCP support (keys by slideNumber-narrationType for RCP)
-  // existingByKey: Map keyed by slideNumber (regular) or "slideNumber-narrationType" (RCP)
+  // Upsert with compound key support (keys by slideNumber-narrationType)
+  // existingByKey: Map keyed by "slideNumber-narrationType"
   // newRecords: array of { slideNumber, narrationType, narrationText, cmsFilename }
   async upsertBulkRcp(assetListId, existingByKey, newRecords, isRcp = false) {
     const toCreate = [];
     const toUpdate = [];
 
     for (const record of newRecords) {
-      const key = isRcp
-        ? `${record.slideNumber}-${record.narrationType}`
-        : record.slideNumber;
+      // Always use compound key to support both RCP and regular sessions with structuredNarration
+      const key = `${record.slideNumber}-${record.narrationType}`;
       const existing = existingByKey.get(key);
 
       if (existing) {
