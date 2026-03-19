@@ -24,22 +24,26 @@ export default function LibraryPicker({
         setItems(videos.map(v => ({
           ...v,
           _type: 'video',
-          thumbnailUrl: `/videos/${v.filename}`,
+          thumbnailUrl: v.path, // Use the actual Supabase URL
           displayName: v.title || v.params?.prompt?.substring(0, 50) || v.filename
         })));
       } else {
-        // Load completed and uploaded images
-        const [completed, uploaded] = await Promise.all([
+        // Load completed, uploaded, and imported images
+        const [completed, uploaded, imported] = await Promise.all([
           getGeneratedImages({ status: 'completed' }),
-          getGeneratedImages({ status: 'uploaded' })
+          getGeneratedImages({ status: 'uploaded' }),
+          getGeneratedImages({ status: 'imported' })
         ]);
-        const allImages = [...completed, ...uploaded];
-        setItems(allImages.map(img => ({
-          ...img,
-          _type: 'image',
-          thumbnailUrl: img.imagePath ? `/images/${img.imagePath.split('/').pop()}` : null,
-          displayName: img.cmsFilename || img.originalPrompt?.substring(0, 50) || `Image ${img.id}`
-        })));
+        const allImages = [...completed, ...uploaded, ...imported];
+        setItems(allImages.map(img => {
+          // Use the actual image path directly (no transform - it was causing display issues)
+          return {
+            ...img,
+            _type: 'image',
+            thumbnailUrl: img.imagePath,
+            displayName: img.cmsFilename || img.originalPrompt?.substring(0, 50) || `Image ${img.id}`
+          };
+        }));
       }
     } catch (err) {
       console.error('Failed to load library items:', err);
@@ -120,19 +124,29 @@ export default function LibraryPicker({
                 onClick={() => handleSelect(item)}
               >
                 {item._type === 'video' ? (
-                  <video
-                    src={item.thumbnailUrl}
-                    className="picker-thumbnail"
-                    muted
-                    onMouseOver={e => e.target.play()}
-                    onMouseOut={e => { e.target.pause(); e.target.currentTime = 0; }}
-                  />
+                  <div className="picker-thumbnail-wrapper">
+                    <video
+                      src={item.thumbnailUrl}
+                      className="picker-thumbnail-img"
+                      muted
+                      onMouseOver={e => e.target.play()}
+                      onMouseOut={e => { e.target.pause(); e.target.currentTime = 0; }}
+                    />
+                  </div>
                 ) : item.thumbnailUrl ? (
-                  <img
-                    src={item.thumbnailUrl}
-                    alt={item.displayName}
-                    className="picker-thumbnail"
-                  />
+                  <div className="picker-thumbnail-wrapper">
+                    <img
+                      src={item.thumbnailUrl}
+                      alt={item.displayName}
+                      className="picker-thumbnail-img"
+                      onError={(e) => {
+                        // Fallback to original URL if transform fails
+                        if (item.imagePath && e.target.src !== item.imagePath) {
+                          e.target.src = item.imagePath;
+                        }
+                      }}
+                    />
+                  </div>
                 ) : (
                   <div className="picker-thumbnail picker-no-image">No Image</div>
                 )}

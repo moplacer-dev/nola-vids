@@ -21,13 +21,13 @@ const MEDIA_TYPES = [
   { value: 'interactive_element', label: 'Interactive Element' },
 ];
 
-export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) {
+export default function PromptEditor({ image, onSave, onClose, mode = 'edit', showAssetTypeSelector = false }) {
   const isAddMode = mode === 'add';
   const [prompt, setPrompt] = useState(
     isAddMode ? '' : (image.modifiedPrompt || image.originalPrompt || '')
   );
   const [assetType, setAssetType] = useState(
-    isAddMode ? 'motion_graphics' : (image.assetType || '')
+    isAddMode ? (image.assetType || 'ai_generated_image') : (image.assetType || '')
   );
 
   const hasRecord = isAddMode || !!image.id;
@@ -41,8 +41,8 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) 
 
   const handleSave = () => {
     if (isAddMode) {
-      // In add mode, pass the prompt to create a new scene
-      onSave(image.id, prompt);
+      // In add mode, pass the prompt and asset type to create a new asset
+      onSave(image.id, prompt, assetType);
     } else if (hasRecord) {
       onSave(image.id, prompt, assetTypeChanged ? assetType : undefined);
     } else {
@@ -90,7 +90,7 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) 
       >
         <div className="prompt-editor-header">
           <h3>
-            {isAddMode ? 'Add Scene' : 'Edit Prompt'} - Slide {image.slideNumber}
+            {isAddMode ? 'Add Asset' : 'Edit Prompt'} - Slide {image.slideNumber}
             {!isAddMode && image.assetType && <span className="prompt-asset-type"> ({image.assetType.replace(/_/g, ' ')}{image.assetNumber > 1 ? ` #${image.assetNumber}` : ''})</span>}
           </h3>
           <button className="btn-close" onClick={onClose}>×</button>
@@ -102,16 +102,17 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) 
           </div>
         )}
 
-        {/* Asset Type Selector - hide in add mode */}
-        {!isAddMode && (
+        {/* Asset Type Selector - show in edit mode or add mode when showAssetTypeSelector is true */}
+        {(!isAddMode || showAssetTypeSelector) && (
           <div className="prompt-editor-type">
             <label>Media Type</label>
             <select
               value={assetType}
               onChange={(e) => setAssetType(e.target.value)}
-              className={assetTypeChanged ? 'type-changed' : ''}
+              className={!isAddMode && assetTypeChanged ? 'type-changed' : ''}
             >
-              <option value="">-- Select Type --</option>
+              {isAddMode && <option value="">-- Select Type --</option>}
+              {!isAddMode && <option value="">-- Select Type --</option>}
               {MEDIA_TYPES.map(type => (
                 <option key={type.value} value={type.value}>
                   {type.label}
@@ -124,7 +125,7 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) 
                 </option>
               )}
             </select>
-            {assetTypeChanged && (
+            {!isAddMode && assetTypeChanged && (
               <span className="type-change-indicator">Changed</span>
             )}
           </div>
@@ -209,7 +210,7 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit' }) 
             Cancel
           </button>
           <button className="btn-save" onClick={handleSave} disabled={!hasRecord}>
-            {isAddMode ? 'Add Scene' : (assetTypeChanged ? 'Save Changes' : 'Save Prompt')}
+            {isAddMode ? 'Add Asset' : (assetTypeChanged ? 'Save Changes' : 'Save Prompt')}
           </button>
         </div>
       </div>

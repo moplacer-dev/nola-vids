@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import MotionGraphicsGroup from './MotionGraphicsGroup';
 import AssessmentNarrationPanel from './AssessmentNarrationPanel';
 
 export default function AssetList({
@@ -18,8 +17,8 @@ export default function AssetList({
   onSelectVideo,
   onUploadMGVideo,
   onDeleteMGVideo,
-  onAddScene,
-  onDeleteScene,
+  onAddAsset,
+  onDeleteAsset,
   onGenerateAudio,
   onUploadAudio,
   onEditNarration,
@@ -33,6 +32,7 @@ export default function AssetList({
   loading
 }) {
   const fileInputRefs = useRef({});
+  const videoInputRefs = useRef({});
   const [characterToggles, setCharacterToggles] = useState({});
 
   // Build the data - key includes assetNumber for multi-asset slides
@@ -57,6 +57,19 @@ export default function AssetList({
     }
     audioBySlide[slideNum].push(a);
   });
+
+  // Track expanded slides (default: all collapsed)
+  const [expandedSlides, setExpandedSlides] = useState({});
+
+  const toggleSlide = (slideNumber) => {
+    setExpandedSlides(prev => ({
+      ...prev,
+      [slideNumber]: !prev[slideNumber]
+    }));
+  };
+
+  // Default slides to collapsed (false) unless explicitly expanded
+  const isSlideExpanded = (slideNumber) => expandedSlides[slideNumber] === true;
 
   // Track expanded narration sections
   const [expandedNarrations, setExpandedNarrations] = useState({});
@@ -84,8 +97,7 @@ export default function AssetList({
       const slideNum = String(s.slideNumber ?? s.slide_number ?? '');
       const slideAssets = assetsBySlide[slideNum] || [];
 
-      // Check if this slide has motion graphics scenes
-      // Check both raw assets AND generatedImages for MG types
+      // Check if this slide has motion graphics assets (for final video section)
       const hasMGFromAssets = slideAssets.some(a =>
         (a.type || '').toLowerCase().includes('motion_graphics')
       );
@@ -94,119 +106,177 @@ export default function AssetList({
         ((img.assetType || '').toLowerCase().includes('motion_graphics'))
       ) || false;
 
-      const hasMGScenes = hasMGFromAssets || hasMGFromImages;
-
       return {
         slideNumber: slideNum,
         slideTitle: s.slideTitle || s.slide_title || s.title || '',
         slideType: s.slideType || s.slide_type || s.type || '',
         assets: slideAssets,
-        isMotionGraphics: hasMGScenes
+        hasMGAssets: hasMGFromAssets || hasMGFromImages
       };
     }).sort((a, b) => Number(a.slideNumber) - Number(b.slideNumber));
   }
 
   const slidesWithAssets = slides.filter(s => s.assets.length > 0).length;
 
-  // Get MG scenes for a slide (from generatedImages)
-  // Falls back to finding scenes via imageByKey when assetType doesn't match
-  const getMGScenes = (slideNumber) => {
-    // First try to get from generatedImages by assetType
-    let scenes = generatedImages?.filter(img =>
-      img.slideNumber === parseInt(slideNumber) &&
-      ((img.assetType || '').toLowerCase().includes('motion_graphics'))
-    ) || [];
-
-    // If no scenes found, fall back to finding via assets + generatedImages by slideNumber/assetNumber
-    if (scenes.length === 0) {
-      const slideAssets = assetsBySlide[String(slideNumber)] || [];
-      const mgAssets = slideAssets.filter(a =>
-        (a.type || '').toLowerCase().includes('motion_graphics')
-      );
-
-      // Find generatedImages by slideNumber + assetNumber (avoiding type mismatch)
-      scenes = mgAssets.map(asset => {
-        const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-        return generatedImages?.find(img =>
-          img.slideNumber === parseInt(slideNumber) &&
-          (img.assetNumber || 1) === assetNum
-        );
-      }).filter(Boolean);
-    }
-
-    return scenes;
-  };
-
   // Super simple render with zero CSS dependencies
   return (
     <div className="asset-list">
       <div className="asset-list-header">
         <h3>Slides ({slides.length})</h3>
-        <span className="asset-count">{slidesWithAssets} with media</span>
+        <div className="asset-list-actions">
+          <button
+            className="btn-expand-all"
+            onClick={() => {
+              const allExpanded = {};
+              slides.forEach(s => { allExpanded[s.slideNumber] = true; });
+              setExpandedSlides(allExpanded);
+            }}
+            title="Expand all"
+          >
+            Expand All
+          </button>
+          <button
+            className="btn-collapse-all"
+            onClick={() => {
+              const allCollapsed = {};
+              slides.forEach(s => { allCollapsed[s.slideNumber] = false; });
+              setExpandedSlides(allCollapsed);
+            }}
+            title="Collapse all"
+          >
+            Collapse All
+          </button>
+          <span className="asset-count">{slidesWithAssets} with media</span>
+        </div>
       </div>
 
       <div className="asset-items">
         {slides.map((slide) => {
-          // Render Motion Graphics slides with special component
-          const mgScenes = slide.isMotionGraphics ? getMGScenes(slide.slideNumber) : [];
+          const mgVideo = slide.hasMGAssets ? mgVideoBySlide[parseInt(slide.slideNumber)] : null;
 
-          if (slide.isMotionGraphics && (slide.assets.length > 0 || mgScenes.length > 0)) {
-            const mgVideo = mgVideoBySlide[parseInt(slide.slideNumber)];
+          const expanded = isSlideExpanded(slide.slideNumber);
 
-            // Get all audio records for this slide (now an array)
-            const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
-            // For backward compatibility, find the main slide narration or use first record
-            const mgAudio = slideAudioRecords.find(a => a.narrationType === 'slide_narration') || slideAudioRecords[0];
+          // Count only assets that have database records (not deleted)
+          const assetsWithRecords = slide.assets.filter(asset => {
+            const type = asset.type || asset.assetType || 'image';
+            const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
+            const key = `${slide.slideNumber}-${type}-${assetNum}`;
+            return !!imageByKey[key];
+          });
+          const assetCount = assetsWithRecords.length;
 
-            return (
-              <MotionGraphicsGroup
-                key={slide.slideNumber}
-                slideNumber={slide.slideNumber}
-                slideTitle={slide.slideTitle}
-                scenes={mgScenes}
-                assets={slide.assets}
-                mgVideo={mgVideo}
-                audio={mgAudio}
-                audioRecords={slideAudioRecords.length > 0 ? slideAudioRecords : generatedAudio}
-                onGenerate={onGenerate}
-                onUpload={onUpload}
-                onImport={onImport}
-                onEditPrompt={onEditPrompt}
-                onSelectImage={onSelectImage}
-                onSelectVideo={onSelectVideo}
-                onUploadVideo={onUploadMGVideo}
-                onDeleteVideo={onDeleteMGVideo}
-                onAddScene={onAddScene}
-                onDeleteScene={onDeleteScene}
-                onGenerateAudio={onGenerateAudio}
-                onUploadAudio={onUploadAudio}
-                onEditNarration={onEditNarration}
-                onSelectAudio={onSelectAudio}
-                onGenerateAllAudio={onGenerateAllAudio}
-                onAddNarration={onAddNarration}
-                onDeleteNarration={onDeleteNarration}
-                voices={voices}
-                defaultVoiceId={defaultVoiceId}
-                selectedImageId={selectedImageId}
-                selectedVideoId={selectedVideoId}
-                selectedAudioId={selectedAudioId}
-                loading={loading}
-              />
-            );
-          }
+          // Calculate slide completion status (media + narration)
+          const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
+          const readyStatuses = ['completed', 'uploaded', 'imported', 'default'];
 
-          // Render normal slides
+          // Count ready media assets
+          const readyMediaCount = assetsWithRecords.filter(asset => {
+            const type = asset.type || asset.assetType || 'image';
+            const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
+            const key = `${slide.slideNumber}-${type}-${assetNum}`;
+            const img = imageByKey[key];
+            return img && readyStatuses.includes(img.status);
+          }).length;
+
+          // Count ready narration assets
+          const readyNarrationCount = slideAudioRecords.filter(a =>
+            readyStatuses.includes(a.status)
+          ).length;
+
+          // Total counts
+          const totalAssets = assetCount + slideAudioRecords.length;
+          const readyAssets = readyMediaCount + readyNarrationCount;
+          const isSlideComplete = totalAssets > 0 && readyAssets === totalAssets;
+          const hasAnyAssets = totalAssets > 0;
+
           return (
-          <div key={slide.slideNumber} className={`slide-group ${slide.assets.length === 0 ? 'no-assets' : ''}`}>
-            <div className="slide-header">
+          <div key={slide.slideNumber} className={`slide-group ${assetCount === 0 ? 'no-assets' : ''} ${expanded ? 'expanded' : 'collapsed'}`}>
+            <div className="slide-header" onClick={() => toggleSlide(slide.slideNumber)}>
+              <button className="slide-expand-btn" onClick={(e) => { e.stopPropagation(); toggleSlide(slide.slideNumber); }}>
+                {expanded ? '▼' : '▶'}
+              </button>
               <span className="slide-badge">{slide.slideNumber}</span>
               <div className="slide-info">
                 <span className="slide-title">{slide.slideTitle || 'Untitled'}</span>
+                {slide.hasMGAssets && <span className="mg-badge">MG</span>}
               </div>
-              {slide.assets.length === 0 && <span className="no-media-badge">No Media</span>}
+              {!hasAnyAssets && <span className="no-media-badge">No Media</span>}
+              {hasAnyAssets && (
+                <span className={`slide-status-badge ${isSlideComplete ? 'complete' : 'in-progress'}`}>
+                  {isSlideComplete ? 'Complete' : `${readyAssets}/${totalAssets}`}
+                </span>
+              )}
             </div>
 
-            {slide.assets.map((asset, i) => {
+            {/* Expanded Content */}
+            {expanded && (
+              <>
+              {/* Final Video Section - only for MG slides */}
+              {slide.hasMGAssets && (
+              <div className="slide-final-video">
+                <input
+                  type="file"
+                  accept="video/mp4"
+                  style={{ display: 'none' }}
+                  ref={el => videoInputRefs.current[slide.slideNumber] = el}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      onUploadMGVideo(slide.slideNumber, file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                {mgVideo ? (
+                  <div className="final-video-info">
+                    <span className="final-video-label">Final Video:</span>
+                    <span
+                      className={`final-video-filename ${selectedVideoId === mgVideo.id ? 'selected' : ''}`}
+                      onClick={() => onSelectVideo(mgVideo)}
+                    >
+                      {mgVideo.cmsFilename}
+                    </span>
+                    <div className="final-video-actions">
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => onSelectVideo(mgVideo)}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => videoInputRefs.current[slide.slideNumber]?.click()}
+                      >
+                        Replace
+                      </button>
+                      <button
+                        className="btn-danger btn-sm"
+                        onClick={() => onDeleteMGVideo(slide.slideNumber)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-upload-final-video"
+                    onClick={() => videoInputRefs.current[slide.slideNumber]?.click()}
+                  >
+                    Upload Final Video
+                  </button>
+                )}
+              </div>
+            )}
+
+            {slide.assets
+              .filter(asset => {
+                // Filter out assets that don't have a database record (deleted)
+                const type = asset.type || asset.assetType || 'image';
+                const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
+                const key = `${slide.slideNumber}-${type}-${assetNum}`;
+                return !!imageByKey[key];
+              })
+              .map((asset, i) => {
               const type = asset.type || asset.assetType || 'image';
               const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
               const key = `${slide.slideNumber}-${type}-${assetNum}`;
@@ -242,9 +312,23 @@ export default function AssetList({
                       {type.replace(/_/g, ' ')}
                       {slide.assets.length > 1 && <span className="asset-number"> #{assetNum}</span>}
                     </span>
-                    <span className={`status-text ${!img ? 'status-no-record' : ''}`}>
-                      {img ? img.status : 'no record'}
-                    </span>
+                    <div className="asset-header-right">
+                      <span className={`status-text ${!img ? 'status-no-record' : ''}`}>
+                        {img ? img.status : 'no record'}
+                      </span>
+                      {img?.id && onDeleteAsset && (
+                        <button
+                          className="asset-delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteAsset(img);
+                          }}
+                          title="Delete asset"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <p className="asset-prompt">
                     {img?.modifiedPrompt || img?.originalPrompt || asset.prompt || asset.description || 'No prompt'}
@@ -351,6 +435,16 @@ export default function AssetList({
                 </div>
               );
             })}
+
+            {/* Add Asset Card */}
+            {onAddAsset && (
+              <div
+                className="slide-add-asset"
+                onClick={() => onAddAsset(slide.slideNumber)}
+              >
+                + Add Asset
+              </div>
+            )}
 
             {/* Narration Section */}
             {(() => {
@@ -531,6 +625,8 @@ export default function AssetList({
                 </div>
               );
             })()}
+              </>
+            )}
           </div>
           );
         })}

@@ -1947,6 +1947,7 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Add asset to slide (supports both MG scenes and generic assets)
   router.post('/motion-graphics/:assetListId/:slideNumber/scenes', async (req, res) => {
     try {
       const { assetListId, slideNumber } = req.params;
@@ -1957,23 +1958,31 @@ module.exports = (jobManager) => {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
+      // Get all assets on this slide to calculate next asset number
       const allImages = await generatedImageDb.getByAssetList(assetListId);
-      const slideScenes = allImages.filter(img =>
-        img.slideNumber === parseInt(slideNumber) &&
-        (img.assetType === 'motion_graphics_scene' || img.assetType === 'motion_graphics')
+      const slideAssets = allImages.filter(img =>
+        img.slideNumber === parseInt(slideNumber)
       );
 
-      const maxAssetNum = slideScenes.reduce((max, scene) => {
-        return Math.max(max, scene.assetNumber || 1);
+      const maxAssetNum = slideAssets.reduce((max, asset) => {
+        return Math.max(max, asset.assetNumber || 1);
       }, 0);
       const newAssetNumber = maxAssetNum + 1;
 
-      const cmsFilename = generateMGSceneFilename(
-        assetList.moduleName,
-        assetList.sessionNumber,
-        parseInt(slideNumber),
-        newAssetNumber
-      );
+      // Use appropriate filename generator based on asset type
+      const isMGAsset = assetType.toLowerCase().includes('motion_graphics');
+      const cmsFilename = isMGAsset
+        ? generateMGSceneFilename(
+            assetList.moduleName,
+            assetList.sessionNumber,
+            parseInt(slideNumber),
+            newAssetNumber
+          )
+        : generateCmsFilename(
+            assetList.moduleName,
+            assetList.sessionNumber,
+            { slideNumber: parseInt(slideNumber), type: assetType, assetNumber: newAssetNumber }
+          );
 
       const characters = await characterDb.getByModule(assetList.moduleName);
       const character = characters[0];
@@ -1982,7 +1991,7 @@ module.exports = (jobManager) => {
         s === slideKey || s === String(slideNumber)
       );
 
-      const newScene = await generatedImageDb.create({
+      const newAsset = await generatedImageDb.create({
         assetListId,
         slideNumber: parseInt(slideNumber),
         assetType,
@@ -1995,8 +2004,9 @@ module.exports = (jobManager) => {
 
       res.json({
         success: true,
-        scene: newScene,
-        message: `Added scene ${newAssetNumber} to slide ${slideNumber}`
+        asset: newAsset,
+        scene: newAsset, // Keep backward compatibility
+        message: `Added ${assetType.replace(/_/g, ' ')} to slide ${slideNumber}`
       });
     } catch (error) {
       res.status(500).json({ error: error.message });

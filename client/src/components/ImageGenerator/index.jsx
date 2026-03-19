@@ -63,8 +63,8 @@ export default function ImageGenerator({
   const [editingNarration, setEditingNarration] = useState(null);
   const [loading, setLoading] = useState(false);
   const [importingForImage, setImportingForImage] = useState(null); // image ID we're importing for
-  const [deletingScene, setDeletingScene] = useState(null); // scene being deleted (confirmation)
-  const [addingSceneForSlide, setAddingSceneForSlide] = useState(null); // slideNumber when adding scene
+  const [deletingAsset, setDeletingAsset] = useState(null); // asset being deleted (confirmation)
+  const [addingAssetForSlide, setAddingAssetForSlide] = useState(null); // slideNumber when adding asset
   const [deletingAudio, setDeletingAudio] = useState(null); // audio being deleted (confirmation)
 
   // CMS Sync state
@@ -430,46 +430,46 @@ export default function ImageGenerator({
     }
   };
 
-  const handleAddScene = (slideNumber) => {
-    setAddingSceneForSlide(slideNumber);
+  const handleAddAsset = (slideNumber) => {
+    setAddingAssetForSlide(slideNumber);
   };
 
-  const handleSaveNewScene = async (slideNumber, prompt) => {
+  const handleSaveNewAsset = async (slideNumber, prompt, assetType) => {
     if (!selectedAssetList?.id || !slideNumber) {
-      console.error('Add scene failed: missing required data');
+      console.error('Add asset failed: missing required data');
       return;
     }
     try {
       const slideNum = parseInt(slideNumber, 10);
       if (isNaN(slideNum)) {
-        console.error('Add scene failed: invalid slide number');
+        console.error('Add asset failed: invalid slide number');
         return;
       }
-      await addMGScene(selectedAssetList.id, slideNum, { prompt });
-      setAddingSceneForSlide(null);
+      await addMGScene(selectedAssetList.id, slideNum, { prompt, assetType });
+      setAddingAssetForSlide(null);
       await loadAssetListDetails(selectedAssetList.id);
     } catch (err) {
-      console.error('Failed to add scene:', err);
+      console.error('Failed to add asset:', err);
     }
   };
 
-  const handleDeleteScene = (scene) => {
-    setDeletingScene(scene);
+  const handleDeleteAsset = (asset) => {
+    setDeletingAsset(asset);
   };
 
-  const handleConfirmDeleteScene = async () => {
-    if (!deletingScene?.id) {
-      console.error('Delete scene failed: missing scene ID');
+  const handleConfirmDeleteAsset = async () => {
+    if (!deletingAsset?.id) {
+      console.error('Delete asset failed: missing asset ID');
       return;
     }
     try {
-      await deleteMGScene(deletingScene.id);
-      setDeletingScene(null);
+      await deleteMGScene(deletingAsset.id);
+      setDeletingAsset(null);
       if (selectedAssetList) {
         await loadAssetListDetails(selectedAssetList.id);
       }
     } catch (err) {
-      console.error('Failed to delete scene:', err);
+      console.error('Failed to delete asset:', err);
     }
   };
 
@@ -959,8 +959,8 @@ export default function ImageGenerator({
             onSelectVideo={(vid) => { setSelectedImage(vid); setSelectedAudio(null); }}
             onUploadMGVideo={handleUploadMGVideo}
             onDeleteMGVideo={handleDeleteMGVideo}
-            onAddScene={handleAddScene}
-            onDeleteScene={handleDeleteScene}
+            onAddAsset={handleAddAsset}
+            onDeleteAsset={handleDeleteAsset}
             onGenerateAudio={handleGenerateAudio}
             onUploadAudio={handleUploadAudio}
             onEditNarration={handleEditNarration}
@@ -1193,35 +1193,36 @@ export default function ImageGenerator({
         />
       )}
 
-      {/* Add Scene Modal */}
-      {addingSceneForSlide && (
+      {/* Add Asset Modal */}
+      {addingAssetForSlide && (
         <PromptEditor
           mode="add"
-          image={{ slideNumber: addingSceneForSlide, assetType: 'motion_graphics' }}
-          onSave={(_, prompt) => handleSaveNewScene(addingSceneForSlide, prompt)}
-          onClose={() => setAddingSceneForSlide(null)}
+          image={{ slideNumber: addingAssetForSlide, assetType: 'ai_generated_image' }}
+          onSave={(_, prompt, assetType) => handleSaveNewAsset(addingAssetForSlide, prompt, assetType)}
+          onClose={() => setAddingAssetForSlide(null)}
+          showAssetTypeSelector={true}
         />
       )}
 
-      {/* Delete Scene Confirmation Dialog */}
-      {deletingScene && (
-        <div className="prompt-editor-overlay" onClick={() => setDeletingScene(null)}>
+      {/* Delete Asset Confirmation Dialog */}
+      {deletingAsset && (
+        <div className="prompt-editor-overlay" onClick={() => setDeletingAsset(null)}>
           <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="delete-confirm-header">
-              <h3>Delete Scene</h3>
+              <h3>Delete Asset</h3>
             </div>
             <div className="delete-confirm-body">
-              <p>Are you sure you want to delete Scene {deletingScene.assetNumber || 1} from Slide {deletingScene.slideNumber}?</p>
-              {deletingScene.imagePath && (
-                <p className="delete-warning">This will also delete the generated image.</p>
+              <p>Delete {(deletingAsset.assetType || 'asset').replace(/_/g, ' ')} #{deletingAsset.assetNumber || 1} from slide {deletingAsset.slideNumber}?</p>
+              {deletingAsset.imagePath && (
+                <p className="delete-warning">The generated image will also be removed.</p>
               )}
             </div>
             <div className="delete-confirm-footer">
-              <button className="btn-cancel" onClick={() => setDeletingScene(null)}>
+              <button className="btn-cancel" onClick={() => setDeletingAsset(null)}>
                 Cancel
               </button>
-              <button className="btn-danger-confirm" onClick={handleConfirmDeleteScene}>
-                Delete Scene
+              <button className="btn-danger-confirm" onClick={handleConfirmDeleteAsset}>
+                Delete
               </button>
             </div>
           </div>
