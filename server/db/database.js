@@ -608,6 +608,7 @@ const assetListQueries = {
     if (updates.careerCharacter !== undefined) updateData.career_character_json = updates.careerCharacter;
     if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
     if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
+    if (updates.cmsPageMapping !== undefined) updateData.cms_page_mapping = updates.cmsPageMapping;
 
     const { data, error } = await supabase
       .from('asset_lists')
@@ -618,6 +619,105 @@ const assetListQueries = {
 
     if (error && error.code !== 'PGRST116') throw error;
     return !!data;
+  },
+
+  async updateCmsPageMapping(id, pageMapping) {
+    const { data, error } = await supabase
+      .from('asset_lists')
+      .update({
+        cms_page_mapping: pageMapping,
+        imported_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
+  },
+
+  async addSlide(id, slideData) {
+    // Get current asset list
+    const { data: assetList, error: getError } = await supabase
+      .from('asset_lists')
+      .select('slides_json, cms_page_mapping')
+      .eq('id', id)
+      .single();
+
+    if (getError) throw getError;
+    if (!assetList) throw new Error('Asset list not found');
+
+    // Add new slide to slides_json
+    const slides = assetList.slides_json || [];
+    const newSlide = {
+      slideNumber: slideData.slideNumber,
+      slideTitle: slideData.title,
+      slideType: slideData.slideType || 'Text & Image',
+      narrationText: slideData.narrationText || ''
+    };
+
+    // Insert in correct position based on slideNumber
+    const insertIndex = slides.findIndex(s => (s.slideNumber ?? s.slide_number) > slideData.slideNumber);
+    if (insertIndex === -1) {
+      slides.push(newSlide);
+    } else {
+      slides.splice(insertIndex, 0, newSlide);
+    }
+
+    // Update CMS page mapping if pageId provided
+    const cmsPageMapping = assetList.cms_page_mapping || {};
+    if (slideData.cmsPageId) {
+      cmsPageMapping[String(slideData.slideNumber)] = slideData.cmsPageId;
+    }
+
+    const { data, error } = await supabase
+      .from('asset_lists')
+      .update({
+        slides_json: slides,
+        cms_page_mapping: cmsPageMapping,
+        imported_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return parseAssetListRow(data);
+  },
+
+  async removeSlide(id, slideNumber) {
+    // Get current asset list
+    const { data: assetList, error: getError } = await supabase
+      .from('asset_lists')
+      .select('slides_json, cms_page_mapping')
+      .eq('id', id)
+      .single();
+
+    if (getError) throw getError;
+    if (!assetList) throw new Error('Asset list not found');
+
+    // Remove slide from slides_json
+    const slides = (assetList.slides_json || []).filter(
+      s => (s.slideNumber ?? s.slide_number) !== slideNumber
+    );
+
+    // Remove from CMS page mapping
+    const cmsPageMapping = assetList.cms_page_mapping || {};
+    delete cmsPageMapping[String(slideNumber)];
+
+    const { data, error } = await supabase
+      .from('asset_lists')
+      .update({
+        slides_json: slides,
+        cms_page_mapping: cmsPageMapping,
+        imported_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return parseAssetListRow(data);
   },
 
   async delete(id) {
@@ -833,6 +933,18 @@ const generatedImageQueries = {
     const { data, error } = await supabase
       .from('generated_images')
       .insert(records)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async deleteByAssetListAndSlide(assetListId, slideNumber) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .delete()
+      .eq('asset_list_id', assetListId)
+      .eq('slide_number', slideNumber)
       .select();
 
     if (error) throw error;
@@ -1240,6 +1352,18 @@ const generatedAudioQueries = {
     return data.map(parseGeneratedAudioRow);
   },
 
+  async deleteByAssetListAndSlide(assetListId, slideNumber) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .delete()
+      .eq('asset_list_id', assetListId)
+      .eq('slide_number', slideNumber)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
   async upsert(audio) {
     const existing = await this.getByAssetListAndSlide(audio.assetListId, audio.slideNumber);
     if (existing) {
@@ -1268,6 +1392,57 @@ const generatedAudioQueries = {
         toCreate.push({
           assetListId,
           slideNumber: record.slideNumber,
+          narrationText: record.narrationText,
+          cmsFilename: record.cmsFilename,
+          status: 'pending'
+        });
+      }
+    }
+
+    // Batch create new records
+    if (toCreate.length > 0) {
+      await this.createBulk(toCreate);
+    }
+
+    // Batch update existing records (run in parallel)
+    if (toUpdate.length > 0) {
+      const now = new Date().toISOString();
+      await Promise.all(
+        toUpdate.map(({ id, narrationText }) =>
+          supabase
+            .from('generated_audio')
+            .update({ narration_text: narrationText, updated_at: now })
+            .eq('id', id)
+        )
+      );
+    }
+
+    return { created: toCreate.length, updated: toUpdate.length };
+  },
+
+  // Upsert with RCP support (keys by slideNumber-narrationType for RCP)
+  // existingByKey: Map keyed by slideNumber (regular) or "slideNumber-narrationType" (RCP)
+  // newRecords: array of { slideNumber, narrationType, narrationText, cmsFilename }
+  async upsertBulkRcp(assetListId, existingByKey, newRecords, isRcp = false) {
+    const toCreate = [];
+    const toUpdate = [];
+
+    for (const record of newRecords) {
+      const key = isRcp
+        ? `${record.slideNumber}-${record.narrationType}`
+        : record.slideNumber;
+      const existing = existingByKey.get(key);
+
+      if (existing) {
+        // Only update if narration text changed
+        if (existing.narrationText !== record.narrationText) {
+          toUpdate.push({ id: existing.id, narrationText: record.narrationText });
+        }
+      } else {
+        toCreate.push({
+          assetListId,
+          slideNumber: record.slideNumber,
+          narrationType: record.narrationType || 'slide_narration',
           narrationText: record.narrationText,
           cmsFilename: record.cmsFilename,
           status: 'pending'
@@ -1462,6 +1637,7 @@ function parseAssetListRow(row) {
     careerCharacter: row.career_character_json,
     defaultVoiceId: row.default_voice_id,
     defaultVoiceName: row.default_voice_name,
+    cmsPageMapping: row.cms_page_mapping || {},
     importedAt: row.imported_at
   };
 }
