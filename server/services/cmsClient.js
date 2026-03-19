@@ -474,6 +474,73 @@ class DirectusCMSClient {
   }
 
   /**
+   * Get popups for a content page
+   * Popups are related items stored in a separate collection
+   *
+   * @param {string} pageId - The content_pages ID
+   * @returns {Promise<Array>} - Array of popup objects with { id, title, sort }
+   */
+  async getPagePopups(pageId) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    // Query the page with its popups expanded
+    const response = await this.request(
+      `/items/content_pages/${pageId}?fields=id,popups.id,popups.title,popups.sort,popups.narration`
+    );
+
+    const page = response.data;
+    if (!page) {
+      throw new Error(`Page not found: ${pageId}`);
+    }
+
+    // Return popups sorted by sort order (or by order in array if no sort)
+    const popups = (page.popups || [])
+      .map((p, index) => ({
+        id: p.id,
+        title: p.title || '',
+        sort: p.sort ?? index,
+        hasNarration: !!p.narration
+      }))
+      .sort((a, b) => a.sort - b.sort);
+
+    return popups;
+  }
+
+  /**
+   * Link a file to a popup's narration field
+   *
+   * @param {string} popupId - The popup ID
+   * @param {string} fileId - The directus_files ID to link
+   * @returns {Promise<Object>} - Updated popup object
+   */
+  async linkFileToPopup(popupId, fileId) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    const response = await this.request(`/items/popups/${popupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        narration: fileId
+      })
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Check if a narration type is for a popup
+   * @param {string} narrationType
+   * @returns {number|null} - Popup number (1, 2, 3) or null if not a popup
+   */
+  getPopupNumber(narrationType) {
+    const match = narrationType?.match(/^popup_(\d+)$/);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  /**
    * Map NOLA.vids asset types to CMS field names
    * Based on actual content_pages schema from Directus
    *

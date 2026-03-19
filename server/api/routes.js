@@ -3600,10 +3600,31 @@ module.exports = (jobManager) => {
         mimeType
       );
 
-      // Link to page - for audio, we may need to handle different narration types
-      const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
-      console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
-      await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+      // Check if this is a popup narration
+      const popupNumber = cmsClient.getPopupNumber(audio.narrationType);
+      let linkedTo = null;
+
+      if (popupNumber) {
+        // Get the page's popups and link to the correct one
+        console.log(`[cms/push/audio] This is popup_${popupNumber}, fetching page popups...`);
+        const popups = await cmsClient.getPagePopups(pageId);
+        console.log(`[cms/push/audio] Found ${popups.length} popups:`, popups.map(p => p.title));
+
+        if (popups.length < popupNumber) {
+          throw new Error(`Page has only ${popups.length} popups, but trying to push to popup_${popupNumber}`);
+        }
+
+        const targetPopup = popups[popupNumber - 1]; // popup_1 = index 0
+        console.log(`[cms/push/audio] Linking to popup "${targetPopup.title}" (ID: ${targetPopup.id})`);
+        await cmsClient.linkFileToPopup(targetPopup.id, cmsFile.id);
+        linkedTo = { type: 'popup', popupId: targetPopup.id, popupTitle: targetPopup.title };
+      } else {
+        // Link to page field as before
+        const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
+        console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
+        await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+        linkedTo = { type: 'page', pageId, fieldName };
+      }
 
       // Update local record with CMS file ID and push status
       await generatedAudioDb.update(audio.id, {
@@ -3617,7 +3638,7 @@ module.exports = (jobManager) => {
         success: true,
         cmsFileId: cmsFile.id,
         pageId,
-        fieldName
+        linkedTo
       });
     } catch (error) {
       console.error('[cms/push/audio] Error:', error.message);
