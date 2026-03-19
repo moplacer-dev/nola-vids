@@ -5,3 +5,7 @@ server/storage/*
 !server/storage/defaults/
 client/dist/
 .DS_Store
+.playwright-mcp/
+STATUS.md
+CMS_STATUS.md
+server/db/*.db
