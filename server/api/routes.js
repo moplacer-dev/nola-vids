@@ -2571,38 +2571,61 @@ module.exports = (jobManager) => {
         const qNum = question.questionNumber || (questions.indexOf(question) + 1);
 
         if (question.questionType === 'two_part') {
-          // NEW: Handle two-part questions with partA and partB
+          // Handle two-part questions with partA and partB
           const partA = question.partA || {};
           const partB = question.partB || {};
 
-          // Part A question: combine scenario + stem (scenario provides context)
-          const partAQuestionParts = [question.scenario, partA.stem].filter(Boolean);
-          if (partAQuestionParts.length > 0) {
-            await upsertAssessmentAudio(assessment.id, qNum, 'part_a_question', partAQuestionParts.join(' '));
+          // Part A question: use structuredNarration.question (preferred) or fall back to stem
+          const partAQuestion = partA.structuredNarration?.question || partA.stem;
+          if (partAQuestion) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'part_a_question', partAQuestion);
           }
 
-          // Part A answer choices (only create for choices that exist)
-          if (partA.choices && Array.isArray(partA.choices)) {
-            for (const choice of partA.choices) {
-              if (choice.label && choice.text) {
-                const narrationType = `part_a_answer_${choice.label.toLowerCase()}`;
-                await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
-              }
+          // Part A answer choices: use structuredNarration.answerChoices (preferred) or fall back to choices
+          const partAChoices = partA.structuredNarration?.answerChoices || partA.choices || [];
+          for (const choice of partAChoices) {
+            if (choice.label && choice.text) {
+              const narrationType = `part_a_answer_${choice.label.toLowerCase()}`;
+              await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
             }
           }
 
-          // Part B question stem
-          if (partB.stem) {
-            await upsertAssessmentAudio(assessment.id, qNum, 'part_b_question', partB.stem);
+          // Part B question: use structuredNarration.question (preferred) or fall back to stem
+          const partBQuestion = partB.structuredNarration?.question || partB.stem;
+          if (partBQuestion) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'part_b_question', partBQuestion);
           }
 
-          // Part B answer choices (only create for choices that exist)
-          if (partB.choices && Array.isArray(partB.choices)) {
-            for (const choice of partB.choices) {
-              if (choice.label && choice.text) {
-                const narrationType = `part_b_answer_${choice.label.toLowerCase()}`;
-                await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
-              }
+          // Part B answer choices: use structuredNarration.answerChoices (preferred) or fall back to choices
+          const partBChoices = partB.structuredNarration?.answerChoices || partB.choices || [];
+          for (const choice of partBChoices) {
+            if (choice.label && choice.text) {
+              const narrationType = `part_b_answer_${choice.label.toLowerCase()}`;
+              await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
+            }
+          }
+
+          // Feedback text from narration field (still parse for backward compatibility)
+          const narration = question.narration || '';
+          const feedbackParts = parseNarrationText(narration, '');
+          await upsertAssessmentAudio(assessment.id, qNum, 'correct_response', feedbackParts.correctResponse);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_1', feedbackParts.incorrect1);
+          await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_2', feedbackParts.incorrect2);
+
+        } else if (question.structuredNarration) {
+          // Carl v7 format: use structuredNarration.question and structuredNarration.answerChoices
+          // NOTE: Do NOT use leadIn - it contains junk data
+          const questionText = question.structuredNarration.question;
+          if (questionText) {
+            await upsertAssessmentAudio(assessment.id, qNum, 'question', questionText);
+          }
+
+          // Answer choices from structuredNarration.answerChoices
+          const answerChoices = question.structuredNarration.answerChoices || [];
+          for (const choice of answerChoices) {
+            if (choice.label && choice.text) {
+              const narrationType = `answer_${choice.label.toLowerCase()}`;
+              await upsertAssessmentAudio(assessment.id, qNum, narrationType, choice.text);
             }
           }
 
@@ -2614,8 +2637,8 @@ module.exports = (jobManager) => {
           await upsertAssessmentAudio(assessment.id, qNum, 'incorrect_2', feedbackParts.incorrect2);
 
         } else if (question.choices && question.choices.length > 0) {
-          // NEW: Use pre-structured data for stem/choices (single_select format)
-          // Combine scenario + stem for question narration (like leadIn + question for slides)
+          // Legacy format: Use pre-structured data for stem/choices (single_select format)
+          // Combine scenario + stem for question narration
           const questionParts = [question.scenario, question.stem].filter(Boolean);
           if (questionParts.length > 0) {
             await upsertAssessmentAudio(assessment.id, qNum, 'question', questionParts.join(' '));
