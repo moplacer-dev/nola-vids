@@ -2126,7 +2126,8 @@ module.exports = (jobManager) => {
       const cmsFilename = generateAudioFilename(
         assetList.moduleName,
         assetList.sessionNumber,
-        audioRecord.slideNumber
+        audioRecord.slideNumber,
+        audioRecord.narrationType
       );
 
       await generatedAudioDb.update(audioId, {
@@ -2184,7 +2185,8 @@ module.exports = (jobManager) => {
       const cmsFilename = generateAudioFilename(
         assetList.moduleName,
         assetList.sessionNumber,
-        audioRecord.slideNumber
+        audioRecord.slideNumber,
+        audioRecord.narrationType
       ).replace(/\.mp3$/, ext);
 
       const uploaded = await storage.uploadFileFromPath(
