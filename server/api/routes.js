@@ -3096,8 +3096,9 @@ module.exports = (jobManager) => {
             a.narrationType === 'question' || a.narrationType === 'questions'
           );
         } else {
-          // For regular sessions: use 'slide_narration' or first available
+          // For regular sessions: use 'slide_narration', or 'question' for structured slides, or first available
           audioRecord = slideAudioRecords.find(a => a.narrationType === 'slide_narration')
+                       || slideAudioRecords.find(a => a.narrationType === 'question')
                        || slideAudioRecords[0];
         }
 
