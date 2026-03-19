@@ -22,6 +22,9 @@ export default function AssessmentNarrationPanel({
   onSelectAudio,
   onAddNarration,
   onDeleteNarration,
+  onPushToCms,
+  cmsAvailable = false,
+  hasCmsPageMapping = false,
   selectedAudioId,
   loading
 }) {
@@ -331,6 +334,21 @@ export default function AssessmentNarrationPanel({
                     }}
                   >
                     PLAY
+                  </button>
+                )}
+
+                {/* Push to CMS button - always show */}
+                {onPushToCms && (
+                  <button
+                    className={`btn-push-cms btn-sm ${audio.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPushToCms(audio.id, 'audio');
+                    }}
+                    disabled={loading || audio.cmsPushStatus === 'pushing'}
+                    title={audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
+                  >
+                    {audio.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
                   </button>
                 )}
               </div>

@@ -849,6 +849,10 @@ const generatedImageQueries = {
     if (updates.cmsFilename !== undefined) updateData.cms_filename = updates.cmsFilename;
     if (updates.originalPrompt !== undefined) updateData.original_prompt = updates.originalPrompt;
     if (updates.assessmentAssetId !== undefined) updateData.assessment_asset_id = updates.assessmentAssetId;
+    // CMS push tracking fields
+    if (updates.cmsFileId !== undefined) updateData.cms_file_id = updates.cmsFileId;
+    if (updates.cmsPushStatus !== undefined) updateData.cms_push_status = updates.cmsPushStatus;
+    if (updates.cmsPushedAt !== undefined) updateData.cms_pushed_at = updates.cmsPushedAt;
 
     const { data, error } = await supabase
       .from('generated_images')
@@ -1104,6 +1108,10 @@ const motionGraphicsVideoQueries = {
     if (updates.videoPath !== undefined) updateData.video_path = updates.videoPath;
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.sceneCount !== undefined) updateData.scene_count = updates.sceneCount;
+    // CMS push tracking fields
+    if (updates.cmsFileId !== undefined) updateData.cms_file_id = updates.cmsFileId;
+    if (updates.cmsPushStatus !== undefined) updateData.cms_push_status = updates.cmsPushStatus;
+    if (updates.cmsPushedAt !== undefined) updateData.cms_pushed_at = updates.cmsPushedAt;
 
     const { data, error } = await supabase
       .from('motion_graphics_videos')
@@ -1317,6 +1325,10 @@ const generatedAudioQueries = {
     if (updates.narrationType !== undefined) updateData.narration_type = updates.narrationType;
     if (updates.questionNumber !== undefined) updateData.question_number = updates.questionNumber;
     if (updates.assessmentAssetId !== undefined) updateData.assessment_asset_id = updates.assessmentAssetId;
+    // CMS push tracking fields
+    if (updates.cmsFileId !== undefined) updateData.cms_file_id = updates.cmsFileId;
+    if (updates.cmsPushStatus !== undefined) updateData.cms_push_status = updates.cmsPushStatus;
+    if (updates.cmsPushedAt !== undefined) updateData.cms_pushed_at = updates.cmsPushedAt;
 
     const { data, error } = await supabase
       .from('generated_audio')
@@ -1655,6 +1667,9 @@ function parseGeneratedImageRow(row) {
     characterId: row.character_id,
     imagePath: row.image_path,
     status: row.status,
+    cmsFileId: row.cms_file_id,
+    cmsPushStatus: row.cms_push_status || 'pending',
+    cmsPushedAt: row.cms_pushed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1685,6 +1700,9 @@ function parseMGVideoRow(row) {
     videoPath: row.video_path,
     status: row.status,
     sceneCount: row.scene_count,
+    cmsFileId: row.cms_file_id,
+    cmsPushStatus: row.cms_push_status || 'pending',
+    cmsPushedAt: row.cms_pushed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1705,6 +1723,9 @@ function parseGeneratedAudioRow(row) {
     audioPath: row.audio_path,
     durationMs: row.duration_ms,
     status: row.status,
+    cmsFileId: row.cms_file_id,
+    cmsPushStatus: row.cms_push_status || 'pending',
+    cmsPushedAt: row.cms_pushed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

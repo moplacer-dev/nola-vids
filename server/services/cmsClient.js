@@ -371,6 +371,146 @@ class DirectusCMSClient {
 
     return { matched: exactMatches, narrationMismatches, cmsOnly, nolaOnly };
   }
+
+  /**
+   * Get available media fields on content_pages collection
+   * Used for schema discovery to understand what CMS fields are available
+   *
+   * @returns {Promise<Array>} Array of field objects with { field, type }
+   */
+  async getContentPageFields() {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    const response = await this.request('/fields/content_pages');
+    const fields = response.data || [];
+
+    // Filter for file/media fields (type 'uuid' with file interface, or 'file' type)
+    // Directus uses different patterns for file fields
+    const mediaFields = fields.filter(f => {
+      const meta = f.meta || {};
+      const schema = f.schema || {};
+
+      // Check for file-related interfaces
+      const isFileInterface = ['file', 'file-image', 'files'].includes(meta.interface);
+      // Check for UUID type with file foreign key
+      const isFileFK = schema.foreign_key_table === 'directus_files';
+
+      return isFileInterface || isFileFK;
+    }).map(f => ({
+      field: f.field,
+      type: f.type,
+      interface: f.meta?.interface,
+      note: f.meta?.note
+    }));
+
+    return mediaFields;
+  }
+
+  /**
+   * Upload a file to Directus
+   *
+   * @param {Buffer} fileBuffer - The file data as a buffer
+   * @param {string} filename - The filename
+   * @param {string} mimeType - The MIME type (e.g., 'image/png', 'audio/mpeg')
+   * @param {string} folder - Optional folder ID to upload into
+   * @returns {Promise<Object>} - The created file object with { id, filename_disk, ... }
+   */
+  async uploadFile(fileBuffer, filename, mimeType, folder = null) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    // Use FormData for multipart upload
+    const FormData = require('form-data');
+    const formData = new FormData();
+
+    formData.append('file', fileBuffer, {
+      filename: filename,
+      contentType: mimeType
+    });
+
+    if (folder) {
+      formData.append('folder', folder);
+    }
+
+    const url = `${this.apiUrl}/files`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiToken}`,
+        ...formData.getHeaders()
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`CMS file upload error ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result.data;
+  }
+
+  /**
+   * Link a file to a content page by updating a field
+   *
+   * @param {string} pageId - The content_pages ID
+   * @param {string} fieldName - The field name to update (e.g., 'image', 'narration')
+   * @param {string} fileId - The directus_files ID to link
+   * @returns {Promise<Object>} - Updated page object
+   */
+  async linkFileToPage(pageId, fieldName, fileId) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    const response = await this.request(`/items/content_pages/${pageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        [fieldName]: fileId
+      })
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Map NOLA.vids asset types to CMS field names
+   * Based on actual content_pages schema from Directus
+   *
+   * @param {string} assetType - The NOLA.vids asset type ('image', 'video', 'audio', 'mg-video')
+   * @param {string} narrationType - For audio, the narration type
+   * @returns {string} - The CMS field name
+   */
+  getCmsFieldForAsset(assetType, narrationType = null) {
+    // For audio, map based on narration type
+    if (assetType === 'audio' && narrationType) {
+      const audioMapping = {
+        'slide_narration': 'narration',
+        'question': 'narration',
+        'questions': 'narration',
+        'scenario': 'narration',
+        'answers': 'narration',
+        'correct_response': 'correct_audio',
+        'incorrect_1': 'incorrect_audio1',
+        'incorrect_2': 'incorrect_audio2'
+      };
+      return audioMapping[narrationType] || 'narration';
+    }
+
+    // Default mapping for other asset types
+    const mapping = {
+      'image': 'image',
+      'audio': 'narration',
+      'video': 'video',
+      'mg-video': 'video'
+    };
+
+    return mapping[assetType] || assetType;
+  }
 }
 
 // Singleton instance

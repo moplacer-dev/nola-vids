@@ -47,6 +47,11 @@ export default function App() {
     addSlideFromCms,
     deleteSlideFromNola,
     updateNarrationFromCms,
+    // CMS Push
+    pushImageToCms,
+    pushAudioToCms,
+    pushMgVideoToCms,
+    pushVideoToCms,
     // Video generation
     generateTextToVideo,
     generateImageToVideo,
@@ -503,6 +508,10 @@ export default function App() {
             addSlideFromCms={addSlideFromCms}
             deleteSlideFromNola={deleteSlideFromNola}
             updateNarrationFromCms={updateNarrationFromCms}
+            pushImageToCms={pushImageToCms}
+            pushAudioToCms={pushAudioToCms}
+            pushMgVideoToCms={pushMgVideoToCms}
+            pushVideoToCms={pushVideoToCms}
           />
         </main>
       ) : null}

@@ -514,6 +514,35 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // CMS Push hooks
+  const getCmsSchema = useCallback(async () => {
+    return request('/cms/schema');
+  }, [request]);
+
+  const pushImageToCms = useCallback(async (imageId) => {
+    return request(`/cms/push/image/${encodeURIComponent(imageId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
+  const pushAudioToCms = useCallback(async (audioId) => {
+    return request(`/cms/push/audio/${encodeURIComponent(audioId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
+  const pushMgVideoToCms = useCallback(async (videoId) => {
+    return request(`/cms/push/mg-video/${encodeURIComponent(videoId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
+  const pushVideoToCms = useCallback(async (videoId) => {
+    return request(`/cms/push/video/${encodeURIComponent(videoId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -523,6 +552,12 @@ export function useApi(accessKey) {
     addSlideFromCms,
     deleteSlideFromNola,
     updateNarrationFromCms,
+    // CMS Push
+    getCmsSchema,
+    pushImageToCms,
+    pushAudioToCms,
+    pushMgVideoToCms,
+    pushVideoToCms,
     // Video generation
     generateTextToVideo,
     generateImageToVideo,

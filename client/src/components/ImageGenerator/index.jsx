@@ -48,7 +48,12 @@ export default function ImageGenerator({
   fetchCmsSync,
   addSlideFromCms,
   deleteSlideFromNola,
-  updateNarrationFromCms
+  updateNarrationFromCms,
+  // CMS Push
+  pushImageToCms,
+  pushAudioToCms,
+  pushMgVideoToCms,
+  pushVideoToCms
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -795,6 +800,32 @@ export default function ImageGenerator({
     }
   };
 
+  // CMS Push handler
+  const handlePushToCms = async (assetId, assetType) => {
+    if (!assetId || !assetType) return;
+
+    setLoading(true);
+    try {
+      if (assetType === 'image') {
+        await pushImageToCms(assetId);
+      } else if (assetType === 'video') {
+        await pushVideoToCms(assetId);
+      } else if (assetType === 'audio') {
+        await pushAudioToCms(assetId);
+      } else if (assetType === 'mg-video') {
+        await pushMgVideoToCms(assetId);
+      }
+      // Refresh to show updated push status
+      if (selectedAssetList) {
+        await loadAssetListDetails(selectedAssetList.id);
+      }
+    } catch (err) {
+      console.error(`Failed to push ${assetType} to CMS:`, err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Get unique modules and sessions from asset lists
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
@@ -968,6 +999,9 @@ export default function ImageGenerator({
             onGenerateAllAudio={handleGenerateAllSlideAudio}
             onAddNarration={(context) => handleAddNarration({ ...context, assetListId: selectedAssetList?.id })}
             onDeleteNarration={(audioId) => setDeletingAudio({ id: audioId })}
+            onPushToCms={handlePushToCms}
+            cmsAvailable={cmsAvailable}
+            cmsPageMapping={selectedAssetList.cmsPageMapping || {}}
             selectedImageId={selectedImage?.id}
             selectedVideoId={selectedImage?.videoPath ? selectedImage?.id : null}
             selectedAudioId={selectedAudio?.id}

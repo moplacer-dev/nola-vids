@@ -3127,13 +3127,43 @@ module.exports = (jobManager) => {
       // Compare slides
       const comparison = cmsClient.compareSlides(cmsPages, nolaSlides);
 
+      // Auto-save pageIds for matched slides to cmsPageMapping
+      // This enables Push buttons for slides that matched
+      const cmsPageMapping = assetList.cmsPageMapping || {};
+      let mappingUpdated = false;
+
+      // Save exact matches
+      for (const match of comparison.matched) {
+        const slideKey = String(match.nolaSlideNumber);
+        if (match.pageId && !cmsPageMapping[slideKey]) {
+          cmsPageMapping[slideKey] = match.pageId;
+          mappingUpdated = true;
+        }
+      }
+
+      // Save narration mismatches (still matched by similarity, just have text differences)
+      for (const match of comparison.narrationMismatches) {
+        const slideKey = String(match.nolaSlideNumber);
+        if (match.pageId && !cmsPageMapping[slideKey]) {
+          cmsPageMapping[slideKey] = match.pageId;
+          mappingUpdated = true;
+        }
+      }
+
+      // Persist the updated mapping
+      if (mappingUpdated) {
+        await assetListDb.updateCmsPageMapping(assetList.id, cmsPageMapping);
+        console.log(`[cms/sync/fetch] Auto-saved ${Object.keys(cmsPageMapping).length} page mappings`);
+      }
+
       res.json({
         cmsPages,
         nolaSlides,
         matched: comparison.matched,
         narrationMismatches: comparison.narrationMismatches,
         cmsOnly: comparison.cmsOnly,
-        nolaOnly: comparison.nolaOnly
+        nolaOnly: comparison.nolaOnly,
+        mappingSaved: mappingUpdated
       });
     } catch (error) {
       console.error('[cms/sync/fetch] Error:', error.message);
@@ -3365,6 +3395,434 @@ module.exports = (jobManager) => {
       });
     } catch (error) {
       console.error('[cms/sync/update-narration] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==========================================
+  // CMS Push endpoints
+  // ==========================================
+
+  // Get CMS schema (available media fields on content_pages)
+  router.get('/cms/schema', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const fields = await cmsClient.getContentPageFields();
+      res.json({ fields });
+    } catch (error) {
+      console.error('[cms/schema] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push image to CMS
+  router.post('/cms/push/image/:imageId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const image = await generatedImageDb.getById(req.params.imageId);
+      if (!image) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      // Verify image is ready
+      const readyStatuses = ['completed', 'uploaded', 'imported', 'default'];
+      if (!readyStatuses.includes(image.status)) {
+        return res.status(400).json({ error: `Image not ready (status: ${image.status})` });
+      }
+
+      if (!image.imagePath) {
+        return res.status(400).json({ error: 'Image has no file path' });
+      }
+
+      // Get asset list to find CMS page mapping
+      if (!image.assetListId) {
+        return res.status(400).json({ error: 'Image is not associated with a session' });
+      }
+
+      const assetList = await assetListDb.getById(image.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const cmsPageMapping = assetList.cmsPageMapping || {};
+      const pageId = cmsPageMapping[String(image.slideNumber)];
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this slide. Run CMS Sync first.',
+          slideNumber: image.slideNumber
+        });
+      }
+
+      // Download file from Supabase
+      const filename = image.imagePath.split('/').pop();
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif'
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+
+      // Extract bucket and path from imagePath (could be full URL or just path)
+      let bucket = BUCKETS.IMAGES;
+      let filePath = filename;
+      if (image.imagePath.includes('/storage/v1/object/public/')) {
+        // Full Supabase URL - extract bucket and path
+        const match = image.imagePath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/image] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/image] Uploading to CMS: ${image.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        image.cmsFilename || filename,
+        mimeType
+      );
+
+      // Link to page
+      const fieldName = cmsClient.getCmsFieldForAsset('image');
+      console.log(`[cms/push/image] Linking to page ${pageId} field ${fieldName}`);
+      await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+
+      // Update local record with CMS file ID and push status
+      await generatedImageDb.update(image.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/image] Successfully pushed image ${image.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        fieldName
+      });
+    } catch (error) {
+      console.error('[cms/push/image] Error:', error.message);
+      // Update status to failed
+      try {
+        await generatedImageDb.update(req.params.imageId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push audio to CMS
+  router.post('/cms/push/audio/:audioId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const audio = await generatedAudioDb.getById(req.params.audioId);
+      if (!audio) {
+        return res.status(404).json({ error: 'Audio not found' });
+      }
+
+      // Verify audio is ready
+      const readyStatuses = ['completed', 'uploaded'];
+      if (!readyStatuses.includes(audio.status)) {
+        return res.status(400).json({ error: `Audio not ready (status: ${audio.status})` });
+      }
+
+      if (!audio.audioPath) {
+        return res.status(400).json({ error: 'Audio has no file path' });
+      }
+
+      // Get asset list to find CMS page mapping
+      if (!audio.assetListId) {
+        return res.status(400).json({ error: 'Audio is not associated with a session' });
+      }
+
+      const assetList = await assetListDb.getById(audio.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const cmsPageMapping = assetList.cmsPageMapping || {};
+      const pageId = cmsPageMapping[String(audio.slideNumber)];
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this slide. Run CMS Sync first.',
+          slideNumber: audio.slideNumber
+        });
+      }
+
+      // Download file from Supabase
+      const filename = audio.audioPath.split('/').pop();
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.m4a': 'audio/m4a'
+      };
+      const mimeType = mimeTypes[ext] || 'audio/mpeg';
+
+      // Extract bucket and path from audioPath
+      let bucket = BUCKETS.AUDIO;
+      let filePath = filename;
+      if (audio.audioPath.includes('/storage/v1/object/public/')) {
+        const match = audio.audioPath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/audio] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/audio] Uploading to CMS: ${audio.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        audio.cmsFilename || filename,
+        mimeType
+      );
+
+      // Link to page - for audio, we may need to handle different narration types
+      const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
+      console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
+      await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+
+      // Update local record with CMS file ID and push status
+      await generatedAudioDb.update(audio.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/audio] Successfully pushed audio ${audio.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        fieldName
+      });
+    } catch (error) {
+      console.error('[cms/push/audio] Error:', error.message);
+      // Update status to failed
+      try {
+        await generatedAudioDb.update(req.params.audioId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push video asset to CMS (stored in generated_images with type 'video')
+  router.post('/cms/push/video/:videoId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const video = await generatedImageDb.getById(req.params.videoId);
+      if (!video) {
+        return res.status(404).json({ error: 'Video asset not found' });
+      }
+
+      // Verify video is ready
+      const readyStatuses = ['completed', 'uploaded', 'imported'];
+      if (!readyStatuses.includes(video.status)) {
+        return res.status(400).json({ error: `Video not ready (status: ${video.status})` });
+      }
+
+      if (!video.imagePath) {
+        return res.status(400).json({ error: 'Video has no file path' });
+      }
+
+      // Get asset list to find CMS page mapping
+      if (!video.assetListId) {
+        return res.status(400).json({ error: 'Video is not associated with a session' });
+      }
+
+      const assetList = await assetListDb.getById(video.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const cmsPageMapping = assetList.cmsPageMapping || {};
+      const pageId = cmsPageMapping[String(video.slideNumber)];
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this slide. Run CMS Sync first.',
+          slideNumber: video.slideNumber
+        });
+      }
+
+      // Download file from Supabase
+      const filename = video.imagePath.split('/').pop();
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = {
+        '.mp4': 'video/mp4',
+        '.mov': 'video/quicktime',
+        '.webm': 'video/webm',
+        '.m4v': 'video/x-m4v'
+      };
+      const mimeType = mimeTypes[ext] || 'video/mp4';
+
+      // Extract bucket and path from imagePath
+      let bucket = BUCKETS.VIDEOS;
+      let filePath = filename;
+      if (video.imagePath.includes('/storage/v1/object/public/')) {
+        const match = video.imagePath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/video] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/video] Uploading to CMS: ${video.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        video.cmsFilename || filename,
+        mimeType
+      );
+
+      // Link to page
+      const fieldName = cmsClient.getCmsFieldForAsset('video');
+      console.log(`[cms/push/video] Linking to page ${pageId} field ${fieldName}`);
+      await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+
+      // Update local record with CMS file ID and push status
+      await generatedImageDb.update(video.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/video] Successfully pushed video ${video.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        fieldName
+      });
+    } catch (error) {
+      console.error('[cms/push/video] Error:', error.message);
+      try {
+        await generatedImageDb.update(req.params.videoId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push MG video to CMS
+  router.post('/cms/push/mg-video/:videoId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const video = await mgVideoDb.getById(req.params.videoId);
+      if (!video) {
+        return res.status(404).json({ error: 'MG video not found' });
+      }
+
+      // Verify video is ready
+      const readyStatuses = ['completed', 'uploaded'];
+      if (!readyStatuses.includes(video.status)) {
+        return res.status(400).json({ error: `Video not ready (status: ${video.status})` });
+      }
+
+      if (!video.videoPath) {
+        return res.status(400).json({ error: 'Video has no file path' });
+      }
+
+      // Get asset list to find CMS page mapping
+      const assetList = await assetListDb.getById(video.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      const cmsPageMapping = assetList.cmsPageMapping || {};
+      const pageId = cmsPageMapping[String(video.slideNumber)];
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this slide. Run CMS Sync first.',
+          slideNumber: video.slideNumber
+        });
+      }
+
+      // Download file from Supabase
+      const filename = video.videoPath.split('/').pop();
+      const mimeType = 'video/mp4';
+
+      // Extract bucket and path from videoPath
+      let bucket = BUCKETS.MG_VIDEOS;
+      let filePath = filename;
+      if (video.videoPath.includes('/storage/v1/object/public/')) {
+        const match = video.videoPath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/mg-video] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/mg-video] Uploading to CMS: ${video.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        video.cmsFilename || filename,
+        mimeType
+      );
+
+      // Link to page
+      const fieldName = cmsClient.getCmsFieldForAsset('mg-video');
+      console.log(`[cms/push/mg-video] Linking to page ${pageId} field ${fieldName}`);
+      await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+
+      // Update local record with CMS file ID and push status
+      await mgVideoDb.update(video.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/mg-video] Successfully pushed MG video ${video.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        fieldName
+      });
+    } catch (error) {
+      console.error('[cms/push/mg-video] Error:', error.message);
+      // Update status to failed
+      try {
+        await mgVideoDb.update(req.params.videoId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
       res.status(500).json({ error: error.message });
     }
   });

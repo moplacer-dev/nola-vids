@@ -26,6 +26,9 @@ export default function AssetList({
   onGenerateAllAudio,  // For multi-part bulk generation
   onAddNarration,
   onDeleteNarration,
+  onPushToCms,
+  cmsAvailable = false,
+  cmsPageMapping = {},
   selectedImageId,
   selectedVideoId,
   selectedAudioId,
@@ -169,8 +172,12 @@ export default function AssetList({
           const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
           const readyStatuses = ['completed', 'uploaded', 'imported', 'default'];
 
-          // Count ready media assets
-          const readyMediaCount = assetsWithRecords.filter(asset => {
+          // Count ready media assets (exclude MG scenes from completion - they're just for making the final video)
+          const nonMGAssets = assetsWithRecords.filter(asset => {
+            const type = asset.type || asset.assetType || 'image';
+            return !type.toLowerCase().includes('motion_graphics');
+          });
+          const readyMediaCount = nonMGAssets.filter(asset => {
             const type = asset.type || asset.assetType || 'image';
             const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
             const key = `${slide.slideNumber}-${type}-${assetNum}`;
@@ -183,11 +190,15 @@ export default function AssetList({
             readyStatuses.includes(a.status)
           ).length;
 
-          // Total counts
-          const totalAssets = assetCount + slideAudioRecords.length;
-          const readyAssets = readyMediaCount + readyNarrationCount;
+          // For MG slides, check if final video is uploaded (mgVideo already defined above)
+          const mgVideoReady = mgVideo && readyStatuses.includes(mgVideo.status) ? 1 : 0;
+          const mgVideoRequired = slide.hasMGAssets ? 1 : 0;
+
+          // Total counts (MG slides need the final video, not the scenes)
+          const totalAssets = nonMGAssets.length + slideAudioRecords.length + mgVideoRequired;
+          const readyAssets = readyMediaCount + readyNarrationCount + mgVideoReady;
           const isSlideComplete = totalAssets > 0 && readyAssets === totalAssets;
-          const hasAnyAssets = totalAssets > 0;
+          const hasAnyAssets = totalAssets > 0 || assetsWithRecords.length > 0;
 
           return (
           <div key={slide.slideNumber} className={`slide-group ${assetCount === 0 ? 'no-assets' : ''} ${expanded ? 'expanded' : 'collapsed'}`}>
@@ -255,6 +266,17 @@ export default function AssetList({
                       >
                         Remove
                       </button>
+                      {/* Push to CMS button for MG videos - always show */}
+                      {onPushToCms && (
+                        <button
+                          className={`btn-push-cms btn-sm ${mgVideo.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
+                          onClick={() => onPushToCms(mgVideo.id, 'mg-video')}
+                          disabled={loading || mgVideo.cmsPushStatus === 'pushing'}
+                          title={mgVideo.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
+                        >
+                          {mgVideo.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -370,7 +392,7 @@ export default function AssetList({
                     </button>
                     <input
                       type="file"
-                      accept="image/png,image/jpeg,image/webp"
+                      accept={isVideoAsset ? "video/mp4,video/quicktime,video/webm" : "image/png,image/jpeg,image/webp"}
                       style={{ display: 'none' }}
                       ref={el => fileInputRefs.current[key] = el}
                       onChange={(e) => {
@@ -431,6 +453,20 @@ export default function AssetList({
                         Generate
                       </button>
                     )}
+                    {/* Push to CMS button - show for images and videos, but NOT for MG scenes (those are just for making the final video) */}
+                    {onPushToCms && img && !type.toLowerCase().includes('motion_graphics') && (
+                      <button
+                        className={`btn-push-cms ${img.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPushToCms(img.id, isVideoAsset ? 'video' : 'image');
+                        }}
+                        disabled={loading || img.cmsPushStatus === 'pushing'}
+                        title={img.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
+                      >
+                        {img.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -473,6 +509,9 @@ export default function AssetList({
                     onSelectAudio={onSelectAudio}
                     onAddNarration={onAddNarration}
                     onDeleteNarration={onDeleteNarration}
+                    onPushToCms={onPushToCms}
+                    cmsAvailable={cmsAvailable}
+                    hasCmsPageMapping={!!cmsPageMapping[slide.slideNumber]}
                     selectedAudioId={selectedAudioId}
                     loading={loading}
                   />
@@ -617,6 +656,20 @@ export default function AssetList({
                             }}
                           >
                             Preview
+                          </button>
+                        )}
+                        {/* Push to CMS button for audio - always show */}
+                        {onPushToCms && (
+                          <button
+                            className={`btn-push-cms ${audio.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPushToCms(audio.id, 'audio');
+                            }}
+                            disabled={loading || audio.cmsPushStatus === 'pushing'}
+                            title={audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
+                          >
+                            {audio.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
                           </button>
                         )}
                       </div>
