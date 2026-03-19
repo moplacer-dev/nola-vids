@@ -480,18 +480,78 @@ module.exports = (jobManager) => {
       const hasRcpSlides = allSlides.some(s => isRcpSlideType(s.slideType)) ||
                           assets.some(a => isRcpSlideType(a.slideType));
 
+      console.log(`[import] Session ${sessionNumber}: ${allSlides.length} slides, hasRcpSlides=${hasRcpSlides}`);
+      if (allSlides.length > 0) {
+        const slideNums = allSlides.map(s => s.slideNumber ?? s.slide_number);
+        console.log(`[import] Slide numbers: ${Math.min(...slideNums)} to ${Math.max(...slideNums)}`);
+      }
+
       // If RCP slides detected, partition and process both lists
       if (hasRcpSlides) {
         // Partition slides by RCP vs non-RCP
-        const regularSlides = allSlides.filter(s => !isRcpSlideType(s.slideType));
-        const rcpSlides = allSlides.filter(s => isRcpSlideType(s.slideType));
+        let regularSlides = allSlides.filter(s => !isRcpSlideType(s.slideType));
+        let rcpSlides = allSlides.filter(s => isRcpSlideType(s.slideType));
 
-        // Get slide numbers for each partition
+        // Get slide numbers for each partition (before renumbering)
         const rcpSlideNumbers = new Set(rcpSlides.map(s => s.slideNumber ?? s.slide_number));
 
         // Partition assets by slide membership
-        const regularAssets = assets.filter(a => !rcpSlideNumbers.has(a.slideNumber));
-        const rcpAssets = assets.filter(a => rcpSlideNumbers.has(a.slideNumber));
+        let regularAssets = assets.filter(a => !rcpSlideNumbers.has(a.slideNumber));
+        let rcpAssets = assets.filter(a => rcpSlideNumbers.has(a.slideNumber));
+
+        // Renumber regular slides and assets to start at 1
+        if (regularSlides.length > 0) {
+          // Sort by original slide number
+          regularSlides.sort((a, b) => (a.slideNumber ?? a.slide_number) - (b.slideNumber ?? b.slide_number));
+
+          // Build renumber map: oldNumber -> newNumber
+          const regularRenumberMap = {};
+          regularSlides.forEach((slide, index) => {
+            const oldNum = slide.slideNumber ?? slide.slide_number;
+            const newNum = index + 1;
+            regularRenumberMap[oldNum] = newNum;
+          });
+
+          // Apply new numbers to slides
+          regularSlides = regularSlides.map((slide, index) => ({
+            ...slide,
+            slideNumber: index + 1,
+            slide_number: index + 1
+          }));
+
+          // Apply new numbers to assets
+          regularAssets = regularAssets.map(asset => ({
+            ...asset,
+            slideNumber: regularRenumberMap[asset.slideNumber] ?? asset.slideNumber
+          }));
+        }
+
+        // Renumber RCP slides and assets to start at 1
+        if (rcpSlides.length > 0) {
+          // Sort by original slide number
+          rcpSlides.sort((a, b) => (a.slideNumber ?? a.slide_number) - (b.slideNumber ?? b.slide_number));
+
+          // Build renumber map: oldNumber -> newNumber
+          const rcpRenumberMap = {};
+          rcpSlides.forEach((slide, index) => {
+            const oldNum = slide.slideNumber ?? slide.slide_number;
+            const newNum = index + 1;
+            rcpRenumberMap[oldNum] = newNum;
+          });
+
+          // Apply new numbers to slides
+          rcpSlides = rcpSlides.map((slide, index) => ({
+            ...slide,
+            slideNumber: index + 1,
+            slide_number: index + 1
+          }));
+
+          // Apply new numbers to assets
+          rcpAssets = rcpAssets.map(asset => ({
+            ...asset,
+            slideNumber: rcpRenumberMap[asset.slideNumber] ?? asset.slideNumber
+          }));
+        }
 
         // Process regular session if there are regular assets
         let regularResult = null;
@@ -553,8 +613,46 @@ module.exports = (jobManager) => {
       }
       sessionType = sessionType || 'regular';
 
-      // Keep all assets
-      const filteredAssets = assets;
+      // Check if slides need renumbering (e.g., slides start at 4 instead of 1)
+      let processedSlides = allSlides;
+      let processedAssets = assets;
+
+      if (allSlides && allSlides.length > 0) {
+        const slideNumbers = allSlides.map(s => s.slideNumber ?? s.slide_number).filter(n => n != null);
+        const minSlideNum = Math.min(...slideNumbers);
+
+        if (minSlideNum > 1) {
+          console.log(`[import] Renumbering slides: starting at ${minSlideNum}, shifting to start at 1`);
+
+          // Sort slides by original number
+          const sortedSlides = [...allSlides].sort((a, b) =>
+            (a.slideNumber ?? a.slide_number) - (b.slideNumber ?? b.slide_number)
+          );
+
+          // Build renumber map
+          const renumberMap = {};
+          sortedSlides.forEach((slide, index) => {
+            const oldNum = slide.slideNumber ?? slide.slide_number;
+            renumberMap[oldNum] = index + 1;
+          });
+
+          // Apply to slides
+          processedSlides = sortedSlides.map((slide, index) => ({
+            ...slide,
+            slideNumber: index + 1,
+            slide_number: index + 1
+          }));
+
+          // Apply to assets
+          processedAssets = assets.map(asset => ({
+            ...asset,
+            slideNumber: renumberMap[asset.slideNumber] ?? asset.slideNumber
+          }));
+        }
+      }
+
+      // Keep all assets (now potentially renumbered)
+      const filteredAssets = processedAssets;
 
       // Check if asset list already exists for this module+session+type
       let assetList = await assetListDb.getByModuleSessionAndType(moduleName, sessionNumber, sessionType);
@@ -566,8 +664,8 @@ module.exports = (jobManager) => {
         isUpdate = true;
         await assetListDb.update(assetList.id, {
           sessionTitle,
-          assets,
-          slides: allSlides,
+          assets: processedAssets,
+          slides: processedSlides,
           careerCharacter
         });
         // Refresh to get updated data
@@ -580,8 +678,8 @@ module.exports = (jobManager) => {
           sessionNumber,
           sessionType,
           sessionTitle,
-          assets,
-          slides: allSlides,
+          assets: processedAssets,
+          slides: processedSlides,
           careerCharacter
         });
       }
@@ -779,29 +877,110 @@ module.exports = (jobManager) => {
       if (allSlides && allSlides.length > 0) {
         // Fetch all existing audio in one query
         const existingAudioList = await generatedAudioDb.getByAssetList(assetList.id);
-        const existingAudioBySlide = new Map(
-          existingAudioList.map(a => [a.slideNumber, a])
+        // For RCP, key by slideNumber-narrationType; for regular, just slideNumber
+        const existingAudioByKey = new Map(
+          existingAudioList.map(a => {
+            const key = sessionType === 'rcp'
+              ? `${a.slideNumber}-${a.narrationType}`
+              : a.slideNumber;
+            return [key, a];
+          })
         );
 
         // Collect narration records to upsert
-        const narrationRecords = allSlides
-          .map(slide => {
-            const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
+        const narrationRecords = [];
+
+        for (const slide of allSlides) {
+          const slideNum = parseInt(slide.slideNumber ?? slide.slide_number ?? 0);
+
+          if (sessionType === 'rcp' && slide.structuredNarration) {
+            // For RCP slides, create multiple audio records from structuredNarration
+            const sn = slide.structuredNarration;
+
+            // Question (use structuredNarration.question or fall back to slide.narration)
+            const questionText = sn.question || slide.narration || '';
+            if (questionText && questionText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'question',
+                narrationText: questionText.trim(),
+                cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'question')
+              });
+            }
+
+            // Answer choices (answerChoices array with {label, text})
+            if (sn.answerChoices && Array.isArray(sn.answerChoices)) {
+              for (const choice of sn.answerChoices) {
+                const label = (choice.label || '').toLowerCase();
+                const narrationType = `answer_${label}`;
+                if (choice.text && choice.text.trim().length > 0) {
+                  narrationRecords.push({
+                    slideNumber: slideNum,
+                    narrationType,
+                    narrationText: choice.text.trim(),
+                    cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, narrationType)
+                  });
+                }
+              }
+            }
+
+            // Correct response
+            if (sn.correctResponseText && sn.correctResponseText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'correct_response',
+                narrationText: sn.correctResponseText.trim(),
+                cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'correct_response')
+              });
+            }
+
+            // First incorrect response
+            if (sn.firstIncorrectText && sn.firstIncorrectText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'incorrect_1',
+                narrationText: sn.firstIncorrectText.trim(),
+                cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_1')
+              });
+            }
+
+            // Second incorrect response
+            if (sn.secondIncorrectText && sn.secondIncorrectText.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'incorrect_2',
+                narrationText: sn.secondIncorrectText.trim(),
+                cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'incorrect_2')
+              });
+            }
+          } else if (sessionType === 'rcp') {
+            // RCP slide without structuredNarration - use narration field as question
             const narration = slide.narration || slide.narrationText || '';
             if (narration && narration.trim().length > 0) {
-              return {
+              narrationRecords.push({
                 slideNumber: slideNum,
+                narrationType: 'question',
+                narrationText: narration.trim(),
+                cmsFilename: generateRcpAudioFilename(moduleName, sessionNumber, slideNum, 'question')
+              });
+            }
+          } else {
+            // For regular slides, single narration record
+            const narration = slide.narration || slide.narrationText || '';
+            if (narration && narration.trim().length > 0) {
+              narrationRecords.push({
+                slideNumber: slideNum,
+                narrationType: 'slide_narration',
                 narrationText: narration,
                 cmsFilename: generateAudioFilename(moduleName, sessionNumber, slideNum)
-              };
+              });
             }
-            return null;
-          })
-          .filter(Boolean);
+          }
+        }
 
-        // Batch upsert
+        // Batch upsert with RCP support
         if (narrationRecords.length > 0) {
-          const result = await generatedAudioDb.upsertBulk(assetList.id, existingAudioBySlide, narrationRecords);
+          const result = await generatedAudioDb.upsertBulkRcp(assetList.id, existingAudioByKey, narrationRecords, sessionType === 'rcp');
           audioCreated = result.created;
           audioKept = narrationRecords.length - result.created;
         }
@@ -2777,6 +2956,326 @@ module.exports = (jobManager) => {
     }
   });
 
+  // ==========================================
+  // CMS Sync endpoints
+  // ==========================================
+
+  const { cmsClient } = require('../services/cmsClient');
+
+  // Check if CMS is available
+  router.get('/cms/status', async (req, res) => {
+    try {
+      res.json({ available: cmsClient.isAvailable() });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Fetch sync comparison data for an asset list
+  router.post('/cms/sync/:assetListId/fetch', async (req, res) => {
+    try {
+      const assetList = await assetListDb.getById(req.params.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured. Add DIRECTUS_API_URL and DIRECTUS_API_TOKEN to .env file.' });
+      }
+
+      // Fetch pages from CMS
+      const cmsPages = await cmsClient.getSessionPages(
+        assetList.moduleName,
+        assetList.sessionNumber,
+        assetList.sessionType
+      );
+
+      // Get current NOLA.vids slides with their asset status
+      const slides = assetList.slides || [];
+      const generatedImages = await generatedImageDb.getByAssetList(assetList.id);
+      const generatedAudio = await generatedAudioDb.getByAssetList(assetList.id);
+
+      // Build NOLA.vids slides data with narration text for matching
+      // For RCP sessions, use the 'question' narration type for comparison
+      // For regular sessions, use 'slide_narration' or the first available
+      const isRcp = assetList.sessionType === 'rcp';
+
+      const nolaSlides = slides.map(slide => {
+        const slideNum = slide.slideNumber ?? slide.slide_number;
+        const hasImage = generatedImages.some(img => img.slideNumber === slideNum);
+        const slideAudioRecords = generatedAudio.filter(a => a.slideNumber === slideNum);
+        const hasAudio = slideAudioRecords.length > 0;
+
+        // Find the appropriate audio record for comparison
+        let audioRecord;
+        if (isRcp) {
+          // For RCP: use 'question' or 'questions' narration type
+          audioRecord = slideAudioRecords.find(a =>
+            a.narrationType === 'question' || a.narrationType === 'questions'
+          );
+        } else {
+          // For regular sessions: use 'slide_narration' or first available
+          audioRecord = slideAudioRecords.find(a => a.narrationType === 'slide_narration')
+                       || slideAudioRecords[0];
+        }
+
+        // Get narration text from the slide data or the audio record
+        const narrationText = slide.narrationText || slide.narration_text ||
+                             (audioRecord ? audioRecord.narrationText : '') || '';
+        return {
+          slideNumber: slideNum,
+          title: slide.slideTitle || slide.slide_title || slide.title || '',
+          narrationText,
+          hasImage,
+          hasAudio
+        };
+      });
+
+      // Compare slides
+      const comparison = cmsClient.compareSlides(cmsPages, nolaSlides);
+
+      res.json({
+        cmsPages,
+        nolaSlides,
+        matched: comparison.matched,
+        narrationMismatches: comparison.narrationMismatches,
+        cmsOnly: comparison.cmsOnly,
+        nolaOnly: comparison.nolaOnly
+      });
+    } catch (error) {
+      console.error('[cms/sync/fetch] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add a slide from CMS to NOLA.vids
+  router.post('/cms/sync/:assetListId/add-slide', async (req, res) => {
+    try {
+      const { slideNumber, cmsPageId } = req.body;
+
+      if (!slideNumber || !cmsPageId) {
+        return res.status(400).json({ error: 'slideNumber and cmsPageId are required' });
+      }
+
+      const assetList = await assetListDb.getById(req.params.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      // Fetch page details from CMS
+      const pageDetails = await cmsClient.getPageDetails(cmsPageId);
+
+      // Add slide to asset list
+      const updatedAssetList = await assetListDb.addSlide(req.params.assetListId, {
+        slideNumber,
+        title: pageDetails.title,
+        slideType: pageDetails.slideType,
+        narrationText: pageDetails.narrationText,
+        cmsPageId
+      });
+
+      // Create generated_audio record with narration text
+      const moduleCode = getModuleCode(assetList.moduleName);
+      const audioCmsFilename = `MOD.${moduleCode}.${assetList.sessionNumber}.${slideNumber}.NAR1.mp3`;
+
+      await generatedAudioDb.create({
+        assetListId: assetList.id,
+        slideNumber,
+        narrationType: 'slide_narration',
+        narrationText: pageDetails.narrationText || '',
+        cmsFilename: audioCmsFilename,
+        voiceId: assetList.defaultVoiceId,
+        voiceName: assetList.defaultVoiceName,
+        status: 'pending'
+      });
+
+      // Create generated_image placeholder if slide type indicates media needed
+      const slideType = (pageDetails.slideType || '').toLowerCase();
+      if (slideType.includes('image') || slideType.includes('video') || slideType.includes('media')) {
+        const imageCmsFilename = generateCmsFilename(assetList.moduleName, assetList.sessionNumber, {
+          slideNumber,
+          type: 'image'
+        });
+
+        await generatedImageDb.create({
+          assetListId: assetList.id,
+          slideNumber,
+          assetType: 'image',
+          assetNumber: 1,
+          cmsFilename: imageCmsFilename,
+          originalPrompt: '',
+          status: 'pending'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Added slide ${slideNumber} from CMS`,
+        assetList: updatedAssetList
+      });
+    } catch (error) {
+      console.error('[cms/sync/add-slide] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a slide from NOLA.vids (and its associated assets)
+  router.post('/cms/sync/:assetListId/delete-slide', async (req, res) => {
+    try {
+      const { slideNumber } = req.body;
+
+      if (slideNumber === undefined) {
+        return res.status(400).json({ error: 'slideNumber is required' });
+      }
+
+      const assetList = await assetListDb.getById(req.params.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Delete associated generated_images
+      const deletedImages = await generatedImageDb.deleteByAssetListAndSlide(assetList.id, slideNumber);
+
+      // Delete image files from storage
+      for (const img of deletedImages) {
+        if (img.imagePath) {
+          try {
+            const filename = storage.getFilenameFromUrl(img.imagePath);
+            if (filename) {
+              await storage.deleteFile(BUCKETS.IMAGES, filename);
+            }
+          } catch (err) {
+            console.error('Failed to delete image file:', err.message);
+          }
+        }
+      }
+
+      // Delete associated generated_audio
+      const deletedAudio = await generatedAudioDb.deleteByAssetListAndSlide(assetList.id, slideNumber);
+
+      // Delete audio files from storage
+      for (const audio of deletedAudio) {
+        if (audio.audioPath) {
+          try {
+            const filename = storage.getFilenameFromUrl(audio.audioPath);
+            if (filename) {
+              await storage.deleteFile(BUCKETS.AUDIO, filename);
+            }
+          } catch (err) {
+            console.error('Failed to delete audio file:', err.message);
+          }
+        }
+      }
+
+      // Delete associated motion_graphics_videos
+      const deletedMgVideo = await mgVideoDb.deleteByAssetListAndSlide(assetList.id, slideNumber);
+
+      // Delete MG video file from storage
+      if (deletedMgVideo?.videoPath) {
+        try {
+          const filename = storage.getFilenameFromUrl(deletedMgVideo.videoPath);
+          if (filename) {
+            await storage.deleteFile(BUCKETS.MG_VIDEOS, filename);
+          }
+        } catch (err) {
+          console.error('Failed to delete MG video file:', err.message);
+        }
+      }
+
+      // Remove slide from slides_json
+      const updatedAssetList = await assetListDb.removeSlide(req.params.assetListId, slideNumber);
+
+      res.json({
+        success: true,
+        message: `Deleted slide ${slideNumber}`,
+        deletedImages: deletedImages.length,
+        deletedAudio: deletedAudio.length,
+        deletedMgVideo: deletedMgVideo ? 1 : 0,
+        assetList: updatedAssetList
+      });
+    } catch (error) {
+      console.error('[cms/sync/delete-slide] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update narration text from CMS (for mismatched slides)
+  router.post('/cms/sync/:assetListId/update-narration', async (req, res) => {
+    try {
+      const { slideNumber, narrationText, pageId } = req.body;
+
+      if (slideNumber === undefined || !narrationText) {
+        return res.status(400).json({ error: 'slideNumber and narrationText are required' });
+      }
+
+      const assetList = await assetListDb.getById(req.params.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      // Update narration text in slides_json
+      const slides = assetList.slides || [];
+      const slideIndex = slides.findIndex(s => (s.slideNumber ?? s.slide_number) === slideNumber);
+
+      if (slideIndex !== -1) {
+        slides[slideIndex].narrationText = narrationText;
+        slides[slideIndex].narration_text = narrationText;
+
+        // Update the slides_json in the database
+        // Note: assetListDb.update expects 'slides' key, not 'slides_json'
+        await assetListDb.update(assetList.id, { slides: slides });
+      }
+
+      // Update narration text in generated_audio record
+      // For RCP sessions, update the 'question' type; for regular sessions, use 'slide_narration'
+      const isRcp = assetList.sessionType === 'rcp';
+      const audioRecords = await generatedAudioDb.getByAssetList(assetList.id);
+      const slideAudioRecords = audioRecords.filter(a => a.slideNumber === slideNumber);
+
+      let audioRecord;
+      if (isRcp) {
+        audioRecord = slideAudioRecords.find(a =>
+          a.narrationType === 'question' || a.narrationType === 'questions'
+        );
+      } else {
+        audioRecord = slideAudioRecords.find(a => a.narrationType === 'slide_narration')
+                     || slideAudioRecords[0];
+      }
+
+      if (audioRecord) {
+        // Update the audio record - set status back to pending since narration changed
+        // Note: generatedAudioDb.update expects camelCase keys
+        await generatedAudioDb.update(audioRecord.id, {
+          narrationText: narrationText,
+          status: 'pending', // Reset to pending so TTS gets regenerated
+          audioPath: null    // Clear old audio
+        });
+      }
+
+      // Update CMS page mapping if pageId provided
+      if (pageId) {
+        const cmsPageMapping = assetList.cmsPageMapping || {};
+        cmsPageMapping[slideNumber] = pageId;
+        await assetListDb.updateCmsPageMapping(assetList.id, cmsPageMapping);
+      }
+
+      console.log(`[cms/sync/update-narration] Updated slide ${slideNumber} narration`);
+
+      res.json({
+        success: true,
+        message: `Updated narration for slide ${slideNumber}`,
+        slideNumber
+      });
+    } catch (error) {
+      console.error('[cms/sync/update-narration] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
@@ -3069,14 +3568,13 @@ async function processAssetList({
       const onscreenText = slide.onscreen_text || slide.onscreenText || '';
       const slideType = slide.slideType || slide.slide_type || '';
 
-      // NEW: Check for structuredNarration first (pre-parsed by Carl)
+      // Check for structuredNarration first (pre-parsed by Carl)
       if (slide.structuredNarration) {
         const sn = slide.structuredNarration;
 
-        // Combine leadIn + question for the 'question' narration type
-        const questionParts = [sn.leadIn, sn.question].filter(Boolean);
-        if (questionParts.length > 0) {
-          await upsertSlideAudio(assetList.id, slideNum, 'question', questionParts.join(' '));
+        // Use question directly (leadIn may contain concatenated junk data)
+        if (sn.question) {
+          await upsertSlideAudio(assetList.id, slideNum, 'question', sn.question);
         }
 
         // Answer choices from structured array
