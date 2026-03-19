@@ -475,7 +475,8 @@ class DirectusCMSClient {
 
   /**
    * Get popups for a content page
-   * Popups are related items stored in a separate collection
+   * Popups are related items stored in content_popups collection
+   * Field on content_pages is child_popups
    *
    * @param {string} pageId - The content_pages ID
    * @returns {Promise<Array>} - Array of popup objects with { id, title, sort }
@@ -485,9 +486,9 @@ class DirectusCMSClient {
       throw new Error('CMS client not configured');
     }
 
-    // Query the page with its popups expanded
+    // Query the page with its child_popups expanded
     const response = await this.request(
-      `/items/content_pages/${pageId}?fields=id,popups.id,popups.title,popups.sort,popups.narration`
+      `/items/content_pages/${pageId}?fields=id,child_popups.id,child_popups.title,child_popups.sort,child_popups.narration`
     );
 
     const page = response.data;
@@ -496,7 +497,7 @@ class DirectusCMSClient {
     }
 
     // Return popups sorted by sort order (or by order in array if no sort)
-    const popups = (page.popups || [])
+    const popups = (page.child_popups || [])
       .map((p, index) => ({
         id: p.id,
         title: p.title || '',
@@ -511,7 +512,7 @@ class DirectusCMSClient {
   /**
    * Link a file to a popup's narration field
    *
-   * @param {string} popupId - The popup ID
+   * @param {string} popupId - The popup ID (in content_popups collection)
    * @param {string} fileId - The directus_files ID to link
    * @returns {Promise<Object>} - Updated popup object
    */
@@ -520,7 +521,7 @@ class DirectusCMSClient {
       throw new Error('CMS client not configured');
     }
 
-    const response = await this.request(`/items/popups/${popupId}`, {
+    const response = await this.request(`/items/content_popups/${popupId}`, {
       method: 'PATCH',
       body: JSON.stringify({
         narration: fileId
