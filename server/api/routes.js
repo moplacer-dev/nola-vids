@@ -22,6 +22,18 @@ async function cleanupTempFiles(files) {
   await Promise.all(files.map(file => cleanupTempFile(file.path)));
 }
 
+// Sanitize filenames for Supabase Storage (removes special characters like non-breaking spaces)
+function sanitizeFilename(filename) {
+  if (!filename) return 'file';
+  // Replace non-ASCII characters (like narrow no-break spaces from macOS) and other problematic chars
+  return filename
+    .normalize('NFKD')  // Normalize unicode
+    .replace(/[^\x00-\x7F]/g, '_')  // Replace non-ASCII with underscore
+    .replace(/\s+/g, '_')  // Replace whitespace with underscore
+    .replace(/[<>:"/\\|?*]/g, '_')  // Replace filesystem-unsafe chars
+    .replace(/_+/g, '_');  // Collapse multiple underscores
+}
+
 const {
   videos: videoDb,
   folders: folderDb,
@@ -161,7 +173,7 @@ module.exports = (jobManager) => {
       }
 
       // Upload image to Supabase Storage
-      const filename = `${Date.now()}_${req.file.originalname}`;
+      const filename = `${Date.now()}_${sanitizeFilename(req.file.originalname)}`;
       const uploaded = await storage.uploadFileFromPath(
         BUCKETS.UPLOADS,
         filename,
@@ -268,7 +280,7 @@ module.exports = (jobManager) => {
       for (const file of req.files) {
         const uploaded = await storage.uploadFileFromPath(
           BUCKETS.UPLOADS,
-          `${Date.now()}_${file.originalname}`,
+          `${Date.now()}_${sanitizeFilename(file.originalname)}`,
           file.path,
           file.mimetype
         );
@@ -1352,7 +1364,7 @@ module.exports = (jobManager) => {
         for (const file of req.files) {
           const uploaded = await storage.uploadFileFromPath(
             BUCKETS.UPLOADS,
-            `ref_${Date.now()}_${file.originalname}`,
+            `ref_${Date.now()}_${sanitizeFilename(file.originalname)}`,
             file.path,
             file.mimetype
           );
@@ -1687,21 +1699,47 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Image file is required' });
       }
 
-      const assetList = await assetListDb.getById(genImage.assetListId);
-      if (!assetList) {
-        return res.status(404).json({ error: 'Asset list not found' });
-      }
-
       const ext = path.extname(req.file.originalname).toLowerCase() || '.png';
       let outputFilename = genImage.cmsFilename;
-      if (outputFilename) {
-        outputFilename = outputFilename.replace(/\.[^.]+$/, ext);
+
+      // Handle both assessment images and asset list images
+      if (genImage.assessmentAssetId) {
+        // Assessment image
+        const assessment = await assessmentAssetDb.getById(genImage.assessmentAssetId);
+        if (!assessment) {
+          return res.status(404).json({ error: 'Assessment not found' });
+        }
+
+        if (outputFilename) {
+          outputFilename = outputFilename.replace(/\.[^.]+$/, ext);
+        } else {
+          // Extract visual type from assetType (e.g., "pre_test_table" -> "table")
+          const visualType = genImage.assetType?.split('_').pop() || 'image';
+          outputFilename = generateAssessmentCmsFilename(
+            assessment.moduleName,
+            assessment.assessmentType,
+            genImage.slideNumber,
+            visualType
+          ).replace(/\.png$/, ext);
+        }
+      } else if (genImage.assetListId) {
+        // Asset list image
+        const assetList = await assetListDb.getById(genImage.assetListId);
+        if (!assetList) {
+          return res.status(404).json({ error: 'Asset list not found' });
+        }
+
+        if (outputFilename) {
+          outputFilename = outputFilename.replace(/\.[^.]+$/, ext);
+        } else {
+          outputFilename = generateCmsFilename(
+            assetList.moduleName,
+            assetList.sessionNumber,
+            { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 }
+          ).replace(/\.png$/, ext);
+        }
       } else {
-        outputFilename = generateCmsFilename(
-          assetList.moduleName,
-          assetList.sessionNumber,
-          { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 }
-        ).replace(/\.png$/, ext);
+        return res.status(400).json({ error: 'Image has no associated asset list or assessment' });
       }
 
       // Upload to Supabase Storage

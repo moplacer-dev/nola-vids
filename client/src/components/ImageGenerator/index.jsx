@@ -295,6 +295,13 @@ export default function ImageGenerator({
       setGeneratedAudioList([]);
       // Load assessment audio records
       setAssessmentAudioList(data.generatedAudio || []);
+
+      // Update selectedImage if it exists in the new data (fixes preview not updating after upload/regenerate)
+      setSelectedImage(prev => {
+        if (!prev) return prev;
+        const updated = (data.generatedImages || []).find(img => img.id === prev.id);
+        return updated || prev;
+      });
     } catch (err) {
       console.error('Failed to load assessment:', err);
     } finally {
