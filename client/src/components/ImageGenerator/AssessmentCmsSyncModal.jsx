@@ -15,7 +15,7 @@ export default function AssessmentCmsSyncModal({
       <div className="cms-sync-modal" onClick={(e) => e.stopPropagation()}>
         <div className="cms-sync-header">
           <h3>Assessment CMS Sync</h3>
-          <button className="btn-close" onClick={onClose}>x</button>
+          <button className="btn-close" onClick={onClose}>×</button>
         </div>
 
         <div className="cms-sync-body">
@@ -83,11 +83,11 @@ export default function AssessmentCmsSyncModal({
                         {expandedMismatch === mismatch.pageId && (
                           <div className="narration-diff">
                             <div className="diff-section diff-nola">
-                              <strong>NOLA.vids:</strong>
+                              <strong>NOLA.vids (current):</strong>
                               <p>{mismatch.nolaQuestionNarration || '(empty)'}</p>
                             </div>
                             <div className="diff-section diff-cms">
-                              <strong>CMS:</strong>
+                              <strong>CMS (source of truth):</strong>
                               <p>{mismatch.cmsNarration || '(empty)'}</p>
                             </div>
                           </div>

@@ -3888,7 +3888,8 @@ module.exports = (jobManager) => {
       let mappingsUpdated = 0;
 
       for (const match of [...comparison.matched, ...comparison.narrationMismatches]) {
-        const questionKey = String(match.nolaQuestionNumber);
+        // Use nolaQuestionKey which handles Part B ("9b") or fall back to question number
+        const questionKey = match.nolaQuestionKey || String(match.nolaQuestionNumber);
         if (!cmsPageMapping[questionKey] || cmsPageMapping[questionKey] !== match.pageId) {
           cmsPageMapping[questionKey] = match.pageId;
           mappingsUpdated++;
@@ -3953,19 +3954,16 @@ module.exports = (jobManager) => {
       // For two-part questions: part_b_* types use the Part B page (questionNumber + 'b')
       const isPartB = narrationType?.startsWith('part_b_');
       const pageKey = isPartB ? `${questionNumber}b` : String(questionNumber);
-      let pageId = cmsPageMapping[pageKey];
+      let pageId = req.body.pageId || cmsPageMapping[pageKey];
 
       // Fallback to base question number if Part B page not found
       if (!pageId && isPartB) {
         pageId = cmsPageMapping[String(questionNumber)];
       }
 
+      // pageId is optional - file will be uploaded but not linked to a page if missing
       if (!pageId) {
-        return res.status(400).json({
-          error: 'No CMS page mapping for this question. Run CMS Sync first.',
-          questionNumber,
-          narrationType
-        });
+        console.log(`[cms/push/assessment-audio] No page mapping for Q${questionNumber}, will upload without linking`);
       }
 
       // Skip feedback narration types (not used for assessments)
@@ -4011,33 +4009,38 @@ module.exports = (jobManager) => {
       // Determine where to link the file based on narration type
       let linkedTo = null;
 
-      // Question narration types → content_pages.narration
-      const questionTypes = ['question', 'part_a_question', 'part_b_question'];
-      if (questionTypes.includes(narrationType)) {
-        console.log(`[cms/push/assessment-audio] Linking to page ${pageId} field narration`);
-        await cmsClient.linkFileToPage(pageId, 'narration', cmsFile.id);
-        linkedTo = { type: 'page', pageId, fieldName: 'narration' };
-      } else {
-        // Answer narration types → content_answers.answer_narration
-        const answerSort = cmsClient.getAnswerSortFromNarrationType(narrationType);
-        if (answerSort !== null) {
-          // Get the page's answers
-          const answers = await cmsClient.getPageAnswers(pageId);
-          const targetAnswer = answers.find(a => a.sort === answerSort);
-
-          if (!targetAnswer) {
-            throw new Error(`No answer found at sort position ${answerSort} for page ${pageId}`);
-          }
-
-          console.log(`[cms/push/assessment-audio] Linking to answer ${targetAnswer.id} (sort=${answerSort})`);
-          await cmsClient.linkFileToAnswer(targetAnswer.id, cmsFile.id);
-          linkedTo = { type: 'answer', answerId: targetAnswer.id, answerSort };
-        } else {
-          // Fallback: link to page narration field
-          console.log(`[cms/push/assessment-audio] Unknown type "${narrationType}", linking to page narration`);
+      // Only link if we have a pageId
+      if (pageId) {
+        // Question narration types → content_pages.narration
+        const questionTypes = ['question', 'part_a_question', 'part_b_question'];
+        if (questionTypes.includes(narrationType)) {
+          console.log(`[cms/push/assessment-audio] Linking to page ${pageId} field narration`);
           await cmsClient.linkFileToPage(pageId, 'narration', cmsFile.id);
           linkedTo = { type: 'page', pageId, fieldName: 'narration' };
+        } else {
+          // Answer narration types → content_answers.answer_narration
+          const answerSort = cmsClient.getAnswerSortFromNarrationType(narrationType);
+          if (answerSort !== null) {
+            // Get the page's answers
+            const answers = await cmsClient.getPageAnswers(pageId);
+            const targetAnswer = answers.find(a => a.sort === answerSort);
+
+            if (!targetAnswer) {
+              throw new Error(`No answer found at sort position ${answerSort} for page ${pageId}`);
+            }
+
+            console.log(`[cms/push/assessment-audio] Linking to answer ${targetAnswer.id} (sort=${answerSort})`);
+            await cmsClient.linkFileToAnswer(targetAnswer.id, cmsFile.id);
+            linkedTo = { type: 'answer', answerId: targetAnswer.id, answerSort };
+          } else {
+            // Fallback: link to page narration field
+            console.log(`[cms/push/assessment-audio] Unknown type "${narrationType}", linking to page narration`);
+            await cmsClient.linkFileToPage(pageId, 'narration', cmsFile.id);
+            linkedTo = { type: 'page', pageId, fieldName: 'narration' };
+          }
         }
+      } else {
+        console.log(`[cms/push/assessment-audio] No pageId - file uploaded but not linked`);
       }
 
       // Update local record with CMS file ID and push status
@@ -4100,13 +4103,11 @@ module.exports = (jobManager) => {
 
       const cmsPageMapping = assessment.cmsPageMapping || {};
       const questionNumber = image.slideNumber; // slideNumber = questionNumber for assessments
-      const pageId = cmsPageMapping[String(questionNumber)];
+      const pageId = req.body.pageId || cmsPageMapping[String(questionNumber)];
 
+      // pageId is optional - file will be uploaded but not linked to a page if missing
       if (!pageId) {
-        return res.status(400).json({
-          error: 'No CMS page mapping for this question. Run CMS Sync first.',
-          questionNumber
-        });
+        console.log(`[cms/push/assessment-image] No page mapping for Q${questionNumber}, will upload without linking`);
       }
 
       // Download file from Supabase
@@ -4142,9 +4143,15 @@ module.exports = (jobManager) => {
         mimeType
       );
 
-      // Link to page's image field
-      console.log(`[cms/push/assessment-image] Linking to page ${pageId} field image`);
-      await cmsClient.linkFileToPage(pageId, 'image', cmsFile.id);
+      // Link to page's image field (only if we have a pageId)
+      let linkedTo = null;
+      if (pageId) {
+        console.log(`[cms/push/assessment-image] Linking to page ${pageId} field image`);
+        await cmsClient.linkFileToPage(pageId, 'image', cmsFile.id);
+        linkedTo = { pageId, fieldName: 'image' };
+      } else {
+        console.log(`[cms/push/assessment-image] No pageId - file uploaded but not linked`);
+      }
 
       // Update local record with CMS file ID and push status
       await generatedImageDb.update(image.id, {
@@ -4157,8 +4164,7 @@ module.exports = (jobManager) => {
       res.json({
         success: true,
         cmsFileId: cmsFile.id,
-        pageId,
-        fieldName: 'image'
+        linkedTo
       });
     } catch (error) {
       console.error('[cms/push/assessment-image] Error:', error.message);

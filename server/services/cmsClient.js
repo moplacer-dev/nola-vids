@@ -202,11 +202,18 @@ class DirectusCMSClient {
 
   /**
    * Normalize text for comparison
-   * Removes punctuation, normalizes whitespace, and converts number words to digits
+   * Strips HTML/markdown, decodes entities, removes punctuation, normalizes whitespace
    */
   normalizeText(text) {
     if (!text) return '';
     return text
+      .replace(/<[^>]*>/g, '') // Strip HTML tags
+      .replace(/\*\*([^*]+)\*\*/g, '$1') // Strip markdown bold **text**
+      .replace(/__([^_]+)__/g, '$1') // Strip markdown bold __text__
+      .replace(/&rarr;/g, '') // Remove arrow entities
+      .replace(/&[a-z]+;/gi, ' ') // Remove other HTML entities
+      .replace(/&#\d+;/g, ' ') // Remove numeric HTML entities
+      .replace(/^part [ab]:\s*/i, '') // Remove "Part A:" or "Part B:" prefixes
       .toLowerCase()
       .replace(/[^\w\s]/g, '') // Remove punctuation
       .replace(/\s+/g, ' ')    // Normalize whitespace
@@ -561,7 +568,7 @@ class DirectusCMSClient {
       // Query the CARL course with nested relationship expansion
       // Include answers relationship for each page
       const courseResponse = await this.request(
-        `/items/content_courses/${this.carlCourseId}?fields=id,title,child_units.content_units_id.id,child_units.content_units_id.title,child_units.content_units_id.child_lessons.id,child_units.content_units_id.child_lessons.title,child_units.content_units_id.child_lessons.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.title,child_units.content_units_id.child_lessons.child_pages.content_pages_id.narration_text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.slide_type,child_units.content_units_id.child_lessons.child_pages.content_pages_id.text_content,child_units.content_units_id.child_lessons.child_pages.content_pages_id.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.answer_narration`
+        `/items/content_courses/${this.carlCourseId}?fields=id,title,child_units.content_units_id.id,child_units.content_units_id.title,child_units.content_units_id.child_lessons.id,child_units.content_units_id.child_lessons.title,child_units.content_units_id.child_lessons.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.title,child_units.content_units_id.child_lessons.child_pages.content_pages_id.narration_text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.slide_type,child_units.content_units_id.child_lessons.child_pages.content_pages_id.text_content,child_units.content_units_id.child_lessons.child_pages.content_pages_id.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.answer_text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.answer_narration`
       );
 
       const course = courseResponse.data;
@@ -627,7 +634,7 @@ class DirectusCMSClient {
           .map(a => ({
             id: a.id,
             sort: a.sort,
-            text: a.text || '',
+            text: a.answer_text || '',
             hasNarration: !!a.answer_narration
           }))
       }));
@@ -649,61 +656,116 @@ class DirectusCMSClient {
   compareAssessmentQuestions(cmsPages, nolaQuestions) {
     const matched = [];
     const matchedCmsIds = new Set();
-    const matchedNolaNumbers = new Set();
+    const matchedNolaKeys = new Set(); // Track both "9" and "9b" style keys
 
     // Build array of NOLA questions with their signatures
-    // Use question stem or scenario for matching
-    const nolaWithSignatures = nolaQuestions.map(q => ({
-      question: q,
-      signature: this.getTextSignature(q.stem || q.scenario || q.narrationText || '')
-    })).filter(q => q.signature);
+    // For two-part questions, create separate entries for Part A and Part B
+    const nolaWithSignatures = [];
 
-    console.log(`[CMS] Built question signatures for ${nolaWithSignatures.length} NOLA questions`);
+    for (const q of nolaQuestions) {
+      const questionNum = q.questionNumber || q.slideNumber;
+      const isTwoPart = q.questionType === 'two_part' || (q.partA && q.partB);
+
+      if (isTwoPart) {
+        // Part A
+        const partAText = q.partA?.structuredNarration?.question || q.partA?.stem || '';
+        if (partAText) {
+          console.log(`[CMS] NOLA Q${questionNum} Part A: "${partAText.substring(0, 50)}..."`);
+          nolaWithSignatures.push({
+            question: q,
+            questionKey: String(questionNum), // "9"
+            part: 'a',
+            signature: this.getTextSignature(partAText),
+            displayText: partAText
+          });
+        }
+
+        // Part B
+        const partBText = q.partB?.structuredNarration?.question || q.partB?.stem || '';
+        if (partBText) {
+          console.log(`[CMS] NOLA Q${questionNum} Part B: "${partBText.substring(0, 50)}..."`);
+          nolaWithSignatures.push({
+            question: q,
+            questionKey: `${questionNum}b`, // "9b"
+            part: 'b',
+            signature: this.getTextSignature(partBText),
+            displayText: partBText
+          });
+        }
+      } else {
+        // Single-part question
+        const nolaQuestionText =
+          q.structuredNarration?.question ||
+          q.stem ||
+          q.scenario ||
+          q.narrationText ||
+          q.narration ||
+          q.onscreen_text ||
+          '';
+        if (nolaQuestionText) {
+          console.log(`[CMS] NOLA Q${questionNum}: "${nolaQuestionText.substring(0, 50)}..."`);
+          nolaWithSignatures.push({
+            question: q,
+            questionKey: String(questionNum),
+            part: null,
+            signature: this.getTextSignature(nolaQuestionText),
+            displayText: nolaQuestionText
+          });
+        }
+      }
+    }
+
+    console.log(`[CMS] Built ${nolaWithSignatures.length} question signatures (including Part A/B splits)`);
 
     const SIMILARITY_THRESHOLD = 0.75;
 
     // Try to match CMS pages to NOLA questions by text similarity
     for (const cmsPage of cmsPages) {
-      // Use narration_text or text_content for matching
-      const cmsSignature = this.getTextSignature(cmsPage.narrationText || cmsPage.textContent || '');
+      // For assessments, question text lives in text_content (not narration_text)
+      const cmsQuestionText = cmsPage.textContent || cmsPage.narrationText || '';
+      const cmsSignature = this.getTextSignature(cmsQuestionText);
+
+      console.log(`[CMS] CMS Q${cmsPage.questionNumber} "${cmsPage.title}" text: "${cmsQuestionText.substring(0, 50)}..."`);
 
       if (cmsSignature) {
         let bestMatch = null;
         let bestSimilarity = 0;
 
-        for (const { question, signature } of nolaWithSignatures) {
-          const questionNum = question.questionNumber || question.slideNumber;
-          if (matchedNolaNumbers.has(questionNum)) continue;
+        for (const nolaEntry of nolaWithSignatures) {
+          if (matchedNolaKeys.has(nolaEntry.questionKey)) continue;
 
           // First try exact match
-          if (signature === cmsSignature) {
-            bestMatch = question;
+          if (nolaEntry.signature === cmsSignature) {
+            bestMatch = nolaEntry;
             bestSimilarity = 1;
             break;
           }
 
           // Otherwise calculate similarity
-          const similarity = this.calculateSimilarity(cmsSignature, signature);
+          const similarity = this.calculateSimilarity(cmsSignature, nolaEntry.signature);
           if (similarity > bestSimilarity && similarity >= SIMILARITY_THRESHOLD) {
-            bestMatch = question;
+            bestMatch = nolaEntry;
             bestSimilarity = similarity;
           }
         }
 
         if (bestMatch) {
-          const questionNum = bestMatch.questionNumber || bestMatch.slideNumber;
+          const questionNum = bestMatch.question.questionNumber || bestMatch.question.slideNumber;
+          const partLabel = bestMatch.part === 'b' ? ' Part B' : (bestMatch.part === 'a' ? ' Part A' : '');
+
           matched.push({
             cmsQuestionNumber: cmsPage.questionNumber,
             nolaQuestionNumber: questionNum,
+            nolaQuestionKey: bestMatch.questionKey, // "9" or "9b"
             pageId: cmsPage.pageId,
             cmsTitle: cmsPage.title,
-            nolaTitle: bestMatch.title || `Question ${questionNum}`,
+            nolaTitle: (bestMatch.question.title || `Question ${questionNum}`) + partLabel,
             similarity: Math.round(bestSimilarity * 100),
-            cmsNarration: cmsPage.narrationText,
-            nolaQuestionNarration: bestMatch.stem || bestMatch.scenario || bestMatch.narrationText
+            cmsNarration: cmsQuestionText,
+            nolaQuestionNarration: bestMatch.displayText
           });
           matchedCmsIds.add(cmsPage.pageId);
-          matchedNolaNumbers.add(questionNum);
+          matchedNolaKeys.add(bestMatch.questionKey);
         }
       }
     }
@@ -719,20 +781,26 @@ class DirectusCMSClient {
         questionNumber: p.questionNumber,
         pageId: p.pageId,
         title: p.title,
-        narrationText: p.narrationText,
+        narrationText: p.textContent || p.narrationText,
         slideType: p.slideType
       }));
 
-    // NOLA.vids-Only: questions that didn't match any CMS page
-    const nolaOnly = nolaQuestions
-      .filter(q => !matchedNolaNumbers.has(q.questionNumber || q.slideNumber))
-      .map(q => ({
-        questionNumber: q.questionNumber || q.slideNumber,
-        title: q.title || `Question ${q.questionNumber || q.slideNumber}`,
-        narrationText: q.stem || q.scenario || q.narrationText,
-        hasImage: !!q.visual,
-        hasAudio: false
-      }));
+    // NOLA.vids-Only: question parts that didn't match any CMS page
+    const nolaOnly = nolaWithSignatures
+      .filter(entry => !matchedNolaKeys.has(entry.questionKey))
+      .map(entry => {
+        const q = entry.question;
+        const questionNum = q.questionNumber || q.slideNumber;
+        const partLabel = entry.part === 'b' ? ' Part B' : (entry.part === 'a' ? ' Part A' : '');
+        return {
+          questionNumber: questionNum,
+          questionKey: entry.questionKey,
+          title: (q.title || `Question ${questionNum}`) + partLabel,
+          narrationText: entry.displayText,
+          hasImage: !!q.visual,
+          hasAudio: false
+        };
+      });
 
     console.log(`[CMS] Assessment comparison: ${exactMatches.length} exact, ${narrationMismatches.length} mismatched, ${cmsOnly.length} CMS-only, ${nolaOnly.length} NOLA-only`);
 
@@ -751,7 +819,7 @@ class DirectusCMSClient {
     }
 
     const response = await this.request(
-      `/items/content_pages/${pageId}?fields=id,answers.id,answers.sort,answers.text,answers.answer_narration`
+      `/items/content_pages/${pageId}?fields=id,answers.id,answers.sort,answers.answer_text,answers.answer_narration`
     );
 
     const page = response.data;
@@ -764,7 +832,7 @@ class DirectusCMSClient {
       .map(a => ({
         id: a.id,
         sort: a.sort,
-        text: a.text || '',
+        text: a.answer_text || '',
         answerNarration: a.answer_narration
       }));
   }

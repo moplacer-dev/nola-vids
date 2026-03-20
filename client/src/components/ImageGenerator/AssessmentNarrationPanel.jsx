@@ -345,15 +345,14 @@ export default function AssessmentNarrationPanel({
                       e.stopPropagation();
                       onPushToCms(audio.id, 'audio');
                     }}
-                    disabled={loading || audio.cmsPushStatus === 'pushing' || !hasCmsPageMapping || !['completed', 'uploaded'].includes(audio.status)}
+                    disabled={audio.cmsPushStatus === 'pushing' || !['completed', 'uploaded'].includes(audio.status)}
                     title={
                       audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' :
-                      !hasCmsPageMapping ? 'Run CMS Sync first' :
                       !['completed', 'uploaded'].includes(audio.status) ? 'Audio not ready' :
                       'Push to CMS'
                     }
                   >
-                    {audio.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
+                    {audio.cmsPushStatus === 'pushing' ? 'Pushing...' : audio.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
                   </button>
                 )}
               </div>

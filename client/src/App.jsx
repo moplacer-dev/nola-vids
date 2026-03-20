@@ -105,7 +105,11 @@ export default function App() {
     generateAssessmentAudio,
     generateBulkAudio,
     // Image deletion
-    deleteGeneratedImage
+    deleteGeneratedImage,
+    // Assessment CMS Sync
+    fetchAssessmentCmsSync,
+    pushAssessmentAudioToCms,
+    pushAssessmentImageToCms
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -512,6 +516,9 @@ export default function App() {
             pushAudioToCms={pushAudioToCms}
             pushMgVideoToCms={pushMgVideoToCms}
             pushVideoToCms={pushVideoToCms}
+            fetchAssessmentCmsSync={fetchAssessmentCmsSync}
+            pushAssessmentAudioToCms={pushAssessmentAudioToCms}
+            pushAssessmentImageToCms={pushAssessmentImageToCms}
           />
         </main>
       ) : null}

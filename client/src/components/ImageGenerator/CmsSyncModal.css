@@ -474,3 +474,11 @@
   border: 1px solid #2a3a2a;
   color: #a0c0a0;
 }
+
+.sync-footer-note {
+  color: #5a5a5a;
+  font-family: monospace;
+  font-size: 10px;
+  margin-bottom: 12px;
+  font-style: italic;
+}

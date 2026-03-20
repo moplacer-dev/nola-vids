@@ -857,25 +857,47 @@ export default function ImageGenerator({
     }
   };
 
-  // Assessment CMS Push handler
+  // Assessment CMS Push handler with optimistic updates
   const handleAssessmentPushToCms = async (assetId, assetType) => {
     if (!assetId || !assetType) return;
 
-    setLoading(true);
+    // Optimistic update: set status to 'pushing' immediately
+    if (assetType === 'image') {
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === assetId ? { ...img, cmsPushStatus: 'pushing' } : img
+      ));
+    } else if (assetType === 'audio') {
+      setAssessmentAudioList(prev => prev.map(audio =>
+        audio.id === assetId ? { ...audio, cmsPushStatus: 'pushing' } : audio
+      ));
+    }
+
     try {
       if (assetType === 'image') {
         await pushAssessmentImageToCms(assetId);
+        // Optimistic success: set status to 'pushed'
+        setGeneratedImages(prev => prev.map(img =>
+          img.id === assetId ? { ...img, cmsPushStatus: 'pushed' } : img
+        ));
       } else if (assetType === 'audio') {
         await pushAssessmentAudioToCms(assetId);
-      }
-      // Refresh to show updated push status
-      if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
+        // Optimistic success: set status to 'pushed'
+        setAssessmentAudioList(prev => prev.map(audio =>
+          audio.id === assetId ? { ...audio, cmsPushStatus: 'pushed' } : audio
+        ));
       }
     } catch (err) {
       console.error(`Failed to push assessment ${assetType} to CMS:`, err);
-    } finally {
-      setLoading(false);
+      // Revert on error
+      if (assetType === 'image') {
+        setGeneratedImages(prev => prev.map(img =>
+          img.id === assetId ? { ...img, cmsPushStatus: 'failed' } : img
+        ));
+      } else if (assetType === 'audio') {
+        setAssessmentAudioList(prev => prev.map(audio =>
+          audio.id === assetId ? { ...audio, cmsPushStatus: 'failed' } : audio
+        ));
+      }
     }
   };
 
@@ -1211,19 +1233,10 @@ export default function ImageGenerator({
                               e.stopPropagation();
                               if (questionImage) handleAssessmentPushToCms(questionImage.id, 'image');
                             }}
-                            disabled={
-                              loading ||
-                              questionImage?.cmsPushStatus === 'pushing' ||
-                              !selectedAssessment?.cmsPageMapping ||
-                              Object.keys(selectedAssessment?.cmsPageMapping || {}).length === 0
-                            }
-                            title={
-                              questionImage?.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' :
-                              !selectedAssessment?.cmsPageMapping || Object.keys(selectedAssessment?.cmsPageMapping || {}).length === 0 ? 'Run CMS Sync first' :
-                              'Push to CMS'
-                            }
+                            disabled={questionImage?.cmsPushStatus === 'pushing'}
+                            title={questionImage?.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
                           >
-                            {questionImage?.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
+                            {questionImage?.cmsPushStatus === 'pushing' ? 'Pushing...' : questionImage?.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
                           </button>
                         )}
                       </div>
