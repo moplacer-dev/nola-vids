@@ -311,28 +311,43 @@ export default function ImageGenerator({
 
   const handleGenerate = async (imageId, options = {}) => {
     try {
+      // Optimistically update the image status to 'generating'
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === imageId ? { ...img, status: 'generating' } : img
+      ));
+      setSelectedImage(prev =>
+        prev?.id === imageId ? { ...prev, status: 'generating' } : prev
+      );
+
       await generateImage(imageId, options);
-      // Reload to get updated status
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      } else if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
-      }
+      // Polling will pick up the completed status - no need to reload
     } catch (err) {
       console.error('Generation failed:', err);
+      // Revert optimistic update on error
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === imageId ? { ...img, status: 'failed' } : img
+      ));
     }
   };
 
   const handleRegenerate = async (imageId, options = {}) => {
     try {
+      // Optimistically update the image status to 'generating'
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === imageId ? { ...img, status: 'generating' } : img
+      ));
+      setSelectedImage(prev =>
+        prev?.id === imageId ? { ...prev, status: 'generating' } : prev
+      );
+
       await regenerateImage(imageId, options);
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
-      } else if (selectedAssessment) {
-        await loadAssessmentDetails(selectedAssessment.id);
-      }
+      // Polling will pick up the completed status - no need to reload
     } catch (err) {
       console.error('Regeneration failed:', err);
+      // Revert optimistic update on error
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === imageId ? { ...img, status: 'failed' } : img
+      ));
     }
   };
 
