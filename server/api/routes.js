@@ -1424,9 +1424,19 @@ module.exports = (jobManager) => {
         return res.status(404).json({ error: 'Generated image record not found' });
       }
 
-      const assetList = await assetListDb.getById(genImage.assetListId);
-      if (!assetList) {
-        return res.status(404).json({ error: 'Asset list not found' });
+      // Verify the image has a valid parent (either asset list or assessment)
+      if (genImage.assetListId) {
+        const assetList = await assetListDb.getById(genImage.assetListId);
+        if (!assetList) {
+          return res.status(404).json({ error: 'Asset list not found' });
+        }
+      } else if (genImage.assessmentAssetId) {
+        const assessment = await assessmentAssetDb.getById(genImage.assessmentAssetId);
+        if (!assessment) {
+          return res.status(404).json({ error: 'Assessment not found' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Image has no associated asset list or assessment' });
       }
 
       const finalPrompt = prompt || genImage.modifiedPrompt || genImage.originalPrompt;
