@@ -1172,10 +1172,12 @@ export default function ImageGenerator({
                             <img
                               src={(() => {
                                 const url = questionImage.imagePath;
+                                // Add cache-busting parameter using updatedAt timestamp
+                                const cacheBuster = questionImage.updatedAt ? `&_t=${new Date(questionImage.updatedAt).getTime()}` : '';
                                 if (url.includes('supabase.co/storage/v1/object/public/')) {
-                                  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
+                                  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80' + cacheBuster;
                                 }
-                                return url;
+                                return url + (url.includes('?') ? cacheBuster : cacheBuster.replace('&', '?'));
                               })()}
                               alt={`Q${index + 1}`}
                               className="question-thumbnail"
