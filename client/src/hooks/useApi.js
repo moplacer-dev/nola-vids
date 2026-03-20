@@ -543,6 +543,23 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  // Assessment CMS Sync hooks
+  const fetchAssessmentCmsSync = useCallback(async (assessmentId) => {
+    return request(`/cms/sync/assessment/${assessmentId}/fetch`, { method: 'POST' });
+  }, [request]);
+
+  const pushAssessmentAudioToCms = useCallback(async (audioId) => {
+    return request(`/cms/push/assessment-audio/${encodeURIComponent(audioId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
+  const pushAssessmentImageToCms = useCallback(async (imageId) => {
+    return request(`/cms/push/assessment-image/${encodeURIComponent(imageId)}`, {
+      method: 'POST'
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -558,6 +575,10 @@ export function useApi(accessKey) {
     pushAudioToCms,
     pushMgVideoToCms,
     pushVideoToCms,
+    // Assessment CMS Sync
+    fetchAssessmentCmsSync,
+    pushAssessmentAudioToCms,
+    pushAssessmentImageToCms,
     // Video generation
     generateTextToVideo,
     generateImageToVideo,

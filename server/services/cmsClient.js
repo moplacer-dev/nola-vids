@@ -542,6 +542,272 @@ class DirectusCMSClient {
   }
 
   /**
+   * Get assessment pages (Pre-Test or Post-Test) from CMS
+   *
+   * @param {string} moduleName - Module name (e.g., "Chemistry of Food")
+   * @param {string} assessmentType - 'pre_test' or 'post_test'
+   * @returns {Array} Array of page objects with { pageId, questionNumber, title, narrationText, answers }
+   */
+  async getAssessmentPages(moduleName, assessmentType) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    if (!this.carlCourseId) {
+      throw new Error('DIRECTUS_CARL_COURSE_ID is required for CMS sync');
+    }
+
+    try {
+      // Query the CARL course with nested relationship expansion
+      // Include answers relationship for each page
+      const courseResponse = await this.request(
+        `/items/content_courses/${this.carlCourseId}?fields=id,title,child_units.content_units_id.id,child_units.content_units_id.title,child_units.content_units_id.child_lessons.id,child_units.content_units_id.child_lessons.title,child_units.content_units_id.child_lessons.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.title,child_units.content_units_id.child_lessons.child_pages.content_pages_id.narration_text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.slide_type,child_units.content_units_id.child_lessons.child_pages.content_pages_id.text_content,child_units.content_units_id.child_lessons.child_pages.content_pages_id.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.id,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.sort,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.text,child_units.content_units_id.child_lessons.child_pages.content_pages_id.answers.answer_narration`
+      );
+
+      const course = courseResponse.data;
+      if (!course) {
+        throw new Error(`Course not found: ${this.carlCourseId}`);
+      }
+
+      // Extract units from junction table structure
+      const childUnits = (course.child_units || [])
+        .map(junction => junction.content_units_id)
+        .filter(Boolean);
+      console.log(`[CMS] Found ${childUnits.length} units in course "${course.title}"`);
+
+      // Find the unit matching the module name
+      const unit = childUnits.find(u =>
+        u.title && u.title.toLowerCase().includes(moduleName.toLowerCase())
+      );
+
+      if (!unit) {
+        console.log(`[CMS] No unit found matching module: ${moduleName}`);
+        console.log(`[CMS] Available units:`, childUnits.map(u => u.title));
+        return [];
+      }
+
+      console.log(`[CMS] Found unit: ${unit.title}`);
+
+      // Find the Pre-Test or Post-Test lesson
+      const lessons = unit.child_lessons || [];
+      const lessonName = assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test';
+
+      const lesson = lessons.find(l =>
+        l.title && l.title.toLowerCase().includes(lessonName.toLowerCase())
+      );
+
+      if (!lesson) {
+        console.log(`[CMS] No lesson found matching: ${lessonName}`);
+        console.log(`[CMS] Available lessons:`, lessons.map(l => l.title));
+        return [];
+      }
+
+      console.log(`[CMS] Found lesson: ${lesson.title}`);
+
+      // Get pages from the lesson (through junction table), sorted by sort order
+      const pages = (lesson.child_pages || [])
+        .map(junction => junction.content_pages_id)
+        .filter(Boolean)
+        .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+
+      console.log(`[CMS] Found ${pages.length} pages`);
+
+      // Map pages to our format
+      // Question number = sort order + 1
+      return pages.map((page) => ({
+        pageId: page.id,
+        questionNumber: (page.sort ?? 0) + 1,
+        title: page.title || '',
+        narrationText: page.narration_text || '',
+        textContent: page.text_content || '',
+        slideType: page.slide_type || '',
+        sortOrder: page.sort,
+        answers: (page.answers || [])
+          .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+          .map(a => ({
+            id: a.id,
+            sort: a.sort,
+            text: a.text || '',
+            hasNarration: !!a.answer_narration
+          }))
+      }));
+
+    } catch (error) {
+      console.error('[CMS] Error fetching assessment pages:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Compare NOLA.vids assessment questions with CMS pages
+   * Matches by question text similarity
+   *
+   * @param {Array} cmsPages - Pages from CMS
+   * @param {Array} nolaQuestions - Questions from NOLA.vids
+   * @returns {Object} { matched, narrationMismatches, cmsOnly, nolaOnly }
+   */
+  compareAssessmentQuestions(cmsPages, nolaQuestions) {
+    const matched = [];
+    const matchedCmsIds = new Set();
+    const matchedNolaNumbers = new Set();
+
+    // Build array of NOLA questions with their signatures
+    // Use question stem or scenario for matching
+    const nolaWithSignatures = nolaQuestions.map(q => ({
+      question: q,
+      signature: this.getTextSignature(q.stem || q.scenario || q.narrationText || '')
+    })).filter(q => q.signature);
+
+    console.log(`[CMS] Built question signatures for ${nolaWithSignatures.length} NOLA questions`);
+
+    const SIMILARITY_THRESHOLD = 0.75;
+
+    // Try to match CMS pages to NOLA questions by text similarity
+    for (const cmsPage of cmsPages) {
+      // Use narration_text or text_content for matching
+      const cmsSignature = this.getTextSignature(cmsPage.narrationText || cmsPage.textContent || '');
+
+      if (cmsSignature) {
+        let bestMatch = null;
+        let bestSimilarity = 0;
+
+        for (const { question, signature } of nolaWithSignatures) {
+          const questionNum = question.questionNumber || question.slideNumber;
+          if (matchedNolaNumbers.has(questionNum)) continue;
+
+          // First try exact match
+          if (signature === cmsSignature) {
+            bestMatch = question;
+            bestSimilarity = 1;
+            break;
+          }
+
+          // Otherwise calculate similarity
+          const similarity = this.calculateSimilarity(cmsSignature, signature);
+          if (similarity > bestSimilarity && similarity >= SIMILARITY_THRESHOLD) {
+            bestMatch = question;
+            bestSimilarity = similarity;
+          }
+        }
+
+        if (bestMatch) {
+          const questionNum = bestMatch.questionNumber || bestMatch.slideNumber;
+          matched.push({
+            cmsQuestionNumber: cmsPage.questionNumber,
+            nolaQuestionNumber: questionNum,
+            pageId: cmsPage.pageId,
+            cmsTitle: cmsPage.title,
+            nolaTitle: bestMatch.title || `Question ${questionNum}`,
+            similarity: Math.round(bestSimilarity * 100),
+            cmsNarration: cmsPage.narrationText,
+            nolaQuestionNarration: bestMatch.stem || bestMatch.scenario || bestMatch.narrationText
+          });
+          matchedCmsIds.add(cmsPage.pageId);
+          matchedNolaNumbers.add(questionNum);
+        }
+      }
+    }
+
+    // Separate exact matches from narration mismatches
+    const exactMatches = matched.filter(m => m.similarity === 100);
+    const narrationMismatches = matched.filter(m => m.similarity < 100);
+
+    // CMS-Only: pages in CMS that didn't match any NOLA question
+    const cmsOnly = cmsPages
+      .filter(p => !matchedCmsIds.has(p.pageId))
+      .map(p => ({
+        questionNumber: p.questionNumber,
+        pageId: p.pageId,
+        title: p.title,
+        narrationText: p.narrationText,
+        slideType: p.slideType
+      }));
+
+    // NOLA.vids-Only: questions that didn't match any CMS page
+    const nolaOnly = nolaQuestions
+      .filter(q => !matchedNolaNumbers.has(q.questionNumber || q.slideNumber))
+      .map(q => ({
+        questionNumber: q.questionNumber || q.slideNumber,
+        title: q.title || `Question ${q.questionNumber || q.slideNumber}`,
+        narrationText: q.stem || q.scenario || q.narrationText,
+        hasImage: !!q.visual,
+        hasAudio: false
+      }));
+
+    console.log(`[CMS] Assessment comparison: ${exactMatches.length} exact, ${narrationMismatches.length} mismatched, ${cmsOnly.length} CMS-only, ${nolaOnly.length} NOLA-only`);
+
+    return { matched: exactMatches, narrationMismatches, cmsOnly, nolaOnly };
+  }
+
+  /**
+   * Get answers for a content page
+   *
+   * @param {string} pageId - The content_pages ID
+   * @returns {Promise<Array>} Array of answer objects with { id, sort, text, answerNarration }
+   */
+  async getPageAnswers(pageId) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    const response = await this.request(
+      `/items/content_pages/${pageId}?fields=id,answers.id,answers.sort,answers.text,answers.answer_narration`
+    );
+
+    const page = response.data;
+    if (!page) {
+      throw new Error(`Page not found: ${pageId}`);
+    }
+
+    return (page.answers || [])
+      .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+      .map(a => ({
+        id: a.id,
+        sort: a.sort,
+        text: a.text || '',
+        answerNarration: a.answer_narration
+      }));
+  }
+
+  /**
+   * Link a file to an answer's narration field
+   *
+   * @param {string} answerId - The content_answers ID
+   * @param {string} fileId - The directus_files ID to link
+   * @returns {Promise<Object>} - Updated answer object
+   */
+  async linkFileToAnswer(answerId, fileId) {
+    if (!this.isAvailable()) {
+      throw new Error('CMS client not configured');
+    }
+
+    const response = await this.request(`/items/content_answers/${answerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        answer_narration: fileId
+      })
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Get answer sort index from narration type
+   * 'answer_a' → 0, 'answer_b' → 1, etc.
+   * 'part_a_answer_a' → 0, 'part_b_answer_c' → 2, etc.
+   *
+   * @param {string} narrationType
+   * @returns {number|null} - Sort index (0-5) or null if not an answer type
+   */
+  getAnswerSortFromNarrationType(narrationType) {
+    const match = narrationType?.match(/answer_([a-f])$/);
+    if (match) {
+      return match[1].charCodeAt(0) - 97; // 'a'=0, 'b'=1, etc.
+    }
+    return null;
+  }
+
+  /**
    * Map NOLA.vids asset types to CMS field names
    * Based on actual content_pages schema from Directus
    *

@@ -1564,6 +1564,7 @@ const assessmentAssetQueries = {
     if (updates.assetSummary !== undefined) updateData.asset_summary_json = updates.assetSummary;
     if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
     if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
+    if (updates.cmsPageMapping !== undefined) updateData.cms_page_mapping = updates.cmsPageMapping;
 
     const { data, error } = await supabase
       .from('assessment_assets')
@@ -1574,6 +1575,21 @@ const assessmentAssetQueries = {
 
     if (error) throw error;
     return data ? parseAssessmentAssetRow(data) : null;
+  },
+
+  async updateCmsPageMapping(id, pageMapping) {
+    const { data, error } = await supabase
+      .from('assessment_assets')
+      .update({
+        cms_page_mapping: pageMapping,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
   },
 
   async delete(id) {
@@ -1686,6 +1702,7 @@ function parseAssessmentAssetRow(row) {
     assetSummary: row.asset_summary_json,
     defaultVoiceId: row.default_voice_id,
     defaultVoiceName: row.default_voice_name,
+    cmsPageMapping: row.cms_page_mapping || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

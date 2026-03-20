@@ -337,18 +337,23 @@ export default function AssessmentNarrationPanel({
                   </button>
                 )}
 
-                {/* Push to CMS button - always show */}
-                {onPushToCms && (
+                {/* Push to CMS button - show for assessment audio types that are supported */}
+                {onPushToCms && cmsAvailable && !['correct_response', 'incorrect_1', 'incorrect_2'].includes(audio.narrationType) && (
                   <button
                     className={`btn-push-cms btn-sm ${audio.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       onPushToCms(audio.id, 'audio');
                     }}
-                    disabled={loading || audio.cmsPushStatus === 'pushing'}
-                    title={audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
+                    disabled={loading || audio.cmsPushStatus === 'pushing' || !hasCmsPageMapping || !['completed', 'uploaded'].includes(audio.status)}
+                    title={
+                      audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' :
+                      !hasCmsPageMapping ? 'Run CMS Sync first' :
+                      !['completed', 'uploaded'].includes(audio.status) ? 'Audio not ready' :
+                      'Push to CMS'
+                    }
                   >
-                    {audio.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
+                    {audio.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
                   </button>
                 )}
               </div>

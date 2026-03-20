@@ -6,6 +6,7 @@ import ImagePreview from './ImagePreview';
 import LibraryPicker from './LibraryPicker';
 import AssessmentNarrationPanel from './AssessmentNarrationPanel';
 import CmsSyncModal from './CmsSyncModal';
+import AssessmentCmsSyncModal from './AssessmentCmsSyncModal';
 import './ImageGenerator.css';
 
 export default function ImageGenerator({
@@ -53,7 +54,11 @@ export default function ImageGenerator({
   pushImageToCms,
   pushAudioToCms,
   pushMgVideoToCms,
-  pushVideoToCms
+  pushVideoToCms,
+  // Assessment CMS Sync
+  fetchAssessmentCmsSync,
+  pushAssessmentAudioToCms,
+  pushAssessmentImageToCms
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -77,6 +82,11 @@ export default function ImageGenerator({
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncData, setSyncData] = useState(null);
   const [syncing, setSyncing] = useState(false);
+
+  // Assessment CMS Sync state
+  const [assessmentSyncModalOpen, setAssessmentSyncModalOpen] = useState(false);
+  const [assessmentSyncData, setAssessmentSyncData] = useState(null);
+  const [assessmentSyncing, setAssessmentSyncing] = useState(false);
 
   // Module/Session filters
   const [selectedModule, setSelectedModule] = useState('');
@@ -826,6 +836,49 @@ export default function ImageGenerator({
     }
   };
 
+  // Assessment CMS Sync handlers
+  const handleOpenAssessmentSyncModal = async () => {
+    if (!selectedAssessment?.id || !fetchAssessmentCmsSync) return;
+
+    setAssessmentSyncing(true);
+    setAssessmentSyncModalOpen(true);
+    setAssessmentSyncData(null);
+
+    try {
+      const data = await fetchAssessmentCmsSync(selectedAssessment.id);
+      setAssessmentSyncData(data);
+      // Refresh assessment to get updated cmsPageMapping
+      await loadAssessmentDetails(selectedAssessment.id);
+    } catch (err) {
+      console.error('Failed to fetch assessment sync data:', err);
+      setAssessmentSyncData({ error: err.message });
+    } finally {
+      setAssessmentSyncing(false);
+    }
+  };
+
+  // Assessment CMS Push handler
+  const handleAssessmentPushToCms = async (assetId, assetType) => {
+    if (!assetId || !assetType) return;
+
+    setLoading(true);
+    try {
+      if (assetType === 'image') {
+        await pushAssessmentImageToCms(assetId);
+      } else if (assetType === 'audio') {
+        await pushAssessmentAudioToCms(assetId);
+      }
+      // Refresh to show updated push status
+      if (selectedAssessment) {
+        await loadAssessmentDetails(selectedAssessment.id);
+      }
+    } catch (err) {
+      console.error(`Failed to push assessment ${assetType} to CMS:`, err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Get unique modules and sessions from asset lists
   const modules = [...new Set(assetLists.map(l => l.moduleName))];
   const sessions = assetLists
@@ -1015,6 +1068,15 @@ export default function ImageGenerator({
             <div className="assessment-header">
               <h3>{selectedAssessment.assessmentType === 'pre_test' ? 'Pre-Test' : 'Post-Test'}</h3>
               <span className="question-count">{selectedAssessment.questions?.length || 0} Questions</span>
+              {cmsAvailable && (
+                <button
+                  className="btn-sync-cms"
+                  onClick={handleOpenAssessmentSyncModal}
+                  disabled={assessmentSyncing}
+                >
+                  {assessmentSyncing ? 'Syncing...' : 'Sync with CMS'}
+                </button>
+              )}
             </div>
             <div className="assessment-questions">
               {loading ? (
@@ -1141,6 +1203,29 @@ export default function ImageGenerator({
                         >
                           {questionImage?.status === 'generating' ? 'Generating...' : 'Generate'}
                         </button>
+                        {/* Push image to CMS */}
+                        {cmsAvailable && questionImage?.imagePath && (
+                          <button
+                            className={`btn-push-cms ${questionImage?.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (questionImage) handleAssessmentPushToCms(questionImage.id, 'image');
+                            }}
+                            disabled={
+                              loading ||
+                              questionImage?.cmsPushStatus === 'pushing' ||
+                              !selectedAssessment?.cmsPageMapping ||
+                              Object.keys(selectedAssessment?.cmsPageMapping || {}).length === 0
+                            }
+                            title={
+                              questionImage?.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' :
+                              !selectedAssessment?.cmsPageMapping || Object.keys(selectedAssessment?.cmsPageMapping || {}).length === 0 ? 'Run CMS Sync first' :
+                              'Push to CMS'
+                            }
+                          >
+                            {questionImage?.cmsPushStatus === 'pushed' ? 'Pushed' : 'Push'}
+                          </button>
+                        )}
                       </div>
 
                       {/* Multi-part Narration Panel for this question */}
@@ -1156,6 +1241,9 @@ export default function ImageGenerator({
                         onSelectAudio={handleSelectAudio}
                         onAddNarration={(context) => handleAddNarration({ ...context, assessmentAssetId: selectedAssessment?.id })}
                         onDeleteNarration={(audioId) => setDeletingAudio({ id: audioId })}
+                        onPushToCms={handleAssessmentPushToCms}
+                        cmsAvailable={cmsAvailable}
+                        hasCmsPageMapping={!!selectedAssessment?.cmsPageMapping && Object.keys(selectedAssessment.cmsPageMapping).length > 0}
                         selectedAudioId={selectedAudio?.id}
                         loading={loading}
                       />
@@ -1377,6 +1465,15 @@ export default function ImageGenerator({
           onUpdateNarration={handleUpdateNarration}
           onClose={() => setSyncModalOpen(false)}
           loading={syncing}
+        />
+      )}
+
+      {/* Assessment CMS Sync Modal */}
+      {assessmentSyncModalOpen && (
+        <AssessmentCmsSyncModal
+          syncData={assessmentSyncData}
+          onClose={() => setAssessmentSyncModalOpen(false)}
+          loading={assessmentSyncing}
         />
       )}
     </div>

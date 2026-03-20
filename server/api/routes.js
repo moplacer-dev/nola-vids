@@ -3850,6 +3850,327 @@ module.exports = (jobManager) => {
     }
   });
 
+  // ==========================================
+  // Assessment CMS Sync endpoints
+  // ==========================================
+
+  // Fetch and compare assessment questions from CMS
+  router.post('/cms/sync/assessment/:assessmentId/fetch', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const assessment = await assessmentAssetDb.getById(req.params.assessmentId);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+
+      // Fetch CMS pages for this assessment type
+      console.log(`[cms/sync/assessment] Fetching ${assessment.assessmentType} pages for module: ${assessment.moduleName}`);
+      const cmsPages = await cmsClient.getAssessmentPages(assessment.moduleName, assessment.assessmentType);
+
+      if (cmsPages.length === 0) {
+        return res.json({
+          matched: [],
+          narrationMismatches: [],
+          cmsOnly: [],
+          nolaOnly: assessment.questions || [],
+          warning: 'No assessment pages found in CMS'
+        });
+      }
+
+      // Compare with NOLA questions
+      const comparison = cmsClient.compareAssessmentQuestions(cmsPages, assessment.questions || []);
+
+      // Auto-save matched page IDs to cmsPageMapping
+      const cmsPageMapping = assessment.cmsPageMapping || {};
+      let mappingsUpdated = 0;
+
+      for (const match of [...comparison.matched, ...comparison.narrationMismatches]) {
+        const questionKey = String(match.nolaQuestionNumber);
+        if (!cmsPageMapping[questionKey] || cmsPageMapping[questionKey] !== match.pageId) {
+          cmsPageMapping[questionKey] = match.pageId;
+          mappingsUpdated++;
+        }
+      }
+
+      if (mappingsUpdated > 0) {
+        await assessmentAssetDb.updateCmsPageMapping(assessment.id, cmsPageMapping);
+        console.log(`[cms/sync/assessment] Updated ${mappingsUpdated} page mappings`);
+      }
+
+      res.json({
+        ...comparison,
+        cmsPageMapping,
+        totalCmsPages: cmsPages.length,
+        totalNolaQuestions: (assessment.questions || []).length
+      });
+    } catch (error) {
+      console.error('[cms/sync/assessment] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push assessment audio to CMS
+  router.post('/cms/push/assessment-audio/:audioId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const audio = await generatedAudioDb.getById(req.params.audioId);
+      if (!audio) {
+        return res.status(404).json({ error: 'Audio not found' });
+      }
+
+      // Verify audio is for an assessment
+      if (!audio.assessmentAssetId) {
+        return res.status(400).json({ error: 'Audio is not associated with an assessment' });
+      }
+
+      // Verify audio is ready
+      const readyStatuses = ['completed', 'uploaded'];
+      if (!readyStatuses.includes(audio.status)) {
+        return res.status(400).json({ error: `Audio not ready (status: ${audio.status})` });
+      }
+
+      if (!audio.audioPath) {
+        return res.status(400).json({ error: 'Audio has no file path' });
+      }
+
+      // Get assessment to find CMS page mapping
+      const assessment = await assessmentAssetDb.getById(audio.assessmentAssetId);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+
+      const cmsPageMapping = assessment.cmsPageMapping || {};
+      const questionNumber = audio.questionNumber || audio.slideNumber;
+      const narrationType = audio.narrationType;
+
+      // Determine which page to use
+      // For two-part questions: part_b_* types use the Part B page (questionNumber + 'b')
+      const isPartB = narrationType?.startsWith('part_b_');
+      const pageKey = isPartB ? `${questionNumber}b` : String(questionNumber);
+      let pageId = cmsPageMapping[pageKey];
+
+      // Fallback to base question number if Part B page not found
+      if (!pageId && isPartB) {
+        pageId = cmsPageMapping[String(questionNumber)];
+      }
+
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this question. Run CMS Sync first.',
+          questionNumber,
+          narrationType
+        });
+      }
+
+      // Skip feedback narration types (not used for assessments)
+      const skipTypes = ['correct_response', 'incorrect_1', 'incorrect_2'];
+      if (skipTypes.includes(narrationType)) {
+        return res.status(400).json({
+          error: `Narration type "${narrationType}" is not used for Pre/Post Tests`,
+          narrationType
+        });
+      }
+
+      // Download file from Supabase
+      const filename = audio.audioPath.split('/').pop();
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.m4a': 'audio/m4a'
+      };
+      const mimeType = mimeTypes[ext] || 'audio/mpeg';
+
+      let bucket = BUCKETS.AUDIO;
+      let filePath = filename;
+      if (audio.audioPath.includes('/storage/v1/object/public/')) {
+        const match = audio.audioPath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/assessment-audio] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/assessment-audio] Uploading to CMS: ${audio.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        audio.cmsFilename || filename,
+        mimeType
+      );
+
+      // Determine where to link the file based on narration type
+      let linkedTo = null;
+
+      // Question narration types → content_pages.narration
+      const questionTypes = ['question', 'part_a_question', 'part_b_question'];
+      if (questionTypes.includes(narrationType)) {
+        console.log(`[cms/push/assessment-audio] Linking to page ${pageId} field narration`);
+        await cmsClient.linkFileToPage(pageId, 'narration', cmsFile.id);
+        linkedTo = { type: 'page', pageId, fieldName: 'narration' };
+      } else {
+        // Answer narration types → content_answers.answer_narration
+        const answerSort = cmsClient.getAnswerSortFromNarrationType(narrationType);
+        if (answerSort !== null) {
+          // Get the page's answers
+          const answers = await cmsClient.getPageAnswers(pageId);
+          const targetAnswer = answers.find(a => a.sort === answerSort);
+
+          if (!targetAnswer) {
+            throw new Error(`No answer found at sort position ${answerSort} for page ${pageId}`);
+          }
+
+          console.log(`[cms/push/assessment-audio] Linking to answer ${targetAnswer.id} (sort=${answerSort})`);
+          await cmsClient.linkFileToAnswer(targetAnswer.id, cmsFile.id);
+          linkedTo = { type: 'answer', answerId: targetAnswer.id, answerSort };
+        } else {
+          // Fallback: link to page narration field
+          console.log(`[cms/push/assessment-audio] Unknown type "${narrationType}", linking to page narration`);
+          await cmsClient.linkFileToPage(pageId, 'narration', cmsFile.id);
+          linkedTo = { type: 'page', pageId, fieldName: 'narration' };
+        }
+      }
+
+      // Update local record with CMS file ID and push status
+      await generatedAudioDb.update(audio.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/assessment-audio] Successfully pushed audio ${audio.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        linkedTo
+      });
+    } catch (error) {
+      console.error('[cms/push/assessment-audio] Error:', error.message);
+      try {
+        await generatedAudioDb.update(req.params.audioId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Push assessment image to CMS
+  router.post('/cms/push/assessment-image/:imageId', async (req, res) => {
+    try {
+      if (!cmsClient.isAvailable()) {
+        return res.status(503).json({ error: 'CMS not configured' });
+      }
+
+      const image = await generatedImageDb.getById(req.params.imageId);
+      if (!image) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      // Verify image is for an assessment
+      if (!image.assessmentAssetId) {
+        return res.status(400).json({ error: 'Image is not associated with an assessment' });
+      }
+
+      // Verify image is ready
+      const readyStatuses = ['completed', 'uploaded', 'imported', 'default'];
+      if (!readyStatuses.includes(image.status)) {
+        return res.status(400).json({ error: `Image not ready (status: ${image.status})` });
+      }
+
+      if (!image.imagePath) {
+        return res.status(400).json({ error: 'Image has no file path' });
+      }
+
+      // Get assessment to find CMS page mapping
+      const assessment = await assessmentAssetDb.getById(image.assessmentAssetId);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+
+      const cmsPageMapping = assessment.cmsPageMapping || {};
+      const questionNumber = image.slideNumber; // slideNumber = questionNumber for assessments
+      const pageId = cmsPageMapping[String(questionNumber)];
+
+      if (!pageId) {
+        return res.status(400).json({
+          error: 'No CMS page mapping for this question. Run CMS Sync first.',
+          questionNumber
+        });
+      }
+
+      // Download file from Supabase
+      const filename = image.imagePath.split('/').pop();
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif'
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+
+      let bucket = BUCKETS.IMAGES;
+      let filePath = filename;
+      if (image.imagePath.includes('/storage/v1/object/public/')) {
+        const match = image.imagePath.match(/\/storage\/v1\/object\/public\/([^\/]+)\/(.+)$/);
+        if (match) {
+          bucket = match[1];
+          filePath = match[2];
+        }
+      }
+
+      console.log(`[cms/push/assessment-image] Downloading from ${bucket}/${filePath}`);
+      const fileBuffer = await storage.downloadFile(bucket, filePath);
+
+      // Upload to Directus
+      console.log(`[cms/push/assessment-image] Uploading to CMS: ${image.cmsFilename || filename}`);
+      const cmsFile = await cmsClient.uploadFile(
+        fileBuffer,
+        image.cmsFilename || filename,
+        mimeType
+      );
+
+      // Link to page's image field
+      console.log(`[cms/push/assessment-image] Linking to page ${pageId} field image`);
+      await cmsClient.linkFileToPage(pageId, 'image', cmsFile.id);
+
+      // Update local record with CMS file ID and push status
+      await generatedImageDb.update(image.id, {
+        cmsFileId: cmsFile.id,
+        cmsPushStatus: 'pushed',
+        cmsPushedAt: new Date().toISOString()
+      });
+
+      console.log(`[cms/push/assessment-image] Successfully pushed image ${image.id} to CMS`);
+      res.json({
+        success: true,
+        cmsFileId: cmsFile.id,
+        pageId,
+        fieldName: 'image'
+      });
+    } catch (error) {
+      console.error('[cms/push/assessment-image] Error:', error.message);
+      try {
+        await generatedImageDb.update(req.params.imageId, {
+          cmsPushStatus: 'failed'
+        });
+      } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
