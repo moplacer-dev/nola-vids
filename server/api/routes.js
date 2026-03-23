@@ -123,9 +123,13 @@ async function applyDefaultImage(imageId, defaultImage, cmsFilename) {
 // Configure multer for temporary file uploads
 const upload = multer({
   dest: os.tmpdir(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit for video uploads
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'];
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/webp',
+      'video/mp4', 'video/quicktime', 'video/webm',
+      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav'
+    ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -1752,9 +1756,13 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'Image has no associated asset list or assessment' });
       }
 
+      // Determine correct bucket based on file type (videos vs images)
+      const isVideoFile = req.file.mimetype.startsWith('video/');
+      const uploadBucket = isVideoFile ? BUCKETS.VIDEOS : BUCKETS.IMAGES;
+
       // Upload to Supabase Storage
       const uploaded = await storage.uploadFileFromPath(
-        BUCKETS.IMAGES,
+        uploadBucket,
         outputFilename,
         req.file.path,
         req.file.mimetype

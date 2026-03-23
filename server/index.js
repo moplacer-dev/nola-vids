@@ -158,10 +158,14 @@ async function startServer() {
     // Initialize Supabase database connection
     await initDatabase();
 
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`NOLA.vids server running on http://localhost:${PORT}`);
       console.log('Powered by VEO 3.1 + Nano Banana 2');
       console.log('Using Supabase for database and file storage');
+
+    // Set longer timeout for large file uploads (10 minutes)
+    server.timeout = 600000;
+    server.keepAliveTimeout = 620000; // Slightly longer than timeout
       console.log('');
       console.log('Video Generation:');
       console.log('  POST /api/generate/text     - Text-to-video');

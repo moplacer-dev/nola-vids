@@ -454,19 +454,29 @@ export default function AssetList({
                       </button>
                     )}
                     {/* Push to CMS button - show for images and videos, but NOT for MG scenes (those are just for making the final video) */}
-                    {onPushToCms && img && !type.toLowerCase().includes('motion_graphics') && (
-                      <button
-                        className={`btn-push-cms ${img.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onPushToCms(img.id, isVideoAsset ? 'video' : 'image');
-                        }}
-                        disabled={loading || img.cmsPushStatus === 'pushing'}
-                        title={img.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
-                      >
-                        {img.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
-                      </button>
-                    )}
+                    {onPushToCms && img && !type.toLowerCase().includes('motion_graphics') && (() => {
+                      const isReady = readyStatuses.includes(img.status);
+                      const isPushed = img.cmsPushStatus === 'pushed';
+                      const isPushing = img.cmsPushStatus === 'pushing';
+                      const getTitle = () => {
+                        if (isPushed) return 'Already pushed to CMS';
+                        if (!isReady) return `Upload or generate ${isVideoAsset ? 'video' : 'image'} first`;
+                        return 'Push to CMS';
+                      };
+                      return (
+                        <button
+                          className={`btn-push-cms ${isPushed ? 'pushed' : ''} ${!isReady ? 'not-ready' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPushToCms(img.id, isVideoAsset ? 'video' : 'image');
+                          }}
+                          disabled={loading || isPushing || !isReady}
+                          title={getTitle()}
+                        >
+                          {isPushed ? '✓ Pushed' : 'Push to CMS'}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -658,20 +668,25 @@ export default function AssetList({
                             Preview
                           </button>
                         )}
-                        {/* Push to CMS button for audio - always show */}
-                        {onPushToCms && (
-                          <button
-                            className={`btn-push-cms ${audio.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPushToCms(audio.id, 'audio');
-                            }}
-                            disabled={loading || audio.cmsPushStatus === 'pushing'}
-                            title={audio.cmsPushStatus === 'pushed' ? 'Already pushed to CMS' : 'Push to CMS'}
-                          >
-                            {audio.cmsPushStatus === 'pushed' ? '✓ Pushed' : 'Push to CMS'}
-                          </button>
-                        )}
+                        {/* Push to CMS button for audio */}
+                        {onPushToCms && (() => {
+                          const audioReady = ['completed', 'uploaded'].includes(audio.status);
+                          const isPushed = audio.cmsPushStatus === 'pushed';
+                          const isPushing = audio.cmsPushStatus === 'pushing';
+                          return (
+                            <button
+                              className={`btn-push-cms ${isPushed ? 'pushed' : ''} ${!audioReady ? 'not-ready' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPushToCms(audio.id, 'audio');
+                              }}
+                              disabled={loading || isPushing || !audioReady}
+                              title={isPushed ? 'Already pushed to CMS' : !audioReady ? 'Generate or upload audio first' : 'Push to CMS'}
+                            >
+                              {isPushed ? '✓ Pushed' : 'Push to CMS'}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}

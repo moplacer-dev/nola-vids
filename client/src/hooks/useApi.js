@@ -301,9 +301,12 @@ export function useApi(accessKey) {
     }
     const formData = new FormData();
     formData.append('image', file);
+    // Use longer timeout for file uploads (10 minutes for large videos)
+    const isVideo = file.type?.startsWith('video/');
     return request(`/images/${encodeURIComponent(String(id))}/upload`, {
       method: 'POST',
-      body: formData
+      body: formData,
+      timeout: isVideo ? 600000 : 120000 // 10 min for videos, 2 min for images
     });
   }, [request]);
 
@@ -332,7 +335,8 @@ export function useApi(accessKey) {
     formData.append('video', file);
     return request(`/motion-graphics/${encodeURIComponent(assetListId)}/${slideNumber}/video`, {
       method: 'POST',
-      body: formData
+      body: formData,
+      timeout: 600000 // 10 minutes for video uploads
     });
   }, [request]);
 
@@ -391,7 +395,8 @@ export function useApi(accessKey) {
     formData.append('audio', file);
     return request(`/audio/${encodeURIComponent(String(id))}/upload`, {
       method: 'POST',
-      body: formData
+      body: formData,
+      timeout: 120000 // 2 minutes for audio uploads
     });
   }, [request]);
 

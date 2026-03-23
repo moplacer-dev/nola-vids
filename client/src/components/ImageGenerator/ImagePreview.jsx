@@ -89,9 +89,19 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
     );
   }
 
-  // Check for video (MG video) - videoPath indicates this is a video asset
-  const hasVideo = image.videoPath && image.status === 'uploaded';
-  const videoUrl = hasVideo ? image.videoPath : null;
+  // Check for video - either MG video (videoPath) or regular video asset (assetType === 'video')
+  const isVideoAsset = (image.assetType || '').toLowerCase() === 'video';
+  const isVideoFile = image.imagePath && (
+    image.imagePath.endsWith('.mp4') ||
+    image.imagePath.endsWith('.mov') ||
+    image.imagePath.endsWith('.webm') ||
+    image.imagePath.includes('.mp4?') ||
+    image.imagePath.includes('.mov?') ||
+    image.imagePath.includes('.webm?')
+  );
+  const hasMGVideo = image.videoPath && image.status === 'uploaded';
+  const hasVideo = hasMGVideo || ((isVideoAsset || isVideoFile) && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported') && image.imagePath);
+  const videoUrl = hasMGVideo ? image.videoPath : (hasVideo ? image.imagePath : null);
 
   const hasImage = !hasVideo && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported' || image.status === 'default') && image.imagePath;
   // Use Supabase image transforms for optimized display, original preserved for downloads
@@ -153,15 +163,18 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
     }
   };
 
+  // Add cache buster to video URL
+  const videoUrlWithCache = videoUrl ? `${videoUrl}${videoUrl.includes('?') ? '&' : '?'}t=${encodeURIComponent(image.updatedAt || '')}` : null;
+
   return (
     <div className="image-preview">
-      <h3>Preview</h3>
+      <h3>{image.slideNumber ? `Slide ${image.slideNumber}` : 'Preview'}</h3>
 
       {hasVideo ? (
         <>
           <video
-            key={videoUrl}
-            src={videoUrl}
+            key={videoUrlWithCache}
+            src={videoUrlWithCache}
             controls
             preload="metadata"
             playsInline

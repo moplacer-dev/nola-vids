@@ -832,11 +832,25 @@ export default function ImageGenerator({
     }
   };
 
-  // CMS Push handler
+  // CMS Push handler with optimistic UI update
   const handlePushToCms = async (assetId, assetType) => {
     if (!assetId || !assetType) return;
 
-    setLoading(true);
+    // Optimistic update: immediately show "Pushing..." state
+    if (assetType === 'image' || assetType === 'video') {
+      setGeneratedImages(prev => prev.map(img =>
+        img.id === assetId ? { ...img, cmsPushStatus: 'pushing' } : img
+      ));
+    } else if (assetType === 'audio') {
+      setGeneratedAudioList(prev => prev.map(audio =>
+        audio.id === assetId ? { ...audio, cmsPushStatus: 'pushing' } : audio
+      ));
+    } else if (assetType === 'mg-video') {
+      setMotionGraphicsVideos(prev => prev.map(video =>
+        video.id === assetId ? { ...video, cmsPushStatus: 'pushing' } : video
+      ));
+    }
+
     try {
       if (assetType === 'image') {
         await pushImageToCms(assetId);
@@ -853,8 +867,10 @@ export default function ImageGenerator({
       }
     } catch (err) {
       console.error(`Failed to push ${assetType} to CMS:`, err);
-    } finally {
-      setLoading(false);
+      // Revert optimistic update on error
+      if (selectedAssetList) {
+        await loadAssetListDetails(selectedAssetList.id);
+      }
     }
   };
 
