@@ -16,7 +16,7 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
   const [moduleName, setModuleName] = useState('');
   const [sessionNumber, setSessionNumber] = useState('');
   const [pageNumber, setPageNumber] = useState('');
-  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [aspectRatio, setAspectRatio] = useState('4:3');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 

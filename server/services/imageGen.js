@@ -23,7 +23,7 @@ class ImageGenService {
    * @param {string} [options.aspectRatio] - Aspect ratio (e.g., '16:9', '1:1', '3:2', '4:3')
    * @returns {Promise<{imageData: string, mimeType: string}>} - Base64 image data and mime type
    */
-  async generate({ prompt, anchorImagePath, anchorImagePaths = [], anchorImageUrls = [], aspectRatio = '3:2' }) {
+  async generate({ prompt, anchorImagePath, anchorImagePaths = [], anchorImageUrls = [], aspectRatio = '4:3' }) {
     let contents;
 
     // Include aspect ratio instruction in the prompt for better compliance

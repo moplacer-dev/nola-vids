@@ -1383,7 +1383,7 @@ module.exports = (jobManager) => {
         bucket: BUCKETS.IMAGES,
         filename,
         anchorImageUrls,
-        aspectRatio: aspectRatio || '16:9'
+        aspectRatio: aspectRatio || '4:3'
       });
 
       // Save to database so it appears in Library
