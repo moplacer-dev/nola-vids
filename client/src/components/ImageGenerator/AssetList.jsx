@@ -45,6 +45,26 @@ export default function AssetList({
     imageByKey[`${img.slideNumber}-${img.assetType}-${assetNum}`] = img;
   });
 
+  // Build metadata map from imported assets for context fields (Why, Production Notes, etc.)
+  const assetMetadataByKey = {};
+  assets?.forEach(asset => {
+    const slideNum = String(asset.slideNumber ?? asset.slide_number ?? '');
+    const type = asset.type || asset.assetType || 'image';
+    const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
+    if (slideNum) {
+      const key = `${slideNum}-${type}-${assetNum}`;
+      assetMetadataByKey[key] = asset;
+    }
+  });
+
+  // Group generatedImages by slide number for database-first rendering
+  const imagesBySlide = {};
+  generatedImages?.forEach(img => {
+    const slideNum = String(img.slideNumber);
+    if (!imagesBySlide[slideNum]) imagesBySlide[slideNum] = [];
+    imagesBySlide[slideNum].push(img);
+  });
+
   // Build MG videos map by slide number
   const mgVideoBySlide = {};
   motionGraphicsVideos?.forEach(v => {
@@ -98,28 +118,40 @@ export default function AssetList({
   if (allSlides?.length > 0) {
     slides = allSlides.map(s => {
       const slideNum = String(s.slideNumber ?? s.slide_number ?? '');
-      const slideAssets = assetsBySlide[slideNum] || [];
+
+      // Get database records for this slide (source of truth)
+      const dbAssets = imagesBySlide[slideNum] || [];
+
+      // Get imported assets for this slide (for pending items without DB records)
+      const importedAssets = assetsBySlide[slideNum] || [];
+
+      // Use database records as the source of truth (sorted by assetNumber)
+      const renderedAssets = dbAssets
+        .map(img => ({ ...img, _fromDb: true }))
+        .sort((a, b) => (a.assetNumber || 1) - (b.assetNumber || 1));
 
       // Check if this slide has motion graphics assets (for final video section)
-      const hasMGFromAssets = slideAssets.some(a =>
+      const hasMGFromDb = dbAssets.some(img =>
+        (img.assetType || '').toLowerCase().includes('motion_graphics')
+      );
+      const hasMGFromImports = importedAssets.some(a =>
         (a.type || '').toLowerCase().includes('motion_graphics')
       );
-      const hasMGFromImages = generatedImages?.some(img =>
-        img.slideNumber === parseInt(slideNum) &&
-        ((img.assetType || '').toLowerCase().includes('motion_graphics'))
-      ) || false;
 
       return {
         slideNumber: slideNum,
         slideTitle: s.slideTitle || s.slide_title || s.title || '',
         slideType: s.slideType || s.slide_type || s.type || '',
-        assets: slideAssets,
-        hasMGAssets: hasMGFromAssets || hasMGFromImages
+        assets: renderedAssets,
+        hasMGAssets: hasMGFromDb || hasMGFromImports
       };
     }).sort((a, b) => Number(a.slideNumber) - Number(b.slideNumber));
   }
 
-  const slidesWithAssets = slides.filter(s => s.assets.length > 0).length;
+  // Count slides with actual database assets (not just pending imports)
+  const slidesWithAssets = slides.filter(s =>
+    s.assets.some(a => a._fromDb === true)
+  ).length;
 
   // Super simple render with zero CSS dependencies
   return (
@@ -159,31 +191,23 @@ export default function AssetList({
 
           const expanded = isSlideExpanded(slide.slideNumber);
 
-          // Count only assets that have database records (not deleted)
-          const assetsWithRecords = slide.assets.filter(asset => {
-            const type = asset.type || asset.assetType || 'image';
-            const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-            const key = `${slide.slideNumber}-${type}-${assetNum}`;
-            return !!imageByKey[key];
-          });
-          const assetCount = assetsWithRecords.length;
+          // Count only database assets (not pending imports)
+          const dbAssets = slide.assets.filter(asset => asset._fromDb === true);
+          const assetCount = dbAssets.length;
 
           // Calculate slide completion status (media + narration)
           const slideAudioRecords = audioBySlide[parseInt(slide.slideNumber)] || [];
           const readyStatuses = ['completed', 'uploaded', 'imported', 'default'];
 
           // Count ready media assets (exclude MG scenes from completion - they're just for making the final video)
-          const nonMGAssets = assetsWithRecords.filter(asset => {
-            const type = asset.type || asset.assetType || 'image';
+          const nonMGAssets = dbAssets.filter(asset => {
+            const type = asset.assetType || 'image';
             return !type.toLowerCase().includes('motion_graphics');
           });
-          const readyMediaCount = nonMGAssets.filter(asset => {
-            const type = asset.type || asset.assetType || 'image';
-            const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-            const key = `${slide.slideNumber}-${type}-${assetNum}`;
-            const img = imageByKey[key];
-            return img && readyStatuses.includes(img.status);
-          }).length;
+          // For DB assets, the asset IS the database record, so just check status directly
+          const readyMediaCount = nonMGAssets.filter(asset =>
+            readyStatuses.includes(asset.status)
+          ).length;
 
           // Count ready narration assets
           const readyNarrationCount = slideAudioRecords.filter(a =>
@@ -198,7 +222,7 @@ export default function AssetList({
           const totalAssets = nonMGAssets.length + slideAudioRecords.length + mgVideoRequired;
           const readyAssets = readyMediaCount + readyNarrationCount + mgVideoReady;
           const isSlideComplete = totalAssets > 0 && readyAssets === totalAssets;
-          const hasAnyAssets = totalAssets > 0 || assetsWithRecords.length > 0;
+          const hasAnyAssets = totalAssets > 0 || dbAssets.length > 0;
 
           return (
           <div key={slide.slideNumber} className={`slide-group ${assetCount === 0 ? 'no-assets' : ''} ${expanded ? 'expanded' : 'collapsed'}`}>
@@ -290,23 +314,20 @@ export default function AssetList({
               </div>
             )}
 
-            {slide.assets
-              .filter(asset => {
-                // Filter out assets that don't have a database record (deleted)
-                const type = asset.type || asset.assetType || 'image';
-                const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-                const key = `${slide.slideNumber}-${type}-${assetNum}`;
-                return !!imageByKey[key];
-              })
-              .map((asset, i) => {
-              const type = asset.type || asset.assetType || 'image';
-              const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
-              const key = `${slide.slideNumber}-${type}-${assetNum}`;
-              const img = imageByKey[key];
+            {slide.assets.map((asset, i) => {
+              // Asset IS the database record (img)
+              const img = asset;
 
-              const productionNotes = asset.productionNotes || asset.production_notes || '';
-              const mediaTeamNotes = asset.mediaTeamNotes || asset.media_team_notes || asset.notes_for_media_team || '';
-              const pedagogicalRationale = asset.pedagogicalRationale || asset.pedagogical_rationale || '';
+              const type = asset.assetType || 'image';
+              const assetNum = asset.assetNumber || 1;
+
+              // Look up imported metadata using current type (for context fields)
+              const metadataKey = `${slide.slideNumber}-${type}-${assetNum}`;
+              const importedMetadata = assetMetadataByKey[metadataKey];
+
+              const productionNotes = importedMetadata?.productionNotes || importedMetadata?.production_notes || '';
+              const mediaTeamNotes = importedMetadata?.mediaTeamNotes || importedMetadata?.media_team_notes || importedMetadata?.notes_for_media_team || '';
+              const pedagogicalRationale = importedMetadata?.pedagogicalRationale || importedMetadata?.pedagogical_rationale || '';
 
               // Check if this asset has a character associated
               const hasCharacter = !!img?.characterId;
@@ -317,6 +338,7 @@ export default function AssetList({
                                           type.toLowerCase().includes('intro');
 
               // Get current toggle state, defaulting based on asset type
+              const key = `${slide.slideNumber}-${type}-${assetNum}`;
               const useCharacter = characterToggles[key] ?? defaultUseCharacter;
 
               // Check if this is a video asset (not motion graphics - those are handled separately)
@@ -335,8 +357,8 @@ export default function AssetList({
                       {slide.assets.length > 1 && <span className="asset-number"> #{assetNum}</span>}
                     </span>
                     <div className="asset-header-right">
-                      <span className={`status-text ${!img ? 'status-no-record' : ''}`}>
-                        {img ? img.status : 'no record'}
+                      <span className="status-text">
+                        {img.status}
                       </span>
                       {img?.id && onDeleteAsset && (
                         <button
@@ -353,7 +375,7 @@ export default function AssetList({
                     </div>
                   </div>
                   <p className="asset-prompt">
-                    {img?.modifiedPrompt || img?.originalPrompt || asset.prompt || asset.description || 'No prompt'}
+                    {img?.modifiedPrompt || img?.originalPrompt || importedMetadata?.prompt || importedMetadata?.description || 'No prompt'}
                   </p>
                   {pedagogicalRationale && (
                     <p className="asset-rationale">
@@ -377,10 +399,10 @@ export default function AssetList({
                         e.stopPropagation();
                         // Pass both the image record and the full asset context
                         onEditPrompt({
-                          ...(img || { slideNumber: slide.slideNumber, assetType: type, assetNumber: assetNum, originalPrompt: asset.prompt || asset.description }),
-                          // Include all context fields from the asset
+                          ...img,
+                          // Include all context fields from imported metadata
                           asset: {
-                            prompt: asset.prompt || asset.description || '',
+                            prompt: importedMetadata?.prompt || importedMetadata?.description || '',
                             pedagogicalRationale: pedagogicalRationale,
                             productionNotes: productionNotes,
                             mediaTeamNotes: mediaTeamNotes
