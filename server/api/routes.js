@@ -3471,9 +3471,10 @@ module.exports = (jobManager) => {
   });
 
   // Renumber slides with an offset (e.g., offset=-5 shifts slide 28→23, 29→24, etc.)
+  // Optional: minSlide/maxSlide to only affect slides in a range
   router.post('/cms/sync/:assetListId/renumber-slides', async (req, res) => {
     try {
-      const { offset } = req.body;
+      const { offset, minSlide, maxSlide } = req.body;
 
       if (offset === undefined || typeof offset !== 'number') {
         return res.status(400).json({ error: 'offset is required and must be a number' });
@@ -3484,22 +3485,41 @@ module.exports = (jobManager) => {
         return res.status(404).json({ error: 'Asset list not found' });
       }
 
-      console.log(`[cms/sync/renumber-slides] Renumbering slides for ${assetList.sessionName} with offset ${offset}`);
+      // Helper to check if a slide number is in range
+      const inRange = (num) => {
+        if (minSlide !== undefined && num < minSlide) return false;
+        if (maxSlide !== undefined && num > maxSlide) return false;
+        return true;
+      };
+
+      console.log(`[cms/sync/renumber-slides] Renumbering slides for ${assetList.sessionName} with offset ${offset}${minSlide !== undefined ? ` (min: ${minSlide})` : ''}${maxSlide !== undefined ? ` (max: ${maxSlide})` : ''}`);
 
       // 1. Update slides_json
       const slides = assetList.slides || [];
-      const updatedSlides = slides.map(s => ({
-        ...s,
-        slideNumber: (s.slideNumber ?? s.slide_number) + offset,
-        slide_number: (s.slideNumber ?? s.slide_number) + offset
-      }));
+      let slidesUpdatedCount = 0;
+      const updatedSlides = slides.map(s => {
+        const currentNum = s.slideNumber ?? s.slide_number;
+        if (inRange(currentNum)) {
+          slidesUpdatedCount++;
+          return {
+            ...s,
+            slideNumber: currentNum + offset,
+            slide_number: currentNum + offset
+          };
+        }
+        return s;
+      });
 
       // 2. Update cms_page_mapping keys
       const oldMapping = assetList.cmsPageMapping || {};
       const newMapping = {};
       for (const [oldSlideNum, pageId] of Object.entries(oldMapping)) {
-        const newSlideNum = parseInt(oldSlideNum, 10) + offset;
-        newMapping[String(newSlideNum)] = pageId;
+        const num = parseInt(oldSlideNum, 10);
+        if (inRange(num)) {
+          newMapping[String(num + offset)] = pageId;
+        } else {
+          newMapping[oldSlideNum] = pageId;
+        }
       }
 
       // Update asset list with new slides and mapping
@@ -3508,37 +3528,43 @@ module.exports = (jobManager) => {
 
       // 3. Update generated_images slide numbers
       const images = await generatedImageDb.getByAssetList(assetList.id);
+      let imagesUpdatedCount = 0;
       for (const img of images) {
-        if (img.slideNumber !== null && img.slideNumber !== undefined) {
+        if (img.slideNumber !== null && img.slideNumber !== undefined && inRange(img.slideNumber)) {
           await generatedImageDb.update(img.id, { slideNumber: img.slideNumber + offset });
+          imagesUpdatedCount++;
         }
       }
 
       // 4. Update motion_graphics_videos slide numbers
       const mgVideos = await mgVideoDb.getByAssetList(assetList.id);
+      let mgUpdatedCount = 0;
       for (const video of mgVideos) {
-        if (video.slideNumber !== null && video.slideNumber !== undefined) {
+        if (video.slideNumber !== null && video.slideNumber !== undefined && inRange(video.slideNumber)) {
           await mgVideoDb.update(video.id, { slideNumber: video.slideNumber + offset });
+          mgUpdatedCount++;
         }
       }
 
       // 5. Update generated_audio slide numbers
       const audioRecords = await generatedAudioDb.getByAssetList(assetList.id);
+      let audioUpdatedCount = 0;
       for (const audio of audioRecords) {
-        if (audio.slideNumber !== null && audio.slideNumber !== undefined) {
+        if (audio.slideNumber !== null && audio.slideNumber !== undefined && inRange(audio.slideNumber)) {
           await generatedAudioDb.update(audio.id, { slideNumber: audio.slideNumber + offset });
+          audioUpdatedCount++;
         }
       }
 
-      console.log(`[cms/sync/renumber-slides] Updated ${slides.length} slides, ${images.length} images, ${mgVideos.length} MG videos, ${audioRecords.length} audio records`);
+      console.log(`[cms/sync/renumber-slides] Updated ${slidesUpdatedCount} slides, ${imagesUpdatedCount} images, ${mgUpdatedCount} MG videos, ${audioUpdatedCount} audio records`);
 
       res.json({
         success: true,
         message: `Renumbered slides with offset ${offset}`,
-        slidesUpdated: slides.length,
-        imagesUpdated: images.length,
-        mgVideosUpdated: mgVideos.length,
-        audioUpdated: audioRecords.length
+        slidesUpdated: slidesUpdatedCount,
+        imagesUpdated: imagesUpdatedCount,
+        mgVideosUpdated: mgUpdatedCount,
+        audioUpdated: audioUpdatedCount
       });
     } catch (error) {
       console.error('[cms/sync/renumber-slides] Error:', error.message);
