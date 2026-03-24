@@ -38,6 +38,9 @@ export default function AssessmentNarrationPanel({
       'popup_1': 'Pop Up 1',
       'popup_2': 'Pop Up 2',
       'popup_3': 'Pop Up 3',
+      'popup_4': 'Pop Up 4',
+      'popup_5': 'Pop Up 5',
+      'popup_6': 'Pop Up 6',
       'scenario': 'Scenario',
       'questions': 'Questions',
       'answers': 'Answers',
@@ -73,6 +76,9 @@ export default function AssessmentNarrationPanel({
     'popup_1',
     'popup_2',
     'popup_3',
+    'popup_4',
+    'popup_5',
+    'popup_6',
     // RCP types
     'scenario',
     'questions',
@@ -337,8 +343,8 @@ export default function AssessmentNarrationPanel({
                   </button>
                 )}
 
-                {/* Push to CMS button - show for assessment audio types that are supported */}
-                {onPushToCms && cmsAvailable && !['correct_response', 'incorrect_1', 'incorrect_2'].includes(audio.narrationType) && (
+                {/* Push to CMS button */}
+                {onPushToCms && cmsAvailable && (
                   <button
                     className={`btn-push-cms btn-sm ${audio.cmsPushStatus === 'pushed' ? 'pushed' : ''}`}
                     onClick={(e) => {

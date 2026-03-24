@@ -58,7 +58,8 @@ export default function ImageGenerator({
   // Assessment CMS Sync
   fetchAssessmentCmsSync,
   pushAssessmentAudioToCms,
-  pushAssessmentImageToCms
+  pushAssessmentImageToCms,
+  updateAssessmentNarrationFromCms
 }) {
   const [assetLists, setAssetLists] = useState([]);
   const [selectedAssetList, setSelectedAssetList] = useState(null);
@@ -797,6 +798,7 @@ export default function ImageGenerator({
       setSyncData(syncResult);
     } catch (err) {
       console.error('Failed to add slide from CMS:', err);
+      throw err; // Re-throw so useApi error toast shows
     }
   };
 
@@ -813,6 +815,7 @@ export default function ImageGenerator({
       setSyncData(syncResult);
     } catch (err) {
       console.error('Failed to delete slide:', err);
+      throw err; // Re-throw so useApi error toast shows
     }
   };
 
@@ -829,6 +832,7 @@ export default function ImageGenerator({
       setSyncData(syncResult);
     } catch (err) {
       console.error('Failed to update narration:', err);
+      throw err; // Re-throw so useApi error toast shows
     }
   };
 
@@ -854,16 +858,24 @@ export default function ImageGenerator({
     try {
       if (assetType === 'image') {
         await pushImageToCms(assetId);
+        setGeneratedImages(prev => prev.map(img =>
+          img.id === assetId ? { ...img, cmsPushStatus: 'pushed' } : img
+        ));
       } else if (assetType === 'video') {
         await pushVideoToCms(assetId);
+        setGeneratedImages(prev => prev.map(img =>
+          img.id === assetId ? { ...img, cmsPushStatus: 'pushed' } : img
+        ));
       } else if (assetType === 'audio') {
         await pushAudioToCms(assetId);
+        setGeneratedAudioList(prev => prev.map(audio =>
+          audio.id === assetId ? { ...audio, cmsPushStatus: 'pushed' } : audio
+        ));
       } else if (assetType === 'mg-video') {
         await pushMgVideoToCms(assetId);
-      }
-      // Refresh to show updated push status
-      if (selectedAssetList) {
-        await loadAssetListDetails(selectedAssetList.id);
+        setMotionGraphicsVideos(prev => prev.map(video =>
+          video.id === assetId ? { ...video, cmsPushStatus: 'pushed' } : video
+        ));
       }
     } catch (err) {
       console.error(`Failed to push ${assetType} to CMS:`, err);
@@ -892,6 +904,24 @@ export default function ImageGenerator({
       setAssessmentSyncData({ error: err.message });
     } finally {
       setAssessmentSyncing(false);
+    }
+  };
+
+  // Assessment update narration handler
+  const handleAssessmentUpdateNarration = async (questionKey, narrationText, pageId) => {
+    if (!selectedAssessment?.id || !updateAssessmentNarrationFromCms) return;
+
+    try {
+      await updateAssessmentNarrationFromCms(selectedAssessment.id, questionKey, narrationText, pageId);
+      // Refresh sync data and assessment
+      const [syncResult] = await Promise.all([
+        fetchAssessmentCmsSync(selectedAssessment.id),
+        loadAssessmentDetails(selectedAssessment.id)
+      ]);
+      setAssessmentSyncData(syncResult);
+    } catch (err) {
+      console.error('Failed to update assessment narration:', err);
+      throw err; // Re-throw so useApi error toast shows
     }
   };
 
@@ -1424,6 +1454,9 @@ export default function ImageGenerator({
                   <option value="popup_1">Pop Up 1</option>
                   <option value="popup_2">Pop Up 2</option>
                   <option value="popup_3">Pop Up 3</option>
+                  <option value="popup_4">Pop Up 4</option>
+                  <option value="popup_5">Pop Up 5</option>
+                  <option value="popup_6">Pop Up 6</option>
                   <option value="question">Question</option>
                 </optgroup>
                 <optgroup label="Answer Choices">
@@ -1525,6 +1558,7 @@ export default function ImageGenerator({
       {assessmentSyncModalOpen && (
         <AssessmentCmsSyncModal
           syncData={assessmentSyncData}
+          onUpdateNarration={handleAssessmentUpdateNarration}
           onClose={() => setAssessmentSyncModalOpen(false)}
           loading={assessmentSyncing}
         />

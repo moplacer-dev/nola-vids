@@ -541,7 +541,7 @@ class DirectusCMSClient {
   /**
    * Check if a narration type is for a popup
    * @param {string} narrationType
-   * @returns {number|null} - Popup number (1, 2, 3) or null if not a popup
+   * @returns {number|null} - Popup number (1-6) or null if not a popup
    */
   getPopupNumber(narrationType) {
     const match = narrationType?.match(/^popup_(\d+)$/);

@@ -524,7 +524,7 @@ export default function AssetList({
                 ['question', 'answer_a', 'answer_b', 'answer_c', 'answer_d', 'answer_e', 'correct_response', 'incorrect_1', 'incorrect_2',
                  'part_a_question', 'part_a_answer_a', 'part_a_answer_b', 'part_a_answer_c', 'part_a_answer_d',
                  'part_b_question', 'part_b_answer_a', 'part_b_answer_b', 'part_b_answer_c', 'part_b_answer_d',
-                 'popup_1', 'popup_2', 'popup_3', 'scenario', 'questions', 'answers'].includes(a.narrationType)
+                 'popup_1', 'popup_2', 'popup_3', 'popup_4', 'popup_5', 'popup_6', 'scenario', 'questions', 'answers'].includes(a.narrationType)
               );
 
               if (isMultiPartSlide) {

@@ -2311,7 +2311,7 @@ module.exports = (jobManager) => {
           .filter(a => parseInt(a.slideNumber, 10) === slideNum)
           .map(a => a.narrationType);
 
-        const availableTypes = ['slide_narration', 'popup_1', 'popup_2', 'popup_3', 'scenario', 'questions', 'answers'];
+        const availableTypes = ['slide_narration', 'popup_1', 'popup_2', 'popup_3', 'popup_4', 'popup_5', 'popup_6', 'scenario', 'questions', 'answers'];
         narrationType = availableTypes.find(t => !existingTypes.includes(t)) || 'slide_narration';
       }
 
@@ -3259,20 +3259,33 @@ module.exports = (jobManager) => {
         cmsPageId
       });
 
-      // Create generated_audio record with narration text
+      // Create or update generated_audio record with narration text
       const moduleCode = getModuleCode(assetList.moduleName);
       const audioCmsFilename = `MOD.${moduleCode}.${assetList.sessionNumber}.${slideNumber}.NAR1.mp3`;
 
-      await generatedAudioDb.create({
-        assetListId: assetList.id,
-        slideNumber,
-        narrationType: 'slide_narration',
-        narrationText: pageDetails.narrationText || '',
-        cmsFilename: audioCmsFilename,
-        voiceId: assetList.defaultVoiceId,
-        voiceName: assetList.defaultVoiceName,
-        status: 'pending'
-      });
+      // Check if audio record already exists for this slide
+      const existingAudio = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, 'slide_narration');
+      if (existingAudio) {
+        // Update existing record
+        await generatedAudioDb.update(existingAudio.id, {
+          narrationText: pageDetails.narrationText || '',
+          cmsFilename: audioCmsFilename,
+          voiceId: assetList.defaultVoiceId,
+          voiceName: assetList.defaultVoiceName
+        });
+      } else {
+        // Create new record
+        await generatedAudioDb.create({
+          assetListId: assetList.id,
+          slideNumber,
+          narrationType: 'slide_narration',
+          narrationText: pageDetails.narrationText || '',
+          cmsFilename: audioCmsFilename,
+          voiceId: assetList.defaultVoiceId,
+          voiceName: assetList.defaultVoiceName,
+          status: 'pending'
+        });
+      }
 
       // Create generated_image placeholder if slide type indicates media needed
       const slideType = (pageDetails.slideType || '').toLowerCase();
@@ -3440,7 +3453,7 @@ module.exports = (jobManager) => {
       // Update CMS page mapping if pageId provided
       if (pageId) {
         const cmsPageMapping = assetList.cmsPageMapping || {};
-        cmsPageMapping[slideNumber] = pageId;
+        cmsPageMapping[String(slideNumber)] = pageId;
         await assetListDb.updateCmsPageMapping(assetList.id, cmsPageMapping);
       }
 
@@ -3965,6 +3978,78 @@ module.exports = (jobManager) => {
       });
     } catch (error) {
       console.error('[cms/sync/assessment] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update assessment question narration from CMS
+  router.post('/cms/sync/assessment/:assessmentId/update-narration', async (req, res) => {
+    try {
+      const { assessmentId } = req.params;
+      const { questionKey, narrationText, pageId } = req.body;
+
+      if (!questionKey || !narrationText) {
+        return res.status(400).json({ error: 'questionKey and narrationText are required' });
+      }
+
+      const assessment = await assessmentAssetDb.getById(assessmentId);
+      if (!assessment) {
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+
+      // Parse questions_json
+      let questions = assessment.questions || [];
+
+      // Find and update the matching question
+      let updated = false;
+      for (const q of questions) {
+        // Match by question number or key (handles "9b" for Part B)
+        const qKey = q.questionKey || String(q.questionNumber);
+        if (qKey === questionKey || String(q.questionNumber) === questionKey) {
+          q.narrationText = narrationText;
+          updated = true;
+          break;
+        }
+      }
+
+      if (!updated) {
+        return res.status(404).json({ error: `Question ${questionKey} not found` });
+      }
+
+      // Update assessment with new questions
+      await assessmentAssetDb.update(assessmentId, {
+        questionsJson: JSON.stringify(questions)
+      });
+
+      // Update CMS page mapping if pageId provided
+      if (pageId) {
+        const cmsPageMapping = assessment.cmsPageMapping || {};
+        cmsPageMapping[String(questionKey)] = pageId;
+        await assessmentAssetDb.updateCmsPageMapping(assessmentId, cmsPageMapping);
+      }
+
+      // Reset any existing audio for this question to pending
+      const audioRecords = await generatedAudioDb.getByAssessmentId(assessmentId);
+      const questionAudio = audioRecords.find(a =>
+        a.questionNumber === questionKey || String(a.questionNumber) === questionKey
+      );
+      if (questionAudio) {
+        await generatedAudioDb.update(questionAudio.id, {
+          narrationText: narrationText,
+          status: 'pending',
+          audioPath: null
+        });
+      }
+
+      console.log(`[cms/sync/assessment/update-narration] Updated question ${questionKey} narration`);
+
+      res.json({
+        success: true,
+        message: `Updated narration for question ${questionKey}`,
+        questionKey
+      });
+    } catch (error) {
+      console.error('[cms/sync/assessment/update-narration] Error:', error.message);
       res.status(500).json({ error: error.message });
     }
   });
