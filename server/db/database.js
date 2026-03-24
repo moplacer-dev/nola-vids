@@ -656,12 +656,19 @@ const assetListQueries = {
       narrationText: slideData.narrationText || ''
     };
 
-    // Insert in correct position based on slideNumber
-    const insertIndex = slides.findIndex(s => (s.slideNumber ?? s.slide_number) > slideData.slideNumber);
-    if (insertIndex === -1) {
-      slides.push(newSlide);
+    // Check if a slide with this number already exists
+    const existingIndex = slides.findIndex(s => (s.slideNumber ?? s.slide_number) === slideData.slideNumber);
+    if (existingIndex !== -1) {
+      // Update existing slide instead of creating duplicate
+      slides[existingIndex] = { ...slides[existingIndex], ...newSlide };
     } else {
-      slides.splice(insertIndex, 0, newSlide);
+      // Insert in correct position based on slideNumber
+      const insertIndex = slides.findIndex(s => (s.slideNumber ?? s.slide_number) > slideData.slideNumber);
+      if (insertIndex === -1) {
+        slides.push(newSlide);
+      } else {
+        slides.splice(insertIndex, 0, newSlide);
+      }
     }
 
     // Update CMS page mapping if pageId provided
@@ -841,6 +848,7 @@ const generatedImageQueries = {
   async update(id, updates) {
     const updateData = { updated_at: new Date().toISOString() };
 
+    if (updates.slideNumber !== undefined) updateData.slide_number = updates.slideNumber;
     if (updates.modifiedPrompt !== undefined) updateData.modified_prompt = updates.modifiedPrompt;
     if (updates.imagePath !== undefined) updateData.image_path = updates.imagePath;
     if (updates.status !== undefined) updateData.status = updates.status;
@@ -1104,6 +1112,7 @@ const motionGraphicsVideoQueries = {
   async update(id, updates) {
     const updateData = { updated_at: new Date().toISOString() };
 
+    if (updates.slideNumber !== undefined) updateData.slide_number = updates.slideNumber;
     if (updates.cmsFilename !== undefined) updateData.cms_filename = updates.cmsFilename;
     if (updates.videoPath !== undefined) updateData.video_path = updates.videoPath;
     if (updates.status !== undefined) updateData.status = updates.status;
@@ -1315,6 +1324,7 @@ const generatedAudioQueries = {
   async update(id, updates) {
     const updateData = { updated_at: new Date().toISOString() };
 
+    if (updates.slideNumber !== undefined) updateData.slide_number = updates.slideNumber;
     if (updates.cmsFilename !== undefined) updateData.cms_filename = updates.cmsFilename;
     if (updates.narrationText !== undefined) updateData.narration_text = updates.narrationText;
     if (updates.voiceId !== undefined) updateData.voice_id = updates.voiceId;

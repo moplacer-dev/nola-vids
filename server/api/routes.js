@@ -3470,6 +3470,82 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Renumber slides with an offset (e.g., offset=-5 shifts slide 28→23, 29→24, etc.)
+  router.post('/cms/sync/:assetListId/renumber-slides', async (req, res) => {
+    try {
+      const { offset } = req.body;
+
+      if (offset === undefined || typeof offset !== 'number') {
+        return res.status(400).json({ error: 'offset is required and must be a number' });
+      }
+
+      const assetList = await assetListDb.getById(req.params.assetListId);
+      if (!assetList) {
+        return res.status(404).json({ error: 'Asset list not found' });
+      }
+
+      console.log(`[cms/sync/renumber-slides] Renumbering slides for ${assetList.sessionName} with offset ${offset}`);
+
+      // 1. Update slides_json
+      const slides = assetList.slides || [];
+      const updatedSlides = slides.map(s => ({
+        ...s,
+        slideNumber: (s.slideNumber ?? s.slide_number) + offset,
+        slide_number: (s.slideNumber ?? s.slide_number) + offset
+      }));
+
+      // 2. Update cms_page_mapping keys
+      const oldMapping = assetList.cmsPageMapping || {};
+      const newMapping = {};
+      for (const [oldSlideNum, pageId] of Object.entries(oldMapping)) {
+        const newSlideNum = parseInt(oldSlideNum, 10) + offset;
+        newMapping[String(newSlideNum)] = pageId;
+      }
+
+      // Update asset list with new slides and mapping
+      await assetListDb.update(assetList.id, { slides: updatedSlides });
+      await assetListDb.updateCmsPageMapping(assetList.id, newMapping);
+
+      // 3. Update generated_images slide numbers
+      const images = await generatedImageDb.getByAssetList(assetList.id);
+      for (const img of images) {
+        if (img.slideNumber !== null && img.slideNumber !== undefined) {
+          await generatedImageDb.update(img.id, { slideNumber: img.slideNumber + offset });
+        }
+      }
+
+      // 4. Update motion_graphics_videos slide numbers
+      const mgVideos = await mgVideoDb.getByAssetList(assetList.id);
+      for (const video of mgVideos) {
+        if (video.slideNumber !== null && video.slideNumber !== undefined) {
+          await mgVideoDb.update(video.id, { slideNumber: video.slideNumber + offset });
+        }
+      }
+
+      // 5. Update generated_audio slide numbers
+      const audioRecords = await generatedAudioDb.getByAssetList(assetList.id);
+      for (const audio of audioRecords) {
+        if (audio.slideNumber !== null && audio.slideNumber !== undefined) {
+          await generatedAudioDb.update(audio.id, { slideNumber: audio.slideNumber + offset });
+        }
+      }
+
+      console.log(`[cms/sync/renumber-slides] Updated ${slides.length} slides, ${images.length} images, ${mgVideos.length} MG videos, ${audioRecords.length} audio records`);
+
+      res.json({
+        success: true,
+        message: `Renumbered slides with offset ${offset}`,
+        slidesUpdated: slides.length,
+        imagesUpdated: images.length,
+        mgVideosUpdated: mgVideos.length,
+        audioUpdated: audioRecords.length
+      });
+    } catch (error) {
+      console.error('[cms/sync/renumber-slides] Error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ==========================================
   // CMS Push endpoints
   // ==========================================
