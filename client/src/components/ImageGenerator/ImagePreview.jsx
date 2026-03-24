@@ -192,6 +192,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
       ) : hasImage ? (
         <>
           <img
+            key={imageUrl}
             src={imageUrl}
             alt={`Slide ${image.slideNumber}`}
             className="preview-image"
