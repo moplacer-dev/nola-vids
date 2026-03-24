@@ -519,6 +519,14 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const renumberSlides = useCallback(async (assetListId, offset, minSlide, maxSlide) => {
+    return request(`/cms/sync/${assetListId}/renumber-slides`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offset, minSlide, maxSlide })
+    });
+  }, [request]);
+
   // CMS Push hooks
   const getCmsSchema = useCallback(async () => {
     return request('/cms/schema');
@@ -565,6 +573,14 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const updateAssessmentNarrationFromCms = useCallback(async (assessmentId, questionKey, narrationText, pageId) => {
+    return request(`/cms/sync/assessment/${assessmentId}/update-narration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionKey, narrationText, pageId })
+    });
+  }, [request]);
+
   return {
     loading,
     error,
@@ -574,6 +590,7 @@ export function useApi(accessKey) {
     addSlideFromCms,
     deleteSlideFromNola,
     updateNarrationFromCms,
+    renumberSlides,
     // CMS Push
     getCmsSchema,
     pushImageToCms,
@@ -584,6 +601,7 @@ export function useApi(accessKey) {
     fetchAssessmentCmsSync,
     pushAssessmentAudioToCms,
     pushAssessmentImageToCms,
+    updateAssessmentNarrationFromCms,
     // Video generation
     generateTextToVideo,
     generateImageToVideo,

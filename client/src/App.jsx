@@ -47,6 +47,7 @@ export default function App() {
     addSlideFromCms,
     deleteSlideFromNola,
     updateNarrationFromCms,
+    renumberSlides,
     // CMS Push
     pushImageToCms,
     pushAudioToCms,
@@ -109,7 +110,8 @@ export default function App() {
     // Assessment CMS Sync
     fetchAssessmentCmsSync,
     pushAssessmentAudioToCms,
-    pushAssessmentImageToCms
+    pushAssessmentImageToCms,
+    updateAssessmentNarrationFromCms
   } = useApi(accessKey);
 
   const loadJobs = useCallback(async () => {
@@ -512,6 +514,7 @@ export default function App() {
             addSlideFromCms={addSlideFromCms}
             deleteSlideFromNola={deleteSlideFromNola}
             updateNarrationFromCms={updateNarrationFromCms}
+            renumberSlides={renumberSlides}
             pushImageToCms={pushImageToCms}
             pushAudioToCms={pushAudioToCms}
             pushMgVideoToCms={pushMgVideoToCms}
@@ -519,6 +522,7 @@ export default function App() {
             fetchAssessmentCmsSync={fetchAssessmentCmsSync}
             pushAssessmentAudioToCms={pushAssessmentAudioToCms}
             pushAssessmentImageToCms={pushAssessmentImageToCms}
+            updateAssessmentNarrationFromCms={updateAssessmentNarrationFromCms}
           />
         </main>
       ) : null}

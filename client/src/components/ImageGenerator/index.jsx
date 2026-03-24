@@ -50,6 +50,7 @@ export default function ImageGenerator({
   addSlideFromCms,
   deleteSlideFromNola,
   updateNarrationFromCms,
+  renumberSlides,
   // CMS Push
   pushImageToCms,
   pushAudioToCms,
@@ -807,6 +808,12 @@ export default function ImageGenerator({
 
     try {
       await deleteSlideFromNola(selectedAssetList.id, slideNumber);
+
+      // Renumber subsequent slides (shift slides after deleted one down by 1)
+      if (renumberSlides) {
+        await renumberSlides(selectedAssetList.id, -1, slideNumber + 1);
+      }
+
       // Refresh sync data and asset list
       const [syncResult] = await Promise.all([
         fetchCmsSync(selectedAssetList.id),
