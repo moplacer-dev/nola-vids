@@ -97,6 +97,7 @@
   position: relative;
   overflow: hidden;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .job-card::before {
