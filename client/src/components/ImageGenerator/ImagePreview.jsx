@@ -104,17 +104,13 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
   const videoUrl = hasMGVideo ? image.videoPath : (hasVideo ? image.imagePath : null);
 
   const hasImage = !hasVideo && (image.status === 'completed' || image.status === 'uploaded' || image.status === 'imported' || image.status === 'default') && image.imagePath;
-  // Use Supabase image transforms for optimized display, original preserved for downloads
+  // Use original storage URL with cache buster - Supabase Image Transforms CDN ignores custom query params
+  // so we bypass transforms for reliable cache busting after regeneration
   const imageUrl = hasImage ? (() => {
     const url = image.imagePath;
-    const cacheBuster = `t=${encodeURIComponent(image.updatedAt || '')}`;
-    if (url.includes('supabase.co/storage/v1/object/public/')) {
-      return url.replace(
-        '/storage/v1/object/public/',
-        '/storage/v1/render/image/public/'
-      ) + `?width=1200&quality=80&${cacheBuster}`;
-    }
-    return `${url}?${cacheBuster}`;
+    // Use updatedAt timestamp as cache buster to force reload after regeneration
+    const cacheBuster = `t=${encodeURIComponent(image.updatedAt || Date.now())}`;
+    return `${url}${url.includes('?') ? '&' : '?'}${cacheBuster}`;
   })() : null;
 
   // Only use character anchor for character-related asset types
