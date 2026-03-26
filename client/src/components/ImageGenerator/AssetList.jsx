@@ -37,6 +37,13 @@ export default function AssetList({
   const fileInputRefs = useRef({});
   const videoInputRefs = useRef({});
   const [characterToggles, setCharacterToggles] = useState({});
+  const [filterType, setFilterType] = useState('all');
+
+  // Helper to check if an asset type is video-related
+  const isVideoType = (type) => {
+    const t = (type || '').toLowerCase();
+    return t.includes('video') || t.includes('motion_graphics') || t.includes('animation') || t.includes('time_lapse');
+  };
 
   // Build the data - key includes assetNumber for multi-asset slides
   const imageByKey = {};
@@ -153,17 +160,40 @@ export default function AssetList({
     s.assets.some(a => a._fromDb === true)
   ).length;
 
+  // Filter slides based on selected filter
+  const filteredSlides = filterType === 'all'
+    ? slides
+    : slides.filter(slide => {
+        const dbAssets = slide.assets.filter(a => a._fromDb === true);
+        if (filterType === 'videos') {
+          return dbAssets.some(a => isVideoType(a.assetType));
+        }
+        if (filterType === 'images') {
+          return dbAssets.some(a => !isVideoType(a.assetType));
+        }
+        return true;
+      });
+
   // Super simple render with zero CSS dependencies
   return (
     <div className="asset-list">
       <div className="asset-list-header">
-        <h3>Slides ({slides.length})</h3>
+        <h3>Slides ({filteredSlides.length}{filterType !== 'all' ? ` of ${slides.length}` : ''})</h3>
         <div className="asset-list-actions">
+          <select
+            className="filter-dropdown"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+          >
+            <option value="all">All Assets</option>
+            <option value="videos">Videos Only</option>
+            <option value="images">Images Only</option>
+          </select>
           <button
             className="btn-expand-all"
             onClick={() => {
               const allExpanded = {};
-              slides.forEach(s => { allExpanded[s.slideNumber] = true; });
+              filteredSlides.forEach(s => { allExpanded[s.slideNumber] = true; });
               setExpandedSlides(allExpanded);
             }}
             title="Expand all"
@@ -174,7 +204,7 @@ export default function AssetList({
             className="btn-collapse-all"
             onClick={() => {
               const allCollapsed = {};
-              slides.forEach(s => { allCollapsed[s.slideNumber] = false; });
+              filteredSlides.forEach(s => { allCollapsed[s.slideNumber] = false; });
               setExpandedSlides(allCollapsed);
             }}
             title="Collapse all"
@@ -186,7 +216,7 @@ export default function AssetList({
       </div>
 
       <div className="asset-items">
-        {slides.map((slide) => {
+        {filteredSlides.map((slide) => {
           const mgVideo = slide.hasMGAssets ? mgVideoBySlide[parseInt(slide.slideNumber)] : null;
 
           const expanded = isSlideExpanded(slide.slideNumber);
@@ -233,7 +263,33 @@ export default function AssetList({
               <span className="slide-badge">{slide.slideNumber}</span>
               <div className="slide-info">
                 <span className="slide-title">{slide.slideTitle || 'Untitled'}</span>
-                {slide.hasMGAssets && <span className="mg-badge">MG</span>}
+                {(() => {
+                  // Get unique asset types for this slide
+                  const types = [...new Set(dbAssets.map(a => a.assetType || 'image'))];
+                  // Convert to short labels
+                  const getShortLabel = (type) => {
+                    const t = (type || '').toLowerCase();
+                    if (t.includes('motion_graphics_scene')) return 'MG Scene';
+                    if (t.includes('motion_graphics')) return 'MG';
+                    if (t.includes('career_video')) return 'Career Vid';
+                    if (t.includes('video') || t.includes('time_lapse')) return 'Video';
+                    if (t.includes('diagram')) return 'Diagram';
+                    if (t.includes('photo') || t.includes('composite')) return 'Photo';
+                    if (t.includes('icon')) return 'Icon';
+                    if (t.includes('infographic')) return 'Infographic';
+                    if (t.includes('illustration')) return 'Illustration';
+                    if (t.includes('screenshot')) return 'Screenshot';
+                    if (t.includes('screen_recording')) return 'Screen Rec';
+                    if (t.includes('animation')) return 'Animation';
+                    if (t.includes('interactive')) return 'Interactive';
+                    if (t.includes('image')) return 'Image';
+                    return type.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase()).join('');
+                  };
+                  const labels = [...new Set(types.map(getShortLabel))];
+                  return labels.map(label => (
+                    <span key={label} className="asset-type-badge">{label}</span>
+                  ));
+                })()}
               </div>
               {!hasAnyAssets && <span className="no-media-badge">No Media</span>}
               {hasAnyAssets && (
@@ -321,13 +377,9 @@ export default function AssetList({
               const type = asset.assetType || 'image';
               const assetNum = asset.assetNumber || 1;
 
-              // Look up imported metadata using current type (for context fields)
+              // Look up imported metadata using current type (for prompt fallback)
               const metadataKey = `${slide.slideNumber}-${type}-${assetNum}`;
               const importedMetadata = assetMetadataByKey[metadataKey];
-
-              const productionNotes = importedMetadata?.productionNotes || importedMetadata?.production_notes || '';
-              const mediaTeamNotes = importedMetadata?.mediaTeamNotes || importedMetadata?.media_team_notes || importedMetadata?.notes_for_media_team || '';
-              const pedagogicalRationale = importedMetadata?.pedagogicalRationale || importedMetadata?.pedagogical_rationale || '';
 
               // Check if this asset has a character associated
               const hasCharacter = !!img?.characterId;
@@ -377,37 +429,12 @@ export default function AssetList({
                   <p className="asset-prompt">
                     {img?.modifiedPrompt || img?.originalPrompt || importedMetadata?.prompt || importedMetadata?.description || 'No prompt'}
                   </p>
-                  {pedagogicalRationale && (
-                    <p className="asset-rationale">
-                      <span className="note-label">Why:</span> {pedagogicalRationale}
-                    </p>
-                  )}
-                  {productionNotes && (
-                    <p className="asset-note production-note">
-                      <span className="note-label">Production Notes:</span> {productionNotes}
-                    </p>
-                  )}
-                  {mediaTeamNotes && (
-                    <p className="asset-note media-team-note">
-                      <span className="note-label">For Media Team:</span> {mediaTeamNotes}
-                    </p>
-                  )}
                   <div className="asset-actions">
                     <button
                       className="btn-secondary"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Pass both the image record and the full asset context
-                        onEditPrompt({
-                          ...img,
-                          // Include all context fields from imported metadata
-                          asset: {
-                            prompt: importedMetadata?.prompt || importedMetadata?.description || '',
-                            pedagogicalRationale: pedagogicalRationale,
-                            productionNotes: productionNotes,
-                            mediaTeamNotes: mediaTeamNotes
-                          }
-                        });
+                        onEditPrompt(img);
                       }}
                     >
                       Edit Prompt

@@ -31,10 +31,6 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit', sh
   );
 
   const hasRecord = isAddMode || !!image.id;
-  const asset = image.asset || {};
-
-  // Check if there's additional context available (hide in add mode)
-  const hasContext = !isAddMode && (asset.pedagogicalRationale || asset.productionNotes || asset.mediaTeamNotes);
 
   // Check if asset type changed
   const assetTypeChanged = assetType !== (image.assetType || '');
@@ -53,31 +49,6 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit', sh
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       onClose();
-    }
-  };
-
-  // Append a context section to the prompt
-  const appendToPrompt = (label, text) => {
-    if (!text) return;
-    const separator = prompt.trim() ? '\n\n' : '';
-    setPrompt(prompt + separator + `${label}: ${text}`);
-  };
-
-  // Include all context at once
-  const includeAllContext = () => {
-    let additions = [];
-    if (asset.pedagogicalRationale) {
-      additions.push(`WHY: ${asset.pedagogicalRationale}`);
-    }
-    if (asset.productionNotes) {
-      additions.push(`PRODUCTION NOTES: ${asset.productionNotes}`);
-    }
-    if (asset.mediaTeamNotes) {
-      additions.push(`FOR MEDIA TEAM: ${asset.mediaTeamNotes}`);
-    }
-    if (additions.length > 0) {
-      const separator = prompt.trim() ? '\n\n' : '';
-      setPrompt(prompt + separator + additions.join('\n\n'));
     }
   };
 
@@ -127,70 +98,6 @@ export default function PromptEditor({ image, onSave, onClose, mode = 'edit', sh
             </select>
             {!isAddMode && assetTypeChanged && (
               <span className="type-change-indicator">Changed</span>
-            )}
-          </div>
-        )}
-
-        {/* Context Reference Section */}
-        {hasContext && (
-          <div className="prompt-editor-context">
-            <div className="context-header">
-              <span className="context-title">Available Context</span>
-              <button
-                className="btn-include-all"
-                onClick={includeAllContext}
-                title="Append all context to prompt"
-              >
-                Include All
-              </button>
-            </div>
-
-            {asset.pedagogicalRationale && (
-              <div className="context-item">
-                <div className="context-label">
-                  <span>WHY</span>
-                  <button
-                    className="btn-add-context"
-                    onClick={() => appendToPrompt('WHY', asset.pedagogicalRationale)}
-                    title="Add to prompt"
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="context-text">{asset.pedagogicalRationale}</p>
-              </div>
-            )}
-
-            {asset.productionNotes && (
-              <div className="context-item">
-                <div className="context-label">
-                  <span>PRODUCTION NOTES</span>
-                  <button
-                    className="btn-add-context"
-                    onClick={() => appendToPrompt('PRODUCTION NOTES', asset.productionNotes)}
-                    title="Add to prompt"
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="context-text">{asset.productionNotes}</p>
-              </div>
-            )}
-
-            {asset.mediaTeamNotes && (
-              <div className="context-item">
-                <div className="context-label">
-                  <span>FOR MEDIA TEAM</span>
-                  <button
-                    className="btn-add-context"
-                    onClick={() => appendToPrompt('FOR MEDIA TEAM', asset.mediaTeamNotes)}
-                    title="Add to prompt"
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="context-text">{asset.mediaTeamNotes}</p>
-              </div>
             )}
           </div>
         )}

@@ -220,6 +220,11 @@
 .slide-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .slide-title {
@@ -1131,6 +1136,17 @@
   background: #2a2a1a;
   border-color: #4a4a3a;
   color: #9a9a6a;
+}
+
+.asset-type-badge {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  color: #7a7a7a;
+  text-transform: uppercase;
 }
 
 .mg-expand-btn {
@@ -2666,6 +2682,28 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.filter-dropdown {
+  padding: 4px 8px;
+  font-family: monospace;
+  font-size: 10px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  color: #8a8a8a;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-dropdown:hover {
+  border-color: #3a3a3a;
+  color: #aaaaaa;
+}
+
+.filter-dropdown:focus {
+  outline: none;
+  border-color: #4a4a4a;
 }
 
 .btn-expand-all,
