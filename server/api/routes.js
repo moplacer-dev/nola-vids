@@ -3193,13 +3193,17 @@ module.exports = (jobManager) => {
 
       // Auto-save pageIds for matched slides to cmsPageMapping
       // This enables Push buttons for slides that matched
+      // Always update mappings to handle CMS restructuring
       const cmsPageMapping = assetList.cmsPageMapping || {};
       let mappingUpdated = false;
 
       // Save exact matches
       for (const match of comparison.matched) {
         const slideKey = String(match.nolaSlideNumber);
-        if (match.pageId && !cmsPageMapping[slideKey]) {
+        if (match.pageId && cmsPageMapping[slideKey] !== match.pageId) {
+          if (cmsPageMapping[slideKey]) {
+            console.log(`[cms/sync/fetch] Updating slide ${slideKey} mapping: ${cmsPageMapping[slideKey]} → ${match.pageId}`);
+          }
           cmsPageMapping[slideKey] = match.pageId;
           mappingUpdated = true;
         }
@@ -3208,7 +3212,10 @@ module.exports = (jobManager) => {
       // Save narration mismatches (still matched by similarity, just have text differences)
       for (const match of comparison.narrationMismatches) {
         const slideKey = String(match.nolaSlideNumber);
-        if (match.pageId && !cmsPageMapping[slideKey]) {
+        if (match.pageId && cmsPageMapping[slideKey] !== match.pageId) {
+          if (cmsPageMapping[slideKey]) {
+            console.log(`[cms/sync/fetch] Updating slide ${slideKey} mapping: ${cmsPageMapping[slideKey]} → ${match.pageId}`);
+          }
           cmsPageMapping[slideKey] = match.pageId;
           mappingUpdated = true;
         }
@@ -3881,25 +3888,31 @@ module.exports = (jobManager) => {
         linkedTo = { type: 'popup', popupId: targetPopup.id, popupTitle: targetPopup.title };
       } else {
         // Check if this is an answer narration type (answer_a, answer_b, etc.)
-        const answerSort = cmsClient.getAnswerSortFromNarrationType(audio.narrationType);
+        const answerIndex = cmsClient.getAnswerSortFromNarrationType(audio.narrationType);
 
-        if (answerSort !== null) {
+        if (answerIndex !== null) {
           // Answer narration types → content_answers.answer_narration
+          // Answers are returned sorted by sort value, so use array index
           const answers = await cmsClient.getPageAnswers(pageId);
-          const targetAnswer = answers.find(a => a.sort === answerSort);
+          const targetAnswer = answers[answerIndex]; // answer_a = index 0, answer_b = index 1, etc.
 
           if (!targetAnswer) {
-            throw new Error(`No answer found at sort position ${answerSort} for page ${pageId}`);
+            throw new Error(`No answer found at index ${answerIndex} (need ${answerIndex + 1} answers, page has ${answers.length}) for page ${pageId}`);
           }
 
-          console.log(`[cms/push/audio] Linking to answer ${targetAnswer.id} (sort=${answerSort})`);
+          console.log(`[cms/push/audio] Linking to answer ${targetAnswer.id} (index=${answerIndex}, sort=${targetAnswer.sort})`);
           await cmsClient.linkFileToAnswer(targetAnswer.id, cmsFile.id);
-          linkedTo = { type: 'answer', answerId: targetAnswer.id, answerSort };
+          linkedTo = { type: 'answer', answerId: targetAnswer.id, answerIndex };
         } else {
           // Non-answer types (question, scenario, correct_response, etc.) → page fields
           const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
           console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
-          await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+          const updatedPage = await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+
+          // Warn if the field wasn't updated as expected
+          if (!updatedPage || updatedPage[fieldName] !== cmsFile.id) {
+            console.warn(`[cms/push/audio] WARNING: ${fieldName} field may not have been updated`);
+          }
           linkedTo = { type: 'page', pageId, fieldName };
         }
       }
