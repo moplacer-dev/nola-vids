@@ -3790,11 +3790,28 @@ module.exports = (jobManager) => {
         await cmsClient.linkFileToPopup(targetPopup.id, cmsFile.id);
         linkedTo = { type: 'popup', popupId: targetPopup.id, popupTitle: targetPopup.title };
       } else {
-        // Link to page field as before
-        const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
-        console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
-        await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
-        linkedTo = { type: 'page', pageId, fieldName };
+        // Check if this is an answer narration type (answer_a, answer_b, etc.)
+        const answerSort = cmsClient.getAnswerSortFromNarrationType(audio.narrationType);
+
+        if (answerSort !== null) {
+          // Answer narration types → content_answers.answer_narration
+          const answers = await cmsClient.getPageAnswers(pageId);
+          const targetAnswer = answers.find(a => a.sort === answerSort);
+
+          if (!targetAnswer) {
+            throw new Error(`No answer found at sort position ${answerSort} for page ${pageId}`);
+          }
+
+          console.log(`[cms/push/audio] Linking to answer ${targetAnswer.id} (sort=${answerSort})`);
+          await cmsClient.linkFileToAnswer(targetAnswer.id, cmsFile.id);
+          linkedTo = { type: 'answer', answerId: targetAnswer.id, answerSort };
+        } else {
+          // Non-answer types (question, scenario, correct_response, etc.) → page fields
+          const fieldName = cmsClient.getCmsFieldForAsset('audio', audio.narrationType);
+          console.log(`[cms/push/audio] Linking to page ${pageId} field ${fieldName}`);
+          await cmsClient.linkFileToPage(pageId, fieldName, cmsFile.id);
+          linkedTo = { type: 'page', pageId, fieldName };
+        }
       }
 
       // Update local record with CMS file ID and push status
