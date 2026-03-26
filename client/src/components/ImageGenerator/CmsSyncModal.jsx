@@ -42,15 +42,28 @@ export default function CmsSyncModal({
   };
 
   const handleUpdateAllNarrations = async () => {
+    // Only update non-title-matched slides (title matches have intentionally different structure)
+    const updatableMismatches = narrationMismatches.filter(m => m.matchedBy !== 'title');
+    if (updatableMismatches.length === 0) return;
+
     setActionInProgress('update-all');
     try {
-      for (const mismatch of narrationMismatches) {
-        await onUpdateNarration(mismatch.nolaSlideNumber, mismatch.cmsNarration, mismatch.pageId);
+      const results = await Promise.allSettled(
+        updatableMismatches.map(mismatch =>
+          onUpdateNarration(mismatch.nolaSlideNumber, mismatch.cmsNarration, mismatch.pageId)
+        )
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        console.warn(`Update All: ${updatableMismatches.length - failed} succeeded, ${failed} failed`);
       }
     } finally {
       setActionInProgress(null);
     }
   };
+
+  // Check if there are any updatable mismatches (non-title-matched)
+  const hasUpdatableMismatches = narrationMismatches.some(m => m.matchedBy !== 'title');
 
   return (
     <div className="cms-sync-overlay" onClick={onClose}>
@@ -92,58 +105,76 @@ export default function CmsSyncModal({
                   <div className="sync-section-header">
                     <span className="sync-icon mismatch">!</span>
                     <h4>Narration Mismatch ({narrationMismatches.length})</h4>
-                    <button
-                      className="btn-update-all"
-                      onClick={handleUpdateAllNarrations}
-                      disabled={actionInProgress !== null}
-                    >
-                      {actionInProgress === 'update-all' ? 'Updating...' : 'Update All'}
-                    </button>
+                    {hasUpdatableMismatches && (
+                      <button
+                        className="btn-update-all"
+                        onClick={handleUpdateAllNarrations}
+                        disabled={actionInProgress !== null}
+                      >
+                        {actionInProgress === 'update-all' ? 'Updating...' : 'Update All'}
+                      </button>
+                    )}
                   </div>
                   <p className="sync-section-note">
-                    These slides matched but have different narration text. Update to use CMS version.
+                    These slides matched but have different narration text.
+                    {hasUpdatableMismatches ? ' Update to use CMS version.' : ' Page mappings saved.'}
                   </p>
                   <div className="sync-slide-list">
-                    {narrationMismatches.map((mismatch) => (
-                      <div key={mismatch.pageId} className="sync-slide-item mismatch-item">
-                        <div className="mismatch-header">
-                          <div className="sync-slide-info">
-                            <span className="slide-number">NOLA #{mismatch.nolaSlideNumber}</span>
-                            <span className="slide-title">{mismatch.nolaTitle || mismatch.cmsTitle || '(untitled)'}</span>
-                            <span className="match-confidence">{mismatch.similarity}% match</span>
-                          </div>
-                          <div className="mismatch-actions">
-                            <button
-                              className="btn-expand"
-                              onClick={() => setExpandedMismatch(
-                                expandedMismatch === mismatch.pageId ? null : mismatch.pageId
+                    {narrationMismatches.map((mismatch) => {
+                      const isTitleMatch = mismatch.matchedBy === 'title';
+                      return (
+                        <div key={mismatch.pageId} className="sync-slide-item mismatch-item">
+                          <div className="mismatch-header">
+                            <div className="sync-slide-info">
+                              <span className="slide-number">NOLA #{mismatch.nolaSlideNumber}</span>
+                              <span className="slide-title">{mismatch.nolaTitle || mismatch.cmsTitle || '(untitled)'}</span>
+                              {isTitleMatch ? (
+                                <span className="match-confidence title-match">TITLE MATCH</span>
+                              ) : (
+                                <span className="match-confidence">{mismatch.similarity}% match</span>
                               )}
-                            >
-                              {expandedMismatch === mismatch.pageId ? 'Hide' : 'Show Diff'}
-                            </button>
-                            <button
-                              className="btn-update-narration"
-                              onClick={() => handleUpdateNarration(mismatch)}
-                              disabled={actionInProgress !== null}
-                            >
-                              {actionInProgress === `update-${mismatch.nolaSlideNumber}` ? 'Updating...' : 'Update'}
-                            </button>
+                            </div>
+                            <div className="mismatch-actions">
+                              <button
+                                className="btn-expand"
+                                onClick={() => setExpandedMismatch(
+                                  expandedMismatch === mismatch.pageId ? null : mismatch.pageId
+                                )}
+                              >
+                                {expandedMismatch === mismatch.pageId ? 'Hide' : 'Show Diff'}
+                              </button>
+                              {!isTitleMatch && (
+                                <button
+                                  className="btn-update-narration"
+                                  onClick={() => handleUpdateNarration(mismatch)}
+                                  disabled={actionInProgress !== null}
+                                >
+                                  {actionInProgress === `update-${mismatch.nolaSlideNumber}` ? 'Updating...' : 'Update'}
+                                </button>
+                              )}
+                            </div>
                           </div>
+                          {isTitleMatch && (
+                            <div className="title-match-note">
+                              Page mapping saved. Narration differs because CMS combines question + answers,
+                              but NOLA.vids separates them for individual audio generation.
+                            </div>
+                          )}
+                          {expandedMismatch === mismatch.pageId && (
+                            <div className="narration-diff">
+                              <div className="diff-section diff-nola">
+                                <strong>NOLA.vids (current):</strong>
+                                <p>{mismatch.nolaSlideNarration || '(empty)'}</p>
+                              </div>
+                              <div className="diff-section diff-cms">
+                                <strong>CMS (source of truth):</strong>
+                                <p>{mismatch.cmsNarration || '(empty)'}</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {expandedMismatch === mismatch.pageId && (
-                          <div className="narration-diff">
-                            <div className="diff-section diff-nola">
-                              <strong>NOLA.vids (current):</strong>
-                              <p>{mismatch.nolaSlideNarration || '(empty)'}</p>
-                            </div>
-                            <div className="diff-section diff-cms">
-                              <strong>CMS (source of truth):</strong>
-                              <p>{mismatch.cmsNarration || '(empty)'}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

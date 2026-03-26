@@ -327,13 +327,65 @@ class DirectusCMSClient {
           });
           matchedCmsIds.add(cmsPage.pageId);
           matchedNolaNumbers.add(bestMatch.slideNumber);
+        } else {
+          // Narration didn't match well enough - try matching by title as fallback
+          const cmsTitleNorm = (cmsPage.title || '').toLowerCase().trim();
+          if (cmsTitleNorm) {
+            for (const { slide, signature } of nolaWithSignatures) {
+              if (matchedNolaNumbers.has(slide.slideNumber)) continue;
+              const nolaTitleNorm = (slide.title || '').toLowerCase().trim();
+              if (cmsTitleNorm === nolaTitleNorm) {
+                const similarity = signature ? this.calculateSimilarity(cmsSignature, signature) : 0;
+                matched.push({
+                  cmsSlideNumber: cmsPage.slideNumber,
+                  nolaSlideNumber: slide.slideNumber,
+                  pageId: cmsPage.pageId,
+                  cmsTitle: cmsPage.title,
+                  nolaTitle: slide.title,
+                  similarity: Math.round(similarity * 100),
+                  matchedBy: 'title',
+                  cmsNarration: cmsPage.narrationText || '',
+                  nolaSlideNarration: slide.narrationText || ''
+                });
+                matchedCmsIds.add(cmsPage.pageId);
+                matchedNolaNumbers.add(slide.slideNumber);
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        // No signature (empty narration) - try matching by title instead
+        const cmsTitleNorm = (cmsPage.title || '').toLowerCase().trim();
+        if (cmsTitleNorm) {
+          for (const { slide } of nolaWithSignatures) {
+            if (matchedNolaNumbers.has(slide.slideNumber)) continue;
+            const nolaTitleNorm = (slide.title || '').toLowerCase().trim();
+            if (cmsTitleNorm === nolaTitleNorm) {
+              matched.push({
+                cmsSlideNumber: cmsPage.slideNumber,
+                nolaSlideNumber: slide.slideNumber,
+                pageId: cmsPage.pageId,
+                cmsTitle: cmsPage.title,
+                nolaTitle: slide.title,
+                similarity: 0, // Title match only, no narration comparison
+                matchedBy: 'title',
+                cmsNarration: cmsPage.narrationText || '',
+                nolaSlideNarration: slide.narrationText || ''
+              });
+              matchedCmsIds.add(cmsPage.pageId);
+              matchedNolaNumbers.add(slide.slideNumber);
+              break;
+            }
+          }
         }
       }
     }
 
     // Separate exact matches from narration mismatches
-    const exactMatches = matched.filter(m => m.similarity === 100);
-    const narrationMismatches = matched.filter(m => m.similarity < 100);
+    // Title-only matches go to narrationMismatches so user can review/update narration
+    const exactMatches = matched.filter(m => m.similarity === 100 && !m.matchedBy);
+    const narrationMismatches = matched.filter(m => m.similarity < 100 || m.matchedBy === 'title');
 
     // CMS-Only: pages in CMS that didn't match any NOLA slide
     const cmsOnly = cmsPages

@@ -323,6 +323,24 @@
   margin-left: 4px;
 }
 
+.match-confidence.title-match {
+  color: #6a9a6a;
+  border-color: #2a4a2a;
+  background: #1a2a1a;
+}
+
+.title-match-note {
+  font-family: monospace;
+  font-size: 10px;
+  color: #6a9a6a;
+  background: #0a1a0a;
+  border: 1px solid #1a2a1a;
+  padding: 8px 12px;
+  margin-top: 8px;
+  border-radius: 2px;
+  line-height: 1.4;
+}
+
 /* Narration Mismatch section */
 .sync-icon.mismatch {
   background: #2a2a1a;

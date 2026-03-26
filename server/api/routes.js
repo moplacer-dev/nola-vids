@@ -3159,10 +3159,11 @@ module.exports = (jobManager) => {
         // Find the appropriate audio record for comparison
         let audioRecord;
         if (isRcp) {
-          // For RCP: use 'question' or 'questions' narration type
+          // For RCP: prefer 'question' or 'questions' type, fall back to slide_narration or first available
           audioRecord = slideAudioRecords.find(a =>
             a.narrationType === 'question' || a.narrationType === 'questions'
-          );
+          ) || slideAudioRecords.find(a => a.narrationType === 'slide_narration')
+            || slideAudioRecords[0];
         } else {
           // For regular sessions: use 'slide_narration', or 'question' for structured slides, or first available
           audioRecord = slideAudioRecords.find(a => a.narrationType === 'slide_narration')
@@ -3173,6 +3174,7 @@ module.exports = (jobManager) => {
         // Get narration text from the slide data or the audio record
         const narrationText = slide.narrationText || slide.narration_text ||
                              (audioRecord ? audioRecord.narrationText : '') || '';
+
         return {
           slideNumber: slideNum,
           title: slide.slideTitle || slide.slide_title || slide.title || '',
@@ -3259,32 +3261,116 @@ module.exports = (jobManager) => {
         cmsPageId
       });
 
-      // Create or update generated_audio record with narration text
+      // Create audio records - RCP sessions need multi-part narration
+      const isRcp = assetList.sessionType === 'rcp';
       const moduleCode = getModuleCode(assetList.moduleName);
-      const audioCmsFilename = `MOD.${moduleCode}.${assetList.sessionNumber}.${slideNumber}.NAR1.mp3`;
 
-      // Check if audio record already exists for this slide
-      const existingAudio = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, 'slide_narration');
-      if (existingAudio) {
-        // Update existing record
-        await generatedAudioDb.update(existingAudio.id, {
-          narrationText: pageDetails.narrationText || '',
-          cmsFilename: audioCmsFilename,
-          voiceId: assetList.defaultVoiceId,
-          voiceName: assetList.defaultVoiceName
-        });
+      if (isRcp) {
+        // RCP: Create multi-part narration structure (question, answers, feedback)
+        console.log(`[cms/sync/add-slide] RCP session - creating multi-part narration for slide ${slideNumber}`);
+
+        // Fetch answers from CMS page
+        const answers = await cmsClient.getPageAnswers(cmsPageId);
+        console.log(`[cms/sync/add-slide] Found ${answers.length} answers for page ${cmsPageId}`);
+
+        // 1. Create 'question' type audio
+        const questionCmsFilename = generateRcpAudioFilename(
+          assetList.moduleName, assetList.sessionNumber, slideNumber, 'question'
+        );
+        const existingQuestion = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, 'question');
+        if (existingQuestion) {
+          await generatedAudioDb.update(existingQuestion.id, {
+            narrationText: pageDetails.narrationText || '',
+            cmsFilename: questionCmsFilename,
+            voiceId: assetList.defaultVoiceId,
+            voiceName: assetList.defaultVoiceName
+          });
+        } else {
+          await generatedAudioDb.create({
+            assetListId: assetList.id,
+            slideNumber,
+            narrationType: 'question',
+            narrationText: pageDetails.narrationText || '',
+            cmsFilename: questionCmsFilename,
+            voiceId: assetList.defaultVoiceId,
+            voiceName: assetList.defaultVoiceName,
+            status: 'pending'
+          });
+        }
+
+        // 2. Create answer audio records
+        const answerLetters = ['a', 'b', 'c', 'd', 'e', 'f'];
+        for (let i = 0; i < answers.length && i < 6; i++) {
+          const letter = answerLetters[i];
+          const narrationType = `answer_${letter}`;
+          const cmsFilename = generateRcpAudioFilename(
+            assetList.moduleName, assetList.sessionNumber, slideNumber, narrationType
+          );
+          const existingAnswer = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, narrationType);
+          if (existingAnswer) {
+            await generatedAudioDb.update(existingAnswer.id, {
+              narrationText: answers[i].text || '',
+              cmsFilename,
+              voiceId: assetList.defaultVoiceId,
+              voiceName: assetList.defaultVoiceName
+            });
+          } else {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber,
+              narrationType,
+              narrationText: answers[i].text || '',
+              cmsFilename,
+              voiceId: assetList.defaultVoiceId,
+              voiceName: assetList.defaultVoiceName,
+              status: 'pending'
+            });
+          }
+        }
+
+        // 3. Create feedback placeholders (correct_response, incorrect_1)
+        for (const feedbackType of ['correct_response', 'incorrect_1']) {
+          const cmsFilename = generateRcpAudioFilename(
+            assetList.moduleName, assetList.sessionNumber, slideNumber, feedbackType
+          );
+          const existingFeedback = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, feedbackType);
+          if (!existingFeedback) {
+            await generatedAudioDb.create({
+              assetListId: assetList.id,
+              slideNumber,
+              narrationType: feedbackType,
+              narrationText: '', // Empty - user will fill in or import later
+              cmsFilename,
+              voiceId: assetList.defaultVoiceId,
+              voiceName: assetList.defaultVoiceName,
+              status: 'pending'
+            });
+          }
+        }
       } else {
-        // Create new record
-        await generatedAudioDb.create({
-          assetListId: assetList.id,
-          slideNumber,
-          narrationType: 'slide_narration',
-          narrationText: pageDetails.narrationText || '',
-          cmsFilename: audioCmsFilename,
-          voiceId: assetList.defaultVoiceId,
-          voiceName: assetList.defaultVoiceName,
-          status: 'pending'
-        });
+        // Regular sessions: create single slide_narration record
+        const audioCmsFilename = `MOD.${moduleCode}.${assetList.sessionNumber}.${slideNumber}.NAR1.mp3`;
+
+        const existingAudio = await generatedAudioDb.getByAssetListSlideAndType(assetList.id, slideNumber, 'slide_narration');
+        if (existingAudio) {
+          await generatedAudioDb.update(existingAudio.id, {
+            narrationText: pageDetails.narrationText || '',
+            cmsFilename: audioCmsFilename,
+            voiceId: assetList.defaultVoiceId,
+            voiceName: assetList.defaultVoiceName
+          });
+        } else {
+          await generatedAudioDb.create({
+            assetListId: assetList.id,
+            slideNumber,
+            narrationType: 'slide_narration',
+            narrationText: pageDetails.narrationText || '',
+            cmsFilename: audioCmsFilename,
+            voiceId: assetList.defaultVoiceId,
+            voiceName: assetList.defaultVoiceName,
+            status: 'pending'
+          });
+        }
       }
 
       // Create generated_image placeholder if slide type indicates media needed
