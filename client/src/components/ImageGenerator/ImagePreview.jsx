@@ -1,9 +1,25 @@
+import { useRef, useEffect } from 'react';
+
 export default function ImagePreview({ image, audio, onRegenerate, onRegenerateAudio }) {
+  // Calculate audio URL at top level for hooks
+  const hasAudioReady = audio && (audio.status === 'completed' || audio.status === 'uploaded') && audio.audioPath;
+  const audioUrl = hasAudioReady ? `${audio.audioPath}?t=${encodeURIComponent(audio.updatedAt || '')}` : null;
+
+  // Ref and effect for autoplay when audio is selected
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (audioUrl && audioRef.current) {
+      audioRef.current.play().catch(err => {
+        // Browser may block autoplay - user already clicked so this is unlikely
+        console.log('Autoplay prevented:', err);
+      });
+    }
+  }, [audioUrl]);
+
   // If audio is selected, show audio preview
   if (audio) {
-    const hasAudio = (audio.status === 'completed' || audio.status === 'uploaded') && audio.audioPath;
-    // audioPath is the full Supabase public URL - use directly with cache buster
-    const audioUrl = hasAudio ? `${audio.audioPath}?t=${encodeURIComponent(audio.updatedAt || '')}` : null;
+    const hasAudio = hasAudioReady;
     const audioDownloadUrl = hasAudio ? audio.audioPath : null;
 
     const handleDownload = () => {
@@ -32,6 +48,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
           <>
             <div className="audio-player-container">
               <audio
+                ref={audioRef}
                 key={audioUrl}
                 src={audioUrl}
                 controls
