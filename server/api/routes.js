@@ -807,13 +807,13 @@ module.exports = (jobManager) => {
               type: 'existing',
               record: existing,
               slideTitle,
-              cmsFilename: existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset),
+              cmsFilename: existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType),
               asset
             });
           }
         } else {
           // Queue creation for new record
-          const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset);
+          const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
           const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
           toCreate.push({
             assetListId: assetList.id,
@@ -1567,7 +1567,8 @@ module.exports = (jobManager) => {
             const newCmsFilename = generateCmsFilename(
               assetList.moduleName,
               assetList.sessionNumber,
-              { slideNumber: image.slideNumber, type: assetType, assetNumber: 1 }
+              { slideNumber: image.slideNumber, type: assetType, assetNumber: 1 },
+              assetList.sessionType
             );
             updates.cmsFilename = newCmsFilename;
           }
@@ -1661,7 +1662,8 @@ module.exports = (jobManager) => {
         outputFilename = generateCmsFilename(
           assetList.moduleName,
           assetList.sessionNumber,
-          { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 }
+          { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 },
+          assetList.sessionType
         ).replace(/\.png$/, ext);
       }
 
@@ -1749,7 +1751,8 @@ module.exports = (jobManager) => {
           outputFilename = generateCmsFilename(
             assetList.moduleName,
             assetList.sessionNumber,
-            { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 }
+            { slideNumber: genImage.slideNumber, type: genImage.assetType, assetNumber: genImage.assetNumber || 1 },
+            assetList.sessionType
           ).replace(/\.png$/, ext);
         }
       } else {
@@ -2037,7 +2040,8 @@ module.exports = (jobManager) => {
         : generateCmsFilename(
             assetList.moduleName,
             assetList.sessionNumber,
-            { slideNumber: parseInt(slideNumber), type: assetType, assetNumber: newAssetNumber }
+            { slideNumber: parseInt(slideNumber), type: assetType, assetNumber: newAssetNumber },
+            assetList.sessionType
           );
 
       const characters = await characterDb.getByModule(assetList.moduleName);
@@ -3379,7 +3383,7 @@ module.exports = (jobManager) => {
         const imageCmsFilename = generateCmsFilename(assetList.moduleName, assetList.sessionNumber, {
           slideNumber,
           type: 'image'
-        });
+        }, assetList.sessionType);
 
         await generatedImageDb.create({
           assetListId: assetList.id,
@@ -4745,7 +4749,7 @@ async function processAssetList({
         const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
         const defaultImage = await getDefaultImageForSlide(slideTitle);
         if (defaultImage) {
-          const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset);
+          const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
           const result = await applyDefaultImage(existing.id, defaultImage, cmsFilename);
           existing.status = 'default';
           existing.imagePath = result.outputPath;
@@ -4758,7 +4762,7 @@ async function processAssetList({
       kept++;
     } else {
       // Create new pending record
-      const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset);
+      const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
       const image = await generatedImageDb.create({
         assetListId: assetList.id,
         slideNumber: asset.slideNumber,
@@ -4907,9 +4911,10 @@ async function processAssetList({
   };
 }
 
-function generateCmsFilename(moduleName, sessionNumber, asset) {
+function generateCmsFilename(moduleName, sessionNumber, asset, sessionType = 'regular') {
   const moduleCode = getModuleCode(moduleName);
-  const session = sessionNumber || 0;
+  // Add 'R' suffix for RCP sessions (matching audio filename pattern)
+  const sessionCode = sessionType === 'rcp' ? `${sessionNumber}R` : (sessionNumber || 0);
   const slide = asset.slideNumber || 0;
 
   const typeCodeMap = {
@@ -4925,7 +4930,7 @@ function generateCmsFilename(moduleName, sessionNumber, asset) {
   const typeCode = typeCodeMap[asset.type] || 'IMG';
   const assetNum = asset.assetNumber ?? asset.asset_number ?? 1;
 
-  return `MOD.${moduleCode}.${session}.${slide}.${typeCode}${assetNum}.png`;
+  return `MOD.${moduleCode}.${sessionCode}.${slide}.${typeCode}${assetNum}.png`;
 }
 
 // Generate CMS filename for assessment visuals
