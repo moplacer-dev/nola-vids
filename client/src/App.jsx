@@ -400,21 +400,9 @@ export default function App() {
                   ) : imagePath ? (
                     <div className="image-result">
                       <img
-                        src={(() => {
-                          // Use Supabase image transforms for optimized display
-                          const url = imagePath;
-                          if (url.includes('supabase.co/storage/v1/object/public/')) {
-                            return url.replace(
-                              '/storage/v1/object/public/',
-                              '/storage/v1/render/image/public/'
-                            ) + '?width=1200&quality=80';
-                          }
-                          return url;
-                        })()}
+                        src={imagePath}
                         alt="Generated"
                         className="generated-image"
-                        width={displayImage?.width}
-                        height={displayImage?.height}
                         loading="eager"
                         decoding="async"
                         fetchPriority="high"
