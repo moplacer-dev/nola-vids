@@ -1,5 +1,6 @@
 const { supabase } = require('./supabase');
 const { v4: uuidv4 } = require('uuid');
+const { chunkedPromiseAll } = require('../utils/chunkedPromise');
 
 /**
  * Initialize database connection
@@ -965,35 +966,33 @@ const generatedImageQueries = {
 
   // Batch update multiple images by ID
   // Takes an array of { id, updates } objects
+  // Uses chunked execution (5 at a time) to prevent memory spikes
   async updateBulk(updates) {
     if (!updates || updates.length === 0) return [];
     const now = new Date().toISOString();
 
-    // Supabase doesn't support batch updates natively, so we use Promise.all
-    // but we can at least run them in parallel
-    const results = await Promise.all(
-      updates.map(async ({ id, ...updateFields }) => {
-        const updateData = { updated_at: now };
+    // Process in chunks of 5 to prevent memory spikes from concurrent operations
+    const results = await chunkedPromiseAll(updates, async ({ id, ...updateFields }) => {
+      const updateData = { updated_at: now };
 
-        if (updateFields.modifiedPrompt !== undefined) updateData.modified_prompt = updateFields.modifiedPrompt;
-        if (updateFields.imagePath !== undefined) updateData.image_path = updateFields.imagePath;
-        if (updateFields.status !== undefined) updateData.status = updateFields.status;
-        if (updateFields.characterId !== undefined) updateData.character_id = updateFields.characterId;
-        if (updateFields.assetType !== undefined) updateData.asset_type = updateFields.assetType;
-        if (updateFields.cmsFilename !== undefined) updateData.cms_filename = updateFields.cmsFilename;
-        if (updateFields.originalPrompt !== undefined) updateData.original_prompt = updateFields.originalPrompt;
+      if (updateFields.modifiedPrompt !== undefined) updateData.modified_prompt = updateFields.modifiedPrompt;
+      if (updateFields.imagePath !== undefined) updateData.image_path = updateFields.imagePath;
+      if (updateFields.status !== undefined) updateData.status = updateFields.status;
+      if (updateFields.characterId !== undefined) updateData.character_id = updateFields.characterId;
+      if (updateFields.assetType !== undefined) updateData.asset_type = updateFields.assetType;
+      if (updateFields.cmsFilename !== undefined) updateData.cms_filename = updateFields.cmsFilename;
+      if (updateFields.originalPrompt !== undefined) updateData.original_prompt = updateFields.originalPrompt;
 
-        const { data, error } = await supabase
-          .from('generated_images')
-          .update(updateData)
-          .eq('id', id)
-          .select()
-          .single();
+      const { data, error } = await supabase
+        .from('generated_images')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
 
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? parseGeneratedImageRow(data) : null;
-      })
-    );
+      if (error && error.code !== 'PGRST116') throw error;
+      return data ? parseGeneratedImageRow(data) : null;
+    }, 5);
 
     return results.filter(Boolean);
   }
@@ -1426,17 +1425,15 @@ const generatedAudioQueries = {
       await this.createBulk(toCreate);
     }
 
-    // Batch update existing records (run in parallel)
+    // Batch update existing records (chunked to prevent memory spikes)
     if (toUpdate.length > 0) {
       const now = new Date().toISOString();
-      await Promise.all(
-        toUpdate.map(({ id, narrationText }) =>
-          supabase
-            .from('generated_audio')
-            .update({ narration_text: narrationText, updated_at: now })
-            .eq('id', id)
-        )
-      );
+      await chunkedPromiseAll(toUpdate, ({ id, narrationText }) =>
+        supabase
+          .from('generated_audio')
+          .update({ narration_text: narrationText, updated_at: now })
+          .eq('id', id)
+      , 5);
     }
 
     return { created: toCreate.length, updated: toUpdate.length };
@@ -1476,17 +1473,15 @@ const generatedAudioQueries = {
       await this.createBulk(toCreate);
     }
 
-    // Batch update existing records (run in parallel)
+    // Batch update existing records (chunked to prevent memory spikes)
     if (toUpdate.length > 0) {
       const now = new Date().toISOString();
-      await Promise.all(
-        toUpdate.map(({ id, narrationText }) =>
-          supabase
-            .from('generated_audio')
-            .update({ narration_text: narrationText, updated_at: now })
-            .eq('id', id)
-        )
-      );
+      await chunkedPromiseAll(toUpdate, ({ id, narrationText }) =>
+        supabase
+          .from('generated_audio')
+          .update({ narration_text: narrationText, updated_at: now })
+          .eq('id', id)
+      , 5);
     }
 
     return { created: toCreate.length, updated: toUpdate.length };

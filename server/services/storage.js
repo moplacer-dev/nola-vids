@@ -1,5 +1,6 @@
 const { supabase } = require('../db/supabase');
 const path = require('path');
+const { Readable } = require('stream');
 
 // Storage bucket names
 const BUCKETS = {
@@ -88,7 +89,7 @@ async function deleteFile(bucket, filename) {
 }
 
 /**
- * Download a file from Supabase Storage
+ * Download a file from Supabase Storage (buffered - loads entire file into memory)
  * @param {string} bucket - The bucket name
  * @param {string} filename - The filename/path within the bucket
  * @returns {Promise<Buffer>} - The file data as a buffer
@@ -104,6 +105,53 @@ async function downloadFile(bucket, filename) {
 
   const arrayBuffer = await data.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Create a signed URL for temporary authenticated access
+ * @param {string} bucket - The bucket name
+ * @param {string} filename - The filename/path within the bucket
+ * @param {number} expiresIn - Seconds until URL expires (default: 60)
+ * @returns {Promise<string>} - The signed URL
+ */
+async function createSignedUrl(bucket, filename, expiresIn = 60) {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(filename, expiresIn);
+
+  if (error) {
+    throw new Error(`Failed to create signed URL for ${bucket}/${filename}: ${error.message}`);
+  }
+
+  return data.signedUrl;
+}
+
+/**
+ * Stream a file from Supabase Storage (memory-efficient for large files)
+ * Returns a Node.js Readable stream and metadata
+ * @param {string} bucket - The bucket name
+ * @param {string} filename - The filename/path within the bucket
+ * @returns {Promise<{stream: Readable, contentLength: number|null, contentType: string|null}>}
+ */
+async function streamFile(bucket, filename) {
+  // Get signed URL for authenticated access
+  const signedUrl = await createSignedUrl(bucket, filename, 60);
+
+  // Fetch the file
+  const response = await fetch(signedUrl);
+
+  if (!response.ok) {
+    throw new Error(`Failed to stream file from ${bucket}/${filename}: ${response.status} ${response.statusText}`);
+  }
+
+  // Convert Web ReadableStream to Node.js Readable stream
+  const stream = Readable.fromWeb(response.body);
+
+  return {
+    stream,
+    contentLength: response.headers.get('content-length'),
+    contentType: response.headers.get('content-type')
+  };
 }
 
 /**
@@ -189,6 +237,8 @@ module.exports = {
   getPublicUrl,
   deleteFile,
   downloadFile,
+  createSignedUrl,
+  streamFile,
   copyFile,
   fileExists,
   getFilenameFromUrl,

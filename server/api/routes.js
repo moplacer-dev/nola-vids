@@ -56,6 +56,7 @@ const {
 } = require('../utils/narrationParser');
 
 const { getModuleCode } = require('../utils/moduleConfig');
+const { chunkedPromiseAll } = require('../utils/chunkedPromise');
 
 const router = express.Router();
 
@@ -855,9 +856,10 @@ module.exports = (jobManager) => {
         });
       }
 
-      // Apply default images in parallel (these require storage ops)
+      // Apply default images in chunks (these require storage ops - downloads/uploads)
+      // Process 3 at a time to prevent memory spikes from concurrent 4MB file operations
       let defaultsApplied = 0;
-      const defaultImagePromises = pendingDefaultChecks.map(async (check) => {
+      const defaultResults = await chunkedPromiseAll(pendingDefaultChecks, async (check) => {
         const defaultImage = await getDefaultImageForSlide(check.slideTitle);
         if (defaultImage) {
           const result = await applyDefaultImage(check.record.id, defaultImage, check.cmsFilename);
@@ -867,8 +869,7 @@ module.exports = (jobManager) => {
           return true; // Indicates a default was applied
         }
         return false;
-      });
-      const defaultResults = await Promise.all(defaultImagePromises);
+      }, 3);
       defaultsApplied = defaultResults.filter(Boolean).length;
 
       // Build final generatedImages array
@@ -2133,9 +2134,11 @@ module.exports = (jobManager) => {
         return res.json({ records: [] });
       }
 
-      // Fetch only the requested audio records
-      const records = await Promise.all(
-        audioIds.map(id => generatedAudioDb.getById(id))
+      // Fetch only the requested audio records (chunked to prevent DB connection exhaustion)
+      const records = await chunkedPromiseAll(
+        audioIds,
+        id => generatedAudioDb.getById(id),
+        10
       );
 
       // Return only essential fields for status update

@@ -76,7 +76,10 @@ app.set('imageGenService', imageGenService);
 app.set('elevenLabsService', elevenLabsService);
 
 // Download route - MUST be before auth middleware since browser redirects can't send headers
+// Uses streaming to avoid loading entire files into memory (important for large videos)
 const storage = require('./services/storage');
+const { pipeline } = require('stream/promises');
+
 app.get('/download', async (req, res) => {
   try {
     const { url, filename } = req.query;
@@ -98,10 +101,10 @@ app.get('/download', async (req, res) => {
       return res.status(400).json({ error: 'Invalid Supabase storage URL' });
     }
 
-    // Download using authenticated Supabase SDK
-    const buffer = await storage.downloadFile(bucket, filePath);
+    // Stream file instead of buffering (memory-efficient for large files)
+    const { stream, contentLength, contentType: supabaseContentType } = await storage.streamFile(bucket, filePath);
 
-    // Determine content type from extension
+    // Determine content type from extension (fallback to Supabase's content-type)
     const ext = path.extname(filePath).toLowerCase();
     const contentTypes = {
       '.png': 'image/png',
@@ -113,17 +116,23 @@ app.get('/download', async (req, res) => {
       '.mp3': 'audio/mpeg',
       '.wav': 'audio/wav'
     };
-    const contentType = contentTypes[ext] || 'application/octet-stream';
+    const contentType = contentTypes[ext] || supabaseContentType || 'application/octet-stream';
 
     // Set headers for download
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename || 'download'}"`);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
 
-    // Send the buffer
-    res.send(buffer);
+    // Pipe stream directly to response (chunks flow through without accumulating in memory)
+    await pipeline(stream, res);
   } catch (error) {
     console.error('Download error:', error);
-    res.status(500).json({ error: error.message });
+    // Only send error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
