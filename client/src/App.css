@@ -190,7 +190,7 @@
   font-size: 14px;
   font-weight: 500;
   animation: toastSlide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 1000;
+  z-index: 1100;
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--error);
 }
@@ -265,10 +265,13 @@
 
 .image-result-actions {
   display: flex;
+  justify-content: center;
   gap: 12px;
+  margin-top: 16px;
 }
 
-.btn-download-image {
+.btn-download-image,
+.btn-refine-image {
   padding: 10px 20px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -283,28 +286,10 @@
   transition: all 0.2s ease;
 }
 
-.btn-download-image:hover {
+.btn-download-image:hover,
+.btn-refine-image:hover {
   border-color: var(--text-secondary);
   color: var(--text-primary);
-}
-
-.btn-refine-image {
-  padding: 10px 20px;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  color: var(--bg-primary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-refine-image:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
 }
 
 /* Responsive */

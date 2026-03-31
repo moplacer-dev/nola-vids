@@ -218,26 +218,26 @@
   gap: 12px;
 }
 
-.download-btn {
-  padding: 12px 24px;
-  background: var(--text-primary);
-  border: none;
+.download-btn,
+.action-btn {
+  padding: 10px 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
   border-radius: 2px;
-  color: var(--bg-deep);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   text-decoration: none;
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
   transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   cursor: pointer;
 }
 
-.download-btn:hover {
-  background: var(--text-secondary);
+.download-btn:hover,
+.action-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 /* Video info panel */

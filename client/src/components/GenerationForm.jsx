@@ -106,7 +106,7 @@ export default function GenerationForm({
             negativePrompt
           });
         } else {
-          setError('Please select a video from the library to extend');
+          // No video selected - button should be disabled, but guard anyway
           return;
         }
       }
@@ -266,7 +266,7 @@ export default function GenerationForm({
         <div className="form-section">
           <label className="form-label">
             Video to Extend
-            <span className="label-hint">Must be a Veo-generated video</span>
+            <span className="label-hint">Must be a Veo-generated video from library (within 2 days)</span>
           </label>
           {prefillVideoInfo ? (
             <div className="prefill-video-preview">
@@ -285,13 +285,10 @@ export default function GenerationForm({
               </div>
             </div>
           ) : (
-            <input
-              type="file"
-              accept="video/mp4"
-              onChange={(e) => handleFileChange('video', e)}
-              required
-              className="file-input"
-            />
+            <div className="extend-video-notice">
+              <p>Hover over a completed video in the <strong>Generation Queue</strong> and click <strong>Extend</strong>.</p>
+              <p className="notice-hint">Only videos generated through this app within the last 2 days can be extended (Google URI retention limit).</p>
+            </div>
           )}
         </div>
       )}
@@ -341,7 +338,7 @@ export default function GenerationForm({
         </div>
       </div>
 
-      <button type="submit" className="generate-btn" disabled={disabled || !prompt}>
+      <button type="submit" className="generate-btn" disabled={disabled || !prompt || (mode === 'extend' && !prefillVideoInfo)}>
         {disabled ? 'Generating...' : 'Generate Video'}
       </button>
     </form>

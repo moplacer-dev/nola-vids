@@ -1,6 +1,6 @@
 import './VideoPlayer.css';
 
-export default function VideoPlayer({ job }) {
+export default function VideoPlayer({ job, onReusePrompt, onExtendVideo }) {
   if (!job) {
     return (
       <div className="video-player-empty">
@@ -71,8 +71,24 @@ export default function VideoPlayer({ job }) {
                     }
                   }}
                 >
-                  Download MP4
+                  Download
                 </button>
+                {onReusePrompt && job.params?.prompt && (
+                  <button
+                    className="action-btn"
+                    onClick={() => onReusePrompt(job.params.prompt, job.params.negativePrompt)}
+                  >
+                    Reuse
+                  </button>
+                )}
+                {onExtendVideo && (
+                  <button
+                    className="action-btn"
+                    onClick={() => onExtendVideo(video)}
+                  >
+                    Extend
+                  </button>
+                )}
               </div>
             </div>
           ))}

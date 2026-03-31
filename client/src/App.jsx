@@ -347,7 +347,11 @@ export default function App() {
           </div>
 
           <div className="right-panel">
-            <VideoPlayer job={selectedJob} />
+            <VideoPlayer
+              job={selectedJob}
+              onReusePrompt={handleReusePrompt}
+              onExtendVideo={handleExtendVideo}
+            />
             <JobList
               jobs={jobs}
               completedVideos={completedVideos}
@@ -407,7 +411,6 @@ export default function App() {
                         decoding="async"
                         fetchPriority="high"
                       />
-                      <div className="image-result-filename">{imageFilename}</div>
                       <div className="image-result-actions">
                         <button
                           className="btn-download-image"

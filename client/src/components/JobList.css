@@ -252,12 +252,6 @@
   display: flex;
   gap: 8px;
   margin-top: 10px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.job-card:hover .job-actions {
-  opacity: 1;
 }
 
 .job-action-btn {

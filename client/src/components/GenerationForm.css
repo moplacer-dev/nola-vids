@@ -387,3 +387,30 @@
   border-color: var(--text-secondary);
   color: var(--text-primary);
 }
+
+/* Extend video notice */
+.extend-video-notice {
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+  border-radius: 2px;
+  text-align: center;
+}
+
+.extend-video-notice p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.extend-video-notice p strong {
+  color: var(--text-primary);
+}
+
+.extend-video-notice .notice-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
