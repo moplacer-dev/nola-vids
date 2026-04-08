@@ -4,8 +4,8 @@ const path = require('path');
 const sharp = require('sharp');
 const storage = require('./storage');
 
-// Gemini 3 Pro with native image generation (higher quality)
-const MODEL = 'gemini-3-pro-image-preview';
+// Gemini 3.1 Flash with native image generation
+const MODEL = 'gemini-3.1-flash-image-preview';
 
 class ImageGenService {
   constructor(apiKey) {
