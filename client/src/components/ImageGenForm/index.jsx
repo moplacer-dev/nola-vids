@@ -36,8 +36,8 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
   const handleFilesSelected = (files) => {
     if (files.length === 0) return;
 
-    // Limit to 3 total images (including URL refs)
-    const remainingSlots = 3 - referenceImages.length - referenceUrls.length;
+    // Limit to 14 total images (including URL refs)
+    const remainingSlots = 14 - referenceImages.length - referenceUrls.length;
     const filesToAdd = files.slice(0, remainingSlots);
 
     // Add files to state
@@ -136,7 +136,7 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
 
       <div className="form-section">
         <label>Reference Images (Optional)</label>
-        <p className="field-hint">Upload up to 3 reference images for character or style consistency</p>
+        <p className="field-hint">Upload up to 14 reference images for character or style consistency</p>
 
         <input
           type="file"
@@ -158,7 +158,7 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
             <div className="dropzone-content">
               <span className="dropzone-icon">[+]</span>
               <span className="dropzone-text">Drag images here or click to browse</span>
-              <span className="dropzone-hint">Up to 3 reference images</span>
+              <span className="dropzone-hint">Up to 14 reference images</span>
             </div>
           ) : (
             <div className="reference-grid" onClick={(e) => e.stopPropagation()}>

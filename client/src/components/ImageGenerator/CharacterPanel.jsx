@@ -80,9 +80,9 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                 <button
                   className="btn-set-anchor"
                   onClick={() => fileInputRef.current[char.id]?.click()}
-                  disabled={refImages.length >= 3}
+                  disabled={refImages.length >= 14}
                 >
-                  {refImages.length >= 3 ? 'Max 3' : refImages.length > 0 ? 'Add More' : 'Set Reference'}
+                  {refImages.length >= 14 ? 'Max 14' : refImages.length > 0 ? 'Add More' : 'Set Reference'}
                 </button>
                 <button
                   className="btn-view-anchor"
@@ -137,7 +137,7 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                         ))}
                       </div>
                       <div className="character-modal-images-hint">
-                        {refImages.length} of 3 reference images
+                        {refImages.length} of 14 reference images
                       </div>
                     </div>
                   );

@@ -269,7 +269,7 @@ module.exports = (jobManager) => {
   });
 
   // Reference-guided generation
-  router.post('/generate/reference', upload.array('referenceImages', 3), async (req, res) => {
+  router.post('/generate/reference', upload.array('referenceImages', 14), async (req, res) => {
     try {
       const { prompt, negativePrompt, aspectRatio, resolution } = req.body;
 
@@ -1229,7 +1229,7 @@ module.exports = (jobManager) => {
   });
 
   // Set/add reference images for character (supports multiple files)
-  router.put('/characters/:id/anchor', upload.array('anchor', 3), async (req, res) => {
+  router.put('/characters/:id/anchor', upload.array('anchor', 14), async (req, res) => {
     try {
       const character = await characterDb.getById(req.params.id);
       if (!character) {
@@ -1330,7 +1330,7 @@ module.exports = (jobManager) => {
   // ==========================================
 
   // Generate a standalone image (one-off, not from asset list)
-  router.post('/images/generate-standalone', upload.array('referenceImage', 3), async (req, res) => {
+  router.post('/images/generate-standalone', upload.array('referenceImage', 14), async (req, res) => {
     try {
       const { prompt, moduleName, sessionNumber, pageNumber, aspectRatio, referenceUrls } = req.body;
 

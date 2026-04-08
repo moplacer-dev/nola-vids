@@ -4,8 +4,8 @@ const path = require('path');
 const sharp = require('sharp');
 const storage = require('./storage');
 
-// Gemini 3.1 Flash with native image generation
-const MODEL = 'gemini-3.1-flash-image-preview';
+// Gemini 3 Pro with native image generation (higher quality)
+const MODEL = 'gemini-3-pro-image-preview';
 
 class ImageGenService {
   constructor(apiKey) {
@@ -38,8 +38,8 @@ class ImageGenService {
         localPaths = [anchorImagePath, ...localPaths];
       }
     }
-    // Filter to only existing local files and limit to 3
-    localPaths = localPaths.filter(p => p && fs.existsSync(p)).slice(0, 3);
+    // Filter to only existing local files and limit to 14
+    localPaths = localPaths.filter(p => p && fs.existsSync(p)).slice(0, 14);
 
     // Download images from URLs if needed
     const imageContents = [];
@@ -56,7 +56,7 @@ class ImageGenService {
     }
 
     // Then, process URLs (download from Supabase Storage)
-    for (const url of anchorImageUrls.slice(0, 3 - imageContents.length)) {
+    for (const url of anchorImageUrls.slice(0, 14 - imageContents.length)) {
       try {
         const img = await this._prepareImageFromUrl(url);
         imageContents.push({
