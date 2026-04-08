@@ -38,9 +38,9 @@ class JobManager {
       }
 
       // Process queue if capacity available
-      this._processQueue();
+      await this._processQueue();
     } catch (error) {
-      console.error('Error resuming processing jobs:', error.message);
+      console.error('Error resuming processing jobs:', error.message || JSON.stringify(error));
     }
   }
 
@@ -161,7 +161,7 @@ class JobManager {
       await jobDb.update(job);
 
       // Process queue since this job failed
-      this._processQueue();
+      this._processQueue().catch(err => console.error('Queue processing error:', err));
 
       throw error;
     }
@@ -176,10 +176,11 @@ class JobManager {
     );
 
     const timeoutId = setTimeout(async () => {
+      try {
       const job = await jobDb.getById(jobId);
       if (!job || !job.operationName) {
         this.activePollers.delete(jobId);
-        this._processQueue();
+        this._processQueue().catch(err => console.error('Queue processing error:', err));
         return;
       }
 
@@ -241,7 +242,7 @@ class JobManager {
           await jobDb.update(job);
 
           // Process queue since capacity freed up
-          this._processQueue();
+          this._processQueue().catch(err => console.error('Queue processing error:', err));
         } else if (status.status === 'failed') {
           this.activePollers.delete(jobId);
 
@@ -251,7 +252,7 @@ class JobManager {
           await jobDb.update(job);
 
           // Process queue since capacity freed up
-          this._processQueue();
+          this._processQueue().catch(err => console.error('Queue processing error:', err));
         } else {
           // Still processing, schedule next poll with backoff
           job.updatedAt = new Date().toISOString();
@@ -260,9 +261,13 @@ class JobManager {
           this._startPolling(jobId, pollCount + 1);
         }
       } catch (error) {
-        console.error(`Polling error for job ${jobId}:`, error.message);
+        console.error(`Polling error for job ${jobId}:`, error.message || JSON.stringify(error));
         // Continue polling despite errors
         this._startPolling(jobId, pollCount + 1);
+      }
+      } catch (outerError) {
+        console.error(`Fatal polling error for job ${jobId}:`, outerError.message || JSON.stringify(outerError));
+        this.activePollers.delete(jobId);
       }
     }, pollCount === 0 ? 0 : interval); // First poll immediately for resumed jobs
 
@@ -363,7 +368,7 @@ class JobManager {
     await jobDb.delete(jobId);
 
     // Process queue in case we freed up capacity
-    this._processQueue();
+    this._processQueue().catch(err => console.error('Queue processing error:', err));
 
     return true;
   }

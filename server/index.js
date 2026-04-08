@@ -1,6 +1,15 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+// Log unhandled rejections with full details instead of just "#<Object>"
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection:');
+  console.error('Reason:', JSON.stringify(reason, null, 2));
+  if (reason instanceof Error) {
+    console.error('Stack:', reason.stack);
+  }
+});
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
