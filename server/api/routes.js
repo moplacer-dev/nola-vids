@@ -1493,7 +1493,8 @@ module.exports = (jobManager) => {
       }).then(async result => {
         await generatedImageDb.update(generatedImageId, {
           status: 'completed',
-          imagePath: result.publicUrl
+          imagePath: result.publicUrl,
+          cmsFilename: outputFilename
         });
 
         await generationHistoryDb.create({
@@ -1861,7 +1862,8 @@ module.exports = (jobManager) => {
       }).then(async result => {
         await generatedImageDb.update(req.params.id, {
           status: 'completed',
-          imagePath: result.publicUrl
+          imagePath: result.publicUrl,
+          cmsFilename: outputFilename
         });
         await generationHistoryDb.create({
           generatedImageId: req.params.id,

@@ -168,7 +168,7 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
 
     if (!imageUrl) return;
 
-    const filename = image.cmsFilename || `image_${image.id}.png`;
+    const filename = image.cmsFilename || `image_${image.id}.jpg`;
     // Use original imagePath for downloads (not the render/transform URL)
     const downloadUrl = image.imagePath;
 
