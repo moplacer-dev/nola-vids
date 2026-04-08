@@ -38,7 +38,7 @@ export default function GenerationForm({
   const [negativePrompt, setNegativePrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [durationSeconds, setDurationSeconds] = useState('8');
-  const [resolution, setResolution] = useState('720p');
+  const [resolution, setResolution] = useState('1080p');
   const [files, setFiles] = useState({});
   const [prefillVideoInfo, setPrefillVideoInfo] = useState(null);
 
