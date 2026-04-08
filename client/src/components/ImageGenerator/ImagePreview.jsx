@@ -137,6 +137,16 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
                            assetType.includes('intro') ||
                            assetType.includes('motion_graphics');
 
+  // Helper to determine default aspect ratio based on asset type
+  const getDefaultAspectRatio = (type) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('career') || t.includes('character') ||
+        t.includes('intro') || t.includes('motion_graphics')) {
+      return '16:9';
+    }
+    return '4:3';
+  };
+
   const handleDownload = () => {
     if (hasVideo && videoUrl) {
       const filename = image.cmsFilename || `video_${image.id}.mp4`;
@@ -219,7 +229,10 @@ export default function ImagePreview({ image, audio, onRegenerate, onRegenerateA
             </button>
             <button
               className="btn-regenerate"
-              onClick={() => onRegenerate(image.id, { useCharacterAnchor: isCharacterAsset })}
+              onClick={() => onRegenerate(image.id, {
+                useCharacterAnchor: isCharacterAsset,
+                aspectRatio: image.aspectRatio || getDefaultAspectRatio(image.assetType)
+              })}
             >
               Regenerate
             </button>

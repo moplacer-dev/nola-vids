@@ -234,7 +234,8 @@ export function useApi(accessKey) {
       body: JSON.stringify({
         generatedImageId,
         prompt: options.prompt,
-        useCharacterAnchor: options.useCharacterAnchor
+        useCharacterAnchor: options.useCharacterAnchor,
+        aspectRatio: options.aspectRatio
       }),
       timeout: 90000 // 90 seconds - image generation can take 30-60s
     });
@@ -281,7 +282,8 @@ export function useApi(accessKey) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: options.prompt,
-        useCharacterAnchor: options.useCharacterAnchor
+        useCharacterAnchor: options.useCharacterAnchor,
+        aspectRatio: options.aspectRatio
       }),
       timeout: 90000 // 90 seconds - image generation can take 30-60s
     });

@@ -37,7 +37,18 @@ export default function AssetList({
   const fileInputRefs = useRef({});
   const videoInputRefs = useRef({});
   const [characterToggles, setCharacterToggles] = useState({});
+  const [aspectRatioOverrides, setAspectRatioOverrides] = useState({});
   const [filterType, setFilterType] = useState('all');
+
+  // Helper to determine default aspect ratio based on asset type
+  const getDefaultAspectRatio = (assetType) => {
+    const t = (assetType || '').toLowerCase();
+    if (t.includes('career') || t.includes('character') ||
+        t.includes('intro') || t.includes('motion_graphics')) {
+      return '16:9';
+    }
+    return '4:3';
+  };
 
   // Helper to check if an asset type is video-related
   const isVideoType = (type) => {
@@ -491,11 +502,26 @@ export default function AssetList({
                       </label>
                     )}
                     {!isVideoAsset && (
+                      <div className="aspect-ratio-select" onClick={(e) => e.stopPropagation()}>
+                        <label>Aspect:</label>
+                        <select
+                          value={aspectRatioOverrides[key] ?? getDefaultAspectRatio(type)}
+                          onChange={(e) => setAspectRatioOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                        >
+                          <option value="4:3">4:3 (image slides)</option>
+                          <option value="16:9">16:9 (video slides)</option>
+                        </select>
+                      </div>
+                    )}
+                    {!isVideoAsset && (
                       <button
                         className="btn-primary"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (img) onGenerate(img.id, { useCharacterAnchor: hasCharacter && useCharacter });
+                          if (img) onGenerate(img.id, {
+                            useCharacterAnchor: hasCharacter && useCharacter,
+                            aspectRatio: aspectRatioOverrides[key] ?? getDefaultAspectRatio(type)
+                          });
                         }}
                         disabled={!img || img?.status === 'generating' || loading}
                       >

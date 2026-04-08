@@ -1343,14 +1343,14 @@ module.exports = (jobManager) => {
         return res.status(500).json({ error: 'Image generation service not initialized' });
       }
 
-      // Generate filename
+      // Generate filename (use .jpg extension for JPEG output)
       let filename;
       if (moduleName && sessionNumber && pageNumber) {
         const moduleCode = moduleName.substring(0, 4).toUpperCase();
-        filename = `MOD.${moduleCode}.${sessionNumber}.${pageNumber}.IMG1.png`;
+        filename = `MOD.${moduleCode}.${sessionNumber}.${pageNumber}.IMG1.jpg`;
       } else {
         const timestamp = Date.now();
-        filename = `standalone_${timestamp}.png`;
+        filename = `standalone_${timestamp}.jpg`;
       }
 
       // Get reference image URLs - start with any URL references (for refine feature)
@@ -1418,7 +1418,7 @@ module.exports = (jobManager) => {
   // Generate a single image (from asset list)
   router.post('/images/generate', async (req, res) => {
     try {
-      const { generatedImageId, prompt, useCharacterAnchor } = req.body;
+      const { generatedImageId, prompt, useCharacterAnchor, aspectRatio } = req.body;
 
       if (!generatedImageId) {
         return res.status(400).json({ error: 'generatedImageId is required' });
@@ -1476,14 +1476,20 @@ module.exports = (jobManager) => {
         return res.status(500).json({ error: 'Image generation service not initialized' });
       }
 
-      const outputFilename = genImage.cmsFilename || `image_${generatedImageId}.png`;
+      // Determine default aspect ratio if not provided
+      const defaultAspectRatio = isCharacterAssetType ? '16:9' : '4:3';
+      const finalAspectRatio = aspectRatio || defaultAspectRatio;
+
+      // Change filename extension to .jpg for JPEG output
+      const outputFilename = (genImage.cmsFilename || `image_${generatedImageId}.png`).replace(/\.png$/i, '.jpg');
 
       // Run generation asynchronously
       imageGenService.generateToStorage({
         prompt: finalPrompt,
         bucket: BUCKETS.IMAGES,
         filename: outputFilename,
-        anchorImageUrls
+        anchorImageUrls,
+        aspectRatio: finalAspectRatio
       }).then(async result => {
         await generatedImageDb.update(generatedImageId, {
           status: 'completed',
@@ -1805,7 +1811,7 @@ module.exports = (jobManager) => {
   // Regenerate an image
   router.put('/images/:id/regenerate', async (req, res) => {
     try {
-      const { prompt, useCharacterAnchor } = req.body;
+      const { prompt, useCharacterAnchor, aspectRatio } = req.body;
 
       const genImage = await generatedImageDb.getById(req.params.id);
       if (!genImage) {
@@ -1839,13 +1845,19 @@ module.exports = (jobManager) => {
 
       await generatedImageDb.update(req.params.id, { status: 'generating', modifiedPrompt: finalPrompt });
 
-      const outputFilename = genImage.cmsFilename || `image_${genImage.id}.png`;
+      // Determine default aspect ratio if not provided
+      const defaultAspectRatio = isCharacterAssetType ? '16:9' : '4:3';
+      const finalAspectRatio = aspectRatio || defaultAspectRatio;
+
+      // Change filename extension to .jpg for JPEG output
+      const outputFilename = (genImage.cmsFilename || `image_${genImage.id}.png`).replace(/\.png$/i, '.jpg');
 
       imageGenService.generateToStorage({
         prompt: finalPrompt,
         bucket: BUCKETS.IMAGES,
         filename: outputFilename,
-        anchorImageUrls
+        anchorImageUrls,
+        aspectRatio: finalAspectRatio
       }).then(async result => {
         await generatedImageDb.update(req.params.id, {
           status: 'completed',

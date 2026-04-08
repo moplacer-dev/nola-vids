@@ -173,24 +173,28 @@ class ImageGenService {
     // Decode base64 to buffer
     const imageBuffer = Buffer.from(result.imageData, 'base64');
 
-    // Get image dimensions using sharp (without modifying the image)
-    const metadata = await sharp(imageBuffer).metadata();
+    // Convert to JPEG and get dimensions
+    const jpegBuffer = await sharp(imageBuffer)
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    const metadata = await sharp(jpegBuffer).metadata();
     const width = metadata.width;
     const height = metadata.height;
 
-    console.log(`Image generated: ${width}x${height}, size: ${imageBuffer.length} bytes`);
+    console.log(`Image generated: ${width}x${height}, size: ${jpegBuffer.length} bytes (JPEG)`);
 
-    // Upload original full-quality image to Supabase Storage
+    // Upload JPEG to Supabase Storage
     const uploaded = await storage.uploadFile(
       bucket,
       filename,
-      imageBuffer,
-      result.mimeType
+      jpegBuffer,
+      'image/jpeg'
     );
 
     return {
       publicUrl: uploaded.publicUrl,
-      mimeType: result.mimeType,
+      mimeType: 'image/jpeg',
       width,
       height
     };
