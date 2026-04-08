@@ -276,14 +276,23 @@ const videoQueries = {
   async getAllWithJobIds(jobIds) {
     if (!jobIds || jobIds.length === 0) return [];
 
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .in('job_id', jobIds)
-      .order('created_at');
+    // Chunk IDs to avoid exceeding Supabase URL length limits (16KB)
+    const CHUNK_SIZE = 100;
+    const allRows = [];
 
-    if (error) throw error;
-    return data.map(parseVideoRow);
+    for (let i = 0; i < jobIds.length; i += CHUNK_SIZE) {
+      const chunk = jobIds.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from('videos')
+        .select('*')
+        .in('job_id', chunk)
+        .order('created_at');
+
+      if (error) throw error;
+      allRows.push(...data);
+    }
+
+    return allRows.map(parseVideoRow);
   }
 };
 
@@ -889,14 +898,23 @@ const generatedImageQueries = {
   async deleteByIds(ids) {
     if (!ids || ids.length === 0) return 0;
 
-    const { data, error } = await supabase
-      .from('generated_images')
-      .delete()
-      .in('id', ids)
-      .select();
+    // Chunk IDs to avoid exceeding Supabase URL length limits (16KB)
+    const CHUNK_SIZE = 100;
+    let totalDeleted = 0;
 
-    if (error) throw error;
-    return data?.length || 0;
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from('generated_images')
+        .delete()
+        .in('id', chunk)
+        .select();
+
+      if (error) throw error;
+      totalDeleted += data?.length || 0;
+    }
+
+    return totalDeleted;
   },
 
   async getByAssessmentAsset(assessmentAssetId) {
