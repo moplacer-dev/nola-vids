@@ -506,6 +506,107 @@ const characterQueries = {
     return !!data;
   },
 
+  async createStub({ moduleName, characterName, career, appearanceDescription }) {
+    // Idempotent on (module_name, character_name): if exists, update career/appearance_description and return.
+    const existing = await supabase
+      .from('characters')
+      .select('*')
+      .eq('module_name', moduleName)
+      .eq('character_name', characterName)
+      .maybeSingle();
+
+    if (existing.error) throw existing.error;
+
+    if (existing.data) {
+      const { data, error } = await supabase
+        .from('characters')
+        .update({
+          career: career ?? existing.data.career,
+          appearance_description: appearanceDescription ?? existing.data.appearance_description,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.data.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return parseCharacterRow(data);
+    }
+
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('characters')
+      .insert({
+        id: uuidv4(),
+        module_name: moduleName,
+        character_name: characterName,
+        career: career ?? null,
+        appearance_description: appearanceDescription ?? null,
+        created_at: now,
+        updated_at: now
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return parseCharacterRow(data);
+  },
+
+  async assignView(characterId, slot, imageId) {
+    const allowedSlots = ['front', 'three_quarter', 'side', 'back'];
+    if (!allowedSlots.includes(slot)) {
+      throw new Error(`Invalid slot: ${slot}. Allowed: ${allowedSlots.join(', ')}`);
+    }
+    const column = `${slot}_view_image_id`;
+    const { data, error } = await supabase
+      .from('characters')
+      .update({ [column]: imageId, updated_at: new Date().toISOString() })
+      .eq('id', characterId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? parseCharacterRow(data) : null;
+  },
+
+  async getViews(characterId) {
+    const { data, error } = await supabase
+      .from('characters')
+      .select('id, character_name, front_view_image_id, three_quarter_view_image_id, side_view_image_id, back_view_image_id')
+      .eq('id', characterId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+
+    const viewImageIds = [
+      data.front_view_image_id,
+      data.three_quarter_view_image_id,
+      data.side_view_image_id,
+      data.back_view_image_id
+    ].filter(Boolean);
+
+    let viewImages = [];
+    if (viewImageIds.length > 0) {
+      const { data: images, error: imgError } = await supabase
+        .from('generated_images')
+        .select('id, image_path, asset_type')
+        .in('id', viewImageIds);
+      if (imgError) throw imgError;
+      viewImages = (images || []).map(img => ({
+        id: img.id,
+        imagePath: img.image_path,
+        assetType: img.asset_type
+      }));
+    }
+
+    return {
+      id: data.id,
+      characterName: data.character_name,
+      frontViewImageId: data.front_view_image_id ?? null,
+      threeQuarterViewImageId: data.three_quarter_view_image_id ?? null,
+      sideViewImageId: data.side_view_image_id ?? null,
+      backViewImageId: data.back_view_image_id ?? null,
+      views: viewImages
+    };
+  },
+
   async delete(id) {
     const { data, error } = await supabase
       .from('characters')
@@ -1670,6 +1771,10 @@ function parseCharacterRow(row) {
     anchorImagePath: row.anchor_image_path,
     referenceImages: row.reference_images || [],
     appearsOnSlides: row.appears_on_slides || [],
+    frontViewImageId: row.front_view_image_id ?? null,
+    threeQuarterViewImageId: row.three_quarter_view_image_id ?? null,
+    sideViewImageId: row.side_view_image_id ?? null,
+    backViewImageId: row.back_view_image_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
