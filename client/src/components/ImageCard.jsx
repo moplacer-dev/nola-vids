@@ -1,4 +1,5 @@
 import { useState, useMemo, memo } from 'react';
+import { thumbnailUrl } from '../utils/supabaseImage';
 import './ImageCard.css';
 
 export default memo(function ImageCard({
@@ -20,10 +21,7 @@ export default memo(function ImageCard({
   const displayUrl = useMemo(() => {
     if (!imageUrl) return '';
     if (useOriginalUrl) return imageUrl;
-    if (imageUrl.includes('supabase.co/storage/v1/object/public/')) {
-      return imageUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
-    }
-    return imageUrl;
+    return thumbnailUrl(imageUrl);
   }, [imageUrl, useOriginalUrl]);
   const displayTitle = image.cmsFilename || 'Untitled Image';
   const prompt = image.modifiedPrompt || image.originalPrompt || '';

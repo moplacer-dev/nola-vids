@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
+import { thumbnailUrl } from '../../utils/supabaseImage';
 import CharacterViews from './CharacterViews';
 
 export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage, getCharacterViews }) {
@@ -116,13 +117,7 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                         {refImages.map((imgPath, index) => (
                           <div key={index} className="character-modal-image-item">
                             <img
-                              src={(() => {
-                                const url = imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`;
-                                if (url.includes('supabase.co/storage/v1/object/public/')) {
-                                  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
-                                }
-                                return url;
-                              })()}
+                              src={thumbnailUrl(imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`)}
                               alt={`${viewingCharacter.characterName} ref ${index + 1}`}
                             />
                             {onRemoveReferenceImage && (
@@ -146,12 +141,10 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                 return null;
               })()}
 
-              {getCharacterViews && (
-                <CharacterViews
-                  characterId={viewingCharacter.id}
-                  getCharacterViews={getCharacterViews}
-                />
-              )}
+              <CharacterViews
+                characterId={viewingCharacter.id}
+                getCharacterViews={getCharacterViews}
+              />
 
               <div className="character-modal-details">
                 {viewingCharacter.career && (

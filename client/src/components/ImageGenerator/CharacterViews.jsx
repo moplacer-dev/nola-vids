@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { thumbnailUrl } from '../../utils/supabaseImage';
 
 const SLOTS = [
   { key: 'front', label: 'Front View', imageIdField: 'frontViewImageId' },
@@ -7,15 +8,10 @@ const SLOTS = [
   { key: 'back', label: 'Back View', imageIdField: 'backViewImageId' }
 ];
 
-// Reuse the same supabase-transform optimization that CharacterPanel applies
-// to reference images, so view slots load at thumbnail resolution.
 function resolveImageSrc(imagePath) {
   if (!imagePath) return null;
   const url = imagePath.startsWith('http') ? imagePath : `/anchors/${imagePath}`;
-  if (url.includes('supabase.co/storage/v1/object/public/')) {
-    return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&quality=80';
-  }
-  return url;
+  return thumbnailUrl(url);
 }
 
 export default function CharacterViews({ characterId, getCharacterViews }) {
@@ -24,7 +20,7 @@ export default function CharacterViews({ characterId, getCharacterViews }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!characterId || !getCharacterViews) {
+    if (!characterId) {
       setLoading(false);
       return;
     }

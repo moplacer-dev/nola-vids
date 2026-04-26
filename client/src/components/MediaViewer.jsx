@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { thumbnailUrl } from '../utils/supabaseImage';
 import './MediaViewer.css';
 
 export default function MediaViewer({
@@ -43,9 +44,7 @@ export default function MediaViewer({
   const displaySrc = (() => {
     if (!src) return '';
     if (useOriginalUrl) return src;
-    if (isImage && src.includes('supabase.co/storage/v1/object/public/')) {
-      return src.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=1600&quality=85';
-    }
+    if (isImage) return thumbnailUrl(src, { width: 1600, quality: 85 });
     return src;
   })();
 
