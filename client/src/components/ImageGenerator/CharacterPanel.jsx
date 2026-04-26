@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { thumbnailUrl } from '../../utils/supabaseImage';
 import CharacterViews from './CharacterViews';
 
-export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage, getCharacterViews }) {
+export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage, getCharacterViews, assignCharacterView, generateStandaloneImage }) {
   const fileInputRef = useRef({});
   const [viewingCharacter, setViewingCharacter] = useState(null);
 
@@ -143,7 +143,10 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
 
               <CharacterViews
                 characterId={viewingCharacter.id}
+                character={viewingCharacter}
                 getCharacterViews={getCharacterViews}
+                assignCharacterView={assignCharacterView}
+                generateStandaloneImage={generateStandaloneImage}
               />
 
               <div className="character-modal-details">

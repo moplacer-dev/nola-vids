@@ -1990,6 +1990,55 @@
   padding: 8px;
 }
 
+.view-slot-generate-btn {
+  align-self: stretch;
+  padding: 6px 10px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  color: #c0c0c0;
+  font-family: monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.view-slot-generate-btn:hover {
+  background: #232323;
+  border-color: #3a3a3a;
+  color: #ffffff;
+}
+
+.view-slot-generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.slot-generate-modal {
+  width: 90%;
+  max-width: 720px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.slot-generate-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.slot-generate-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: #2a1a1a;
+  border: 1px solid #5a3a3a;
+  border-radius: 3px;
+  color: #ddaeae;
+  font-size: 13px;
+}
+
 /* Legacy single image */
 .character-modal-image {
   text-align: center;

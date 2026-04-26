@@ -16,6 +16,8 @@ export default function ImageGenerator({
   setCharacterAnchor,
   removeCharacterReferenceImage,
   getCharacterViews,
+  assignCharacterView,
+  generateStandaloneImage,
   generateImage,
   regenerateImage,
   updateGeneratedImage,
@@ -1114,6 +1116,8 @@ export default function ImageGenerator({
             onSetAnchor={handleSetAnchor}
             onRemoveReferenceImage={handleRemoveReferenceImage}
             getCharacterViews={getCharacterViews}
+            assignCharacterView={assignCharacterView}
+            generateStandaloneImage={generateStandaloneImage}
           />
         )}
 

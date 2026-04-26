@@ -75,6 +75,7 @@ export default function App() {
     setCharacterAnchor,
     removeCharacterReferenceImage,
     getCharacterViews,
+    assignCharacterView,
     generateImage,
     generateStandaloneImage,
     regenerateImage,
@@ -476,6 +477,8 @@ export default function App() {
             setCharacterAnchor={setCharacterAnchor}
             removeCharacterReferenceImage={removeCharacterReferenceImage}
             getCharacterViews={getCharacterViews}
+            assignCharacterView={assignCharacterView}
+            generateStandaloneImage={generateStandaloneImage}
             generateImage={generateImage}
             regenerateImage={regenerateImage}
             updateGeneratedImage={updateGeneratedImage}
