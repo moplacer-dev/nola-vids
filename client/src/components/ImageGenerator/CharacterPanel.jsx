@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
+import CharacterViews from './CharacterViews';
 
-export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage }) {
+export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage, getCharacterViews }) {
   const fileInputRef = useRef({});
   const [viewingCharacter, setViewingCharacter] = useState(null);
 
@@ -144,6 +145,13 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                 }
                 return null;
               })()}
+
+              {getCharacterViews && (
+                <CharacterViews
+                  characterId={viewingCharacter.id}
+                  getCharacterViews={getCharacterViews}
+                />
+              )}
 
               <div className="character-modal-details">
                 {viewingCharacter.career && (

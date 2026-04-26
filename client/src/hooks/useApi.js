@@ -210,6 +210,10 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const getCharacterViews = useCallback(async (characterId) => {
+    return request(`/characters/${encodeURIComponent(characterId)}/views`);
+  }, [request]);
+
   const getGeneratedImages = useCallback(async (options = {}) => {
     const params = new URLSearchParams();
     if (options.moduleName) params.set('moduleName', options.moduleName);
@@ -630,6 +634,7 @@ export function useApi(accessKey) {
     createCharacter,
     setCharacterAnchor,
     removeCharacterReferenceImage,
+    getCharacterViews,
     getGeneratedImages,
     getGeneratedImage,
     generateImage,
