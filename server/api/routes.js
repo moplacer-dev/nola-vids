@@ -1325,6 +1325,60 @@ module.exports = (jobManager) => {
     }
   });
 
+  // Create or upsert a character stub (idempotent on moduleName + characterName).
+  // Used by Carl v7's unified push to register a career character before the lesson push.
+  router.post('/characters/stub', async (req, res) => {
+    try {
+      const { moduleName, characterName, career, appearanceDescription } = req.body;
+      if (!moduleName || !characterName) {
+        return res.status(400).json({ error: 'moduleName and characterName are required' });
+      }
+      const character = await characterDb.createStub({
+        moduleName,
+        characterName,
+        career,
+        appearanceDescription
+      });
+      res.json(character);
+    } catch (error) {
+      console.error('[characters/stub]', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Assign an existing generated_images.id to one of the four character view slots.
+  router.patch('/characters/:id/views/:slot', async (req, res) => {
+    try {
+      const { imageId } = req.body;
+      if (!imageId) {
+        return res.status(400).json({ error: 'imageId is required' });
+      }
+      const updated = await characterDb.assignView(req.params.id, req.params.slot, imageId);
+      if (!updated) {
+        return res.status(404).json({ error: 'Character not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('[characters/views]', error.message);
+      const status = error.message?.startsWith('Invalid slot:') ? 400 : 500;
+      res.status(status).json({ error: error.message });
+    }
+  });
+
+  // Return the character's view-slot ids and any populated reference images.
+  router.get('/characters/:id/views', async (req, res) => {
+    try {
+      const result = await characterDb.getViews(req.params.id);
+      if (!result) {
+        return res.status(404).json({ error: 'Character not found' });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error('[characters/views/get]', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ==========================================
   // Image generation endpoints
   // ==========================================
