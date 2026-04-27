@@ -865,6 +865,7 @@ const generatedImageQueries = {
         id,
         asset_list_id: image.assetListId || null,
         assessment_asset_id: image.assessmentAssetId || null,
+        lesson_id: image.lessonId || null,
         slide_number: image.slideNumber || null,
         asset_type: image.assetType || null,
         asset_number: image.assetNumber || 1,
@@ -1049,6 +1050,7 @@ const generatedImageQueries = {
       id: uuidv4(),
       asset_list_id: image.assetListId || null,
       assessment_asset_id: image.assessmentAssetId || null,
+      lesson_id: image.lessonId || null,
       slide_number: image.slideNumber || null,
       asset_type: image.assetType || null,
       asset_number: image.assetNumber || 1,
@@ -1077,6 +1079,29 @@ const generatedImageQueries = {
       .delete()
       .eq('asset_list_id', assetListId)
       .eq('slide_number', slideNumber)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async getByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('lesson_id', lessonId)
+      .order('slide_number', { ascending: true })
+      .order('asset_number', { ascending: true });
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async deleteByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .delete()
+      .eq('lesson_id', lessonId)
       .select();
 
     if (error) throw error;
@@ -1291,6 +1316,7 @@ const generatedAudioQueries = {
         id,
         asset_list_id: audio.assetListId || null,
         assessment_asset_id: audio.assessmentAssetId || null,
+        lesson_id: audio.lessonId || null,
         slide_number: audio.slideNumber || null,
         question_number: audio.questionNumber || null,
         narration_type: audio.narrationType || 'slide_narration',
@@ -1317,6 +1343,7 @@ const generatedAudioQueries = {
       id: uuidv4(),
       asset_list_id: audio.assetListId || null,
       assessment_asset_id: audio.assessmentAssetId || null,
+      lesson_id: audio.lessonId || null,
       slide_number: audio.slideNumber || null,
       question_number: audio.questionNumber || null,
       narration_type: audio.narrationType || 'slide_narration',
@@ -1498,6 +1525,29 @@ const generatedAudioQueries = {
       .delete()
       .eq('asset_list_id', assetListId)
       .eq('slide_number', slideNumber)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async getByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('lesson_id', lessonId)
+      .order('slide_number', { ascending: true })
+      .order('narration_type', { ascending: true });
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async deleteByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .delete()
+      .eq('lesson_id', lessonId)
       .select();
 
     if (error) throw error;
@@ -1891,6 +1941,7 @@ function parseGeneratedImageRow(row) {
     id: row.id,
     assetListId: row.asset_list_id,
     assessmentAssetId: row.assessment_asset_id,
+    lessonId: row.lesson_id,
     slideNumber: row.slide_number,
     assetType: row.asset_type,
     assetNumber: row.asset_number || 1,
@@ -1964,6 +2015,7 @@ function parseGeneratedAudioRow(row) {
     id: row.id,
     assetListId: row.asset_list_id,
     assessmentAssetId: row.assessment_asset_id,
+    lessonId: row.lesson_id,
     slideNumber: row.slide_number,
     questionNumber: row.question_number,
     narrationType: row.narration_type || 'slide_narration',
