@@ -1,0 +1,41 @@
+{
+  "schema_version": "2.0",
+  "module": "__smoke__",
+  "lesson_type": "session",
+  "lesson_label": "Session 1",
+  "career_character_ref": "Dr Smoke",
+  "default_voice_id": "smoke-voice",
+  "default_voice_name": "Smoke Voice",
+  "slides": [
+    {
+      "slide_number": 1,
+      "slide_type": "intro",
+      "narration": { "kind": "single", "text": "Welcome to the test session." },
+      "assets": [{
+        "kind": "intro_video",
+        "scenes": [
+          { "scene_number": 1, "narration_excerpt": "Welcome", "character_present": true, "character_role_in_scene": "wave hello", "image_prompt": "smiling test character", "video_prompt": "subtle wave" },
+          { "scene_number": 2, "narration_excerpt": "to the test session", "character_present": false, "image_prompt": "test lab", "video_prompt": "slow pan" }
+        ]
+      }]
+    },
+    {
+      "slide_number": 2,
+      "slide_type": "content",
+      "narration": { "kind": "single", "text": "Here is a content slide." },
+      "assets": [{ "kind": "diagram", "prompt": "test diagram" }]
+    },
+    {
+      "slide_number": 3,
+      "slide_type": "interactive",
+      "narration": { "kind": "single", "text": "Drag the items to match." },
+      "assets": [{
+        "kind": "interactive_element",
+        "components": [
+          { "prompt": "draggable hot item" },
+          { "prompt": "draggable cold item" }
+        ]
+      }]
+    }
+  ]
+}
