@@ -4825,6 +4825,52 @@ module.exports = (jobManager) => {
     }
   });
 
+  router.get('/lessons', async (req, res) => {
+    try {
+      const moduleName = req.query.module;
+      if (!moduleName) {
+        return res.status(400).json({ error: 'module query param is required' });
+      }
+      const list = await lessonDb.listByModule(moduleName);
+      res.json({ lessons: list });
+    } catch (error) {
+      console.error('[GET /api/lessons]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/lessons/:id', async (req, res) => {
+    try {
+      const lesson = await lessonDb.getById(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: 'Lesson not found' });
+      }
+      const [images, audio] = await Promise.all([
+        generatedImageDb.getByLessonId(req.params.id),
+        generatedAudioDb.getByLessonId(req.params.id)
+      ]);
+      res.json({ lesson, images, audio });
+    } catch (error) {
+      console.error('[GET /api/lessons/:id]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FK lesson_id on generated_images / generated_audio is ON DELETE CASCADE,
+  // so deleting the lesson row clears the materialized slots automatically.
+  router.delete('/lessons/:id', async (req, res) => {
+    try {
+      const removed = await lessonDb.delete(req.params.id);
+      if (!removed) {
+        return res.status(404).json({ error: 'Lesson not found' });
+      }
+      res.json({ deleted: true, id: req.params.id });
+    } catch (error) {
+      console.error('[DELETE /api/lessons/:id]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
 
