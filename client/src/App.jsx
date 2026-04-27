@@ -9,7 +9,6 @@ import Tips from './components/Tips';
 import ImageGenerator from './components/ImageGenerator';
 import ImageGenForm from './components/ImageGenForm';
 import ImageGenQueue from './components/ImageGenQueue';
-import LessonsView from './components/Lessons/LessonsView';
 import { useApi } from './hooks/useApi';
 import './App.css';
 
@@ -23,7 +22,7 @@ export default function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [templates, setTemplates] = useState(null);
   const [generating, setGenerating] = useState(false);
-  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen' | 'lessons'
+  const [currentView, setCurrentView] = useState('generator'); // 'generator' | 'image-gen' | 'carl-gen'
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageGenerating, setImageGenerating] = useState(false);
   const imageGenFormRef = useRef(null);
@@ -72,9 +71,6 @@ export default function App() {
     // Image generation
     getAssetLists,
     getAssetList,
-    // v2 Lessons
-    getLessonsByModule,
-    getLesson,
     getCharacters,
     setCharacterAnchor,
     removeCharacterReferenceImage,
@@ -331,12 +327,6 @@ export default function App() {
           >
             Carl Gen
           </button>
-          <button
-            className={`nav-btn ${currentView === 'lessons' ? 'active' : ''}`}
-            onClick={() => setCurrentView('lessons')}
-          >
-            Lessons
-          </button>
         </nav>
 
         <button className="logout-btn" onClick={handleLogout}>Logout</button>
@@ -529,13 +519,6 @@ export default function App() {
             pushAssessmentAudioToCms={pushAssessmentAudioToCms}
             pushAssessmentImageToCms={pushAssessmentImageToCms}
             updateAssessmentNarrationFromCms={updateAssessmentNarrationFromCms}
-          />
-        </main>
-      ) : currentView === 'lessons' ? (
-        <main className="main-library">
-          <LessonsView
-            getLessonsByModule={getLessonsByModule}
-            getLesson={getLesson}
           />
         </main>
       ) : null}
