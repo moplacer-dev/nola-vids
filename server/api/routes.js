@@ -43,7 +43,8 @@ const {
   generationHistory: generationHistoryDb,
   motionGraphicsVideos: mgVideoDb,
   generatedAudio: generatedAudioDb,
-  assessmentAssets: assessmentAssetDb
+  assessmentAssets: assessmentAssetDb,
+  lessons: lessonDb
 } = require('../db/database');
 
 const storage = require('../services/storage');
@@ -68,6 +69,67 @@ const DEFAULT_SLIDE_IMAGES = {
   'lab safety': 'lab_safety.png',
   'lab_safety': 'lab_safety.png'
 };
+
+// v2 lessons contract — see step_16_media_asset_list/MEDIA_PIPELINE_REDESIGN_PLAN.md
+const SUPPORTED_LESSON_SCHEMA_VERSIONS = new Set(['2.0']);
+const ALLOWED_LESSON_TYPES = new Set(['session', 'session_rcp', 'pre_test', 'post_test']);
+const ALLOWED_ASSET_KINDS = new Set([
+  'diagram', 'realistic_photo', 'career_video', 'intro_video',
+  'procedure_video', 'screen_recording', 'data_graph', 'data_table',
+  'interactive_element', 'default_template', 'reused_asset'
+]);
+const VIDEO_ASSET_KINDS = new Set(['career_video', 'intro_video', 'procedure_video', 'screen_recording']);
+const SKIP_ASSET_KINDS = new Set(['default_template', 'reused_asset']);
+
+function validateLessonPayload(body) {
+  const errors = [];
+  if (!body || typeof body !== 'object') {
+    return ['payload must be an object'];
+  }
+  if (!SUPPORTED_LESSON_SCHEMA_VERSIONS.has(body.schema_version)) {
+    errors.push(`Unsupported schema_version: ${body.schema_version}`);
+  }
+  if (!body.module) errors.push('module is required');
+  if (!ALLOWED_LESSON_TYPES.has(body.lesson_type)) errors.push(`Invalid lesson_type: ${body.lesson_type}`);
+  if (!body.lesson_label) errors.push('lesson_label is required');
+  if (!Array.isArray(body.slides) || body.slides.length === 0) {
+    errors.push('slides must be a non-empty array');
+  }
+  for (const [i, slide] of (body.slides || []).entries()) {
+    if (typeof slide.slide_number !== 'number') {
+      errors.push(`slides[${i}].slide_number must be a number`);
+    }
+    if (!slide.narration || !['single', 'structured'].includes(slide.narration.kind)) {
+      errors.push(`slides[${i}].narration.kind must be "single" or "structured"`);
+    }
+    for (const [j, asset] of (slide.assets || []).entries()) {
+      if (!ALLOWED_ASSET_KINDS.has(asset.kind)) {
+        errors.push(`slides[${i}].assets[${j}].kind invalid: ${asset.kind}`);
+      }
+    }
+  }
+  return errors;
+}
+
+// Map v2 lesson_type + lesson_label to v1 session-code segment of cmsFilename.
+// Mirrors generateCmsFilename / generateAudioFilename / generateAssessment*Filename in this module.
+function deriveLessonSessionCode(lessonType, lessonLabel) {
+  if (lessonType === 'pre_test') return 'PRE';
+  if (lessonType === 'post_test') return 'POST';
+  const match = (lessonLabel || '').match(/\d+/);
+  const sessionNum = match ? parseInt(match[0], 10) : 0;
+  return lessonType === 'session_rcp' ? `${sessionNum}R` : sessionNum;
+}
+
+// v2 narration parts can encode answer choices as { role: 'answer_choice', label: 'A' }.
+// v1's narrationTypeToCode expects 'answer_a' / 'answer_b' style. Reshape here.
+function mapLessonPartToV1NarrationType(part) {
+  if (!part || !part.role) return 'slide_narration';
+  if (part.role === 'answer_choice' && part.label) {
+    return `answer_${part.label.toLowerCase()}`;
+  }
+  return part.role;
+}
 
 // Cache for default image existence checks (5-minute TTL)
 const defaultImageCache = new Map();
@@ -4607,6 +4669,204 @@ module.exports = (jobManager) => {
           cmsPushStatus: 'failed'
         });
       } catch (e) { /* ignore */ }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==========================================
+  // v2 Lessons API — unified push contract
+  // ==========================================
+  router.post('/lessons', async (req, res) => {
+    try {
+      const errors = validateLessonPayload(req.body);
+      if (errors.length > 0) {
+        return res.status(400).json({ error: 'Invalid payload', details: errors });
+      }
+
+      const {
+        module: moduleName,
+        lesson_type,
+        lesson_label,
+        career_character_ref,
+        slides,
+        default_voice_id,
+        default_voice_name
+      } = req.body;
+
+      const moduleCode = getModuleCode(moduleName);
+      const sessionCode = deriveLessonSessionCode(lesson_type, lesson_label);
+
+      let lesson = await lessonDb.getByModuleAndLabel(moduleName, lesson_type, lesson_label);
+      const isUpdate = !!lesson;
+      if (lesson) {
+        lesson = await lessonDb.update(lesson.id, {
+          slidesJson: slides,
+          careerCharacterRef: career_character_ref,
+          defaultVoiceId: default_voice_id,
+          defaultVoiceName: default_voice_name
+        });
+      } else {
+        lesson = await lessonDb.create({
+          moduleName,
+          lessonType: lesson_type,
+          lessonLabel: lesson_label,
+          schemaVersion: req.body.schema_version,
+          careerCharacterRef: career_character_ref,
+          slidesJson: slides,
+          defaultVoiceId: default_voice_id,
+          defaultVoiceName: default_voice_name
+        });
+      }
+
+      const imageRows = [];
+      const audioRows = [];
+
+      for (const slide of slides) {
+        const slideNum = slide.slide_number;
+
+        // Audio: one row for single, one row per part for structured.
+        if (slide.narration.kind === 'single') {
+          audioRows.push({
+            lessonId: lesson.id,
+            slideNumber: slideNum,
+            narrationType: 'slide_narration',
+            narrationText: slide.narration.text,
+            status: 'pending',
+            voiceId: default_voice_id,
+            voiceName: default_voice_name,
+            cmsFilename: `MOD.${moduleCode}.${sessionCode}.${slideNum}.NAR1.mp3`
+          });
+        } else {
+          for (const part of (slide.narration.parts || [])) {
+            const v1Type = mapLessonPartToV1NarrationType(part);
+            const typeCode = narrationTypeToCode(v1Type);
+            audioRows.push({
+              lessonId: lesson.id,
+              slideNumber: slideNum,
+              narrationType: v1Type,
+              narrationText: part.text,
+              status: 'pending',
+              voiceId: default_voice_id,
+              voiceName: default_voice_name,
+              cmsFilename: `MOD.${moduleCode}.${sessionCode}.${slideNum}.${typeCode}.mp3`
+            });
+          }
+        }
+
+        // Image / video slots. interactive_element components share a slide-level
+        // POP counter so two interactive assets on one slide don't collide on POP1.
+        let popCounter = 0;
+        for (const [assetIndex, asset] of (slide.assets || []).entries()) {
+          if (SKIP_ASSET_KINDS.has(asset.kind)) continue;
+
+          const assetNum = assetIndex + 1;
+
+          if (asset.kind === 'interactive_element') {
+            for (const component of (asset.components || [])) {
+              popCounter += 1;
+              imageRows.push({
+                lessonId: lesson.id,
+                slideNumber: slideNum,
+                assetNumber: popCounter,
+                assetType: 'interactive_element',
+                originalPrompt: component.prompt || null,
+                status: 'pending',
+                cmsFilename: `MOD.${moduleCode}.${sessionCode}.${slideNum}.POP${popCounter}.png`
+              });
+            }
+            continue;
+          }
+
+          if (VIDEO_ASSET_KINDS.has(asset.kind)) {
+            // One placeholder per video asset for the final stitched upload.
+            // Per-scene prompts stay in lessons.slides_json (input metadata only).
+            imageRows.push({
+              lessonId: lesson.id,
+              slideNumber: slideNum,
+              assetNumber: assetNum,
+              assetType: asset.kind,
+              originalPrompt: null,
+              status: 'pending',
+              cmsFilename: `MOD.${moduleCode}.${sessionCode}.${slideNum}.VID${assetNum}.mp4`
+            });
+            continue;
+          }
+
+          // diagram, realistic_photo, data_graph, data_table
+          imageRows.push({
+            lessonId: lesson.id,
+            slideNumber: slideNum,
+            assetNumber: assetNum,
+            assetType: asset.kind,
+            originalPrompt: asset.prompt || null,
+            status: 'pending',
+            cmsFilename: `MOD.${moduleCode}.${sessionCode}.${slideNum}.IMG${assetNum}.png`
+          });
+        }
+      }
+
+      // On update: clear prior rows so the response stays a single source of truth.
+      if (isUpdate) {
+        await generatedImageDb.deleteByLessonId(lesson.id);
+        await generatedAudioDb.deleteByLessonId(lesson.id);
+      }
+      const createdImages = imageRows.length > 0 ? await generatedImageDb.createBulk(imageRows) : [];
+      const createdAudio = audioRows.length > 0 ? await generatedAudioDb.createBulk(audioRows) : [];
+
+      res.json({
+        lesson,
+        imagesCreated: createdImages.length,
+        audioCreated: createdAudio.length,
+        isUpdate
+      });
+    } catch (error) {
+      console.error('[POST /api/lessons]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/lessons', async (req, res) => {
+    try {
+      const moduleName = req.query.module;
+      if (!moduleName) {
+        return res.status(400).json({ error: 'module query param is required' });
+      }
+      const list = await lessonDb.listByModule(moduleName);
+      res.json({ lessons: list });
+    } catch (error) {
+      console.error('[GET /api/lessons]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/lessons/:id', async (req, res) => {
+    try {
+      const lesson = await lessonDb.getById(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: 'Lesson not found' });
+      }
+      const [images, audio] = await Promise.all([
+        generatedImageDb.getByLessonId(req.params.id),
+        generatedAudioDb.getByLessonId(req.params.id)
+      ]);
+      res.json({ lesson, images, audio });
+    } catch (error) {
+      console.error('[GET /api/lessons/:id]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FK lesson_id on generated_images / generated_audio is ON DELETE CASCADE,
+  // so deleting the lesson row clears the materialized slots automatically.
+  router.delete('/lessons/:id', async (req, res) => {
+    try {
+      const removed = await lessonDb.delete(req.params.id);
+      if (!removed) {
+        return res.status(404).json({ error: 'Lesson not found' });
+      }
+      res.json({ deleted: true, id: req.params.id });
+    } catch (error) {
+      console.error('[DELETE /api/lessons/:id]', error);
       res.status(500).json({ error: error.message });
     }
   });

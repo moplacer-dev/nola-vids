@@ -1,24 +1,18 @@
 import { useState } from 'react';
 
-// Available media types for assets
+// Canonical-11 media types (v2). Legacy v1 records render via the fallback option below.
 const MEDIA_TYPES = [
-  { value: 'ai_generated_image', label: 'AI Generated Image' },
-  { value: 'ai_generated_career_video', label: 'AI Generated Career Video' },
-  { value: 'labeled_diagram', label: 'Labeled Diagram' },
-  { value: 'composite_photo', label: 'Composite Photo' },
-  { value: 'photo', label: 'Photo' },
-  { value: 'diagram', label: 'Diagram' },
-  { value: 'icon', label: 'Icon' },
-  { value: 'video', label: 'Video' },
-  { value: 'time_lapse_video', label: 'Time Lapse Video' },
-  { value: 'motion_graphics', label: 'Motion Graphics' },
-  { value: 'motion_graphics_scene', label: 'Motion Graphics Scene' },
-  { value: 'animation', label: 'Animation' },
-  { value: 'infographic', label: 'Infographic' },
-  { value: 'illustration', label: 'Illustration' },
-  { value: 'screenshot', label: 'Screenshot' },
-  { value: 'screen_recording', label: 'Screen Recording' },
+  { value: 'diagram',             label: 'Diagram' },
+  { value: 'realistic_photo',     label: 'Realistic Photo' },
+  { value: 'career_video',        label: 'Career Video' },
+  { value: 'intro_video',         label: 'Intro Video' },
+  { value: 'procedure_video',     label: 'Procedure Video' },
+  { value: 'screen_recording',    label: 'Screen Recording' },
+  { value: 'data_graph',          label: 'Data Graph' },
+  { value: 'data_table',          label: 'Data Table' },
   { value: 'interactive_element', label: 'Interactive Element' },
+  { value: 'default_template',    label: 'Default Template' },
+  { value: 'reused_asset',        label: 'Reused Asset' },
 ];
 
 export default function PromptEditor({ image, onSave, onClose, mode = 'edit', showAssetTypeSelector = false }) {

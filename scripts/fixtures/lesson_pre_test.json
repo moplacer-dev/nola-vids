@@ -1,0 +1,25 @@
+{
+  "schema_version": "2.0",
+  "module": "__smoke__",
+  "lesson_type": "pre_test",
+  "lesson_label": "Pre-Test",
+  "default_voice_id": "smoke-voice",
+  "default_voice_name": "Smoke Voice",
+  "slides": [
+    {
+      "slide_number": 1,
+      "slide_type": "assessment_question",
+      "narration": {
+        "kind": "structured",
+        "parts": [
+          { "role": "question", "text": "What is 2 + 2?" },
+          { "role": "answer_choice", "label": "A", "text": "Three" },
+          { "role": "answer_choice", "label": "B", "text": "Four" },
+          { "role": "correct_response", "text": "Right, four." },
+          { "role": "incorrect_1", "text": "Try again." }
+        ]
+      },
+      "assets": [{ "kind": "diagram", "prompt": "two plus two visual" }]
+    }
+  ]
+}

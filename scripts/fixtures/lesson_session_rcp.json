@@ -1,0 +1,26 @@
+{
+  "schema_version": "2.0",
+  "module": "__smoke__",
+  "lesson_type": "session_rcp",
+  "lesson_label": "Session 1",
+  "default_voice_id": "smoke-voice",
+  "default_voice_name": "Smoke Voice",
+  "slides": [
+    {
+      "slide_number": 1,
+      "slide_type": "rcp_question",
+      "narration": {
+        "kind": "structured",
+        "parts": [
+          { "role": "question", "text": "Which substance has more thermal energy at the same temperature?" },
+          { "role": "answer_choice", "label": "A", "text": "A cup of water" },
+          { "role": "answer_choice", "label": "B", "text": "A bathtub of water" },
+          { "role": "correct_response", "text": "Right. More mass at the same temperature means more thermal energy." },
+          { "role": "incorrect_1", "text": "Not quite. Think about how mass affects thermal energy." },
+          { "role": "incorrect_2", "text": "Try again. Same temperature, but consider total particles." }
+        ]
+      },
+      "assets": [{ "kind": "diagram", "prompt": "two beakers side by side, one small one large" }]
+    }
+  ]
+}

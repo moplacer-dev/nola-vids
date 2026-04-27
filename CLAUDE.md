@@ -154,10 +154,19 @@ ACCESS_KEY=               # Simple auth key for the app
 
 ## Git Remotes
 
-- `origin` - git@github.com:moplacer-dev/nola-vids.git
-- `mo-placer` - https://github.com/mo-placer/nola-vids.git
+- `origin` - git@github.com:moplacer-dev/nola-vids.git (PERSONAL account, do NOT push work code here)
+- `mo-placer` - https://github.com/mo-placer/nola-vids.git (WORK account, push here)
 
-Push to both: `git push origin main && git push mo-placer main`
+NOLA.vids is work code. Push to `mo-placer` only:
+
+```bash
+git push mo-placer <branch>
+```
+
+Do not run `git push origin` or any chained "push to both" command. The `origin`
+remote points to the personal GitHub account; pushing work code there mixes
+accounts. The user (Mo) handles all push operations — Claude should run
+`add`/`commit` locally and surface the push command for the user to run.
 
 ## Build & Run
 

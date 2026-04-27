@@ -865,6 +865,7 @@ const generatedImageQueries = {
         id,
         asset_list_id: image.assetListId || null,
         assessment_asset_id: image.assessmentAssetId || null,
+        lesson_id: image.lessonId || null,
         slide_number: image.slideNumber || null,
         asset_type: image.assetType || null,
         asset_number: image.assetNumber || 1,
@@ -1049,6 +1050,7 @@ const generatedImageQueries = {
       id: uuidv4(),
       asset_list_id: image.assetListId || null,
       assessment_asset_id: image.assessmentAssetId || null,
+      lesson_id: image.lessonId || null,
       slide_number: image.slideNumber || null,
       asset_type: image.assetType || null,
       asset_number: image.assetNumber || 1,
@@ -1077,6 +1079,29 @@ const generatedImageQueries = {
       .delete()
       .eq('asset_list_id', assetListId)
       .eq('slide_number', slideNumber)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async getByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('lesson_id', lessonId)
+      .order('slide_number', { ascending: true })
+      .order('asset_number', { ascending: true });
+
+    if (error) throw error;
+    return data.map(parseGeneratedImageRow);
+  },
+
+  async deleteByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_images')
+      .delete()
+      .eq('lesson_id', lessonId)
       .select();
 
     if (error) throw error;
@@ -1291,6 +1316,7 @@ const generatedAudioQueries = {
         id,
         asset_list_id: audio.assetListId || null,
         assessment_asset_id: audio.assessmentAssetId || null,
+        lesson_id: audio.lessonId || null,
         slide_number: audio.slideNumber || null,
         question_number: audio.questionNumber || null,
         narration_type: audio.narrationType || 'slide_narration',
@@ -1317,6 +1343,7 @@ const generatedAudioQueries = {
       id: uuidv4(),
       asset_list_id: audio.assetListId || null,
       assessment_asset_id: audio.assessmentAssetId || null,
+      lesson_id: audio.lessonId || null,
       slide_number: audio.slideNumber || null,
       question_number: audio.questionNumber || null,
       narration_type: audio.narrationType || 'slide_narration',
@@ -1498,6 +1525,29 @@ const generatedAudioQueries = {
       .delete()
       .eq('asset_list_id', assetListId)
       .eq('slide_number', slideNumber)
+      .select();
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async getByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .select('*')
+      .eq('lesson_id', lessonId)
+      .order('slide_number', { ascending: true })
+      .order('narration_type', { ascending: true });
+
+    if (error) throw error;
+    return data.map(parseGeneratedAudioRow);
+  },
+
+  async deleteByLessonId(lessonId) {
+    const { data, error } = await supabase
+      .from('generated_audio')
+      .delete()
+      .eq('lesson_id', lessonId)
       .select();
 
     if (error) throw error;
@@ -1729,6 +1779,95 @@ const assessmentAssetQueries = {
   }
 };
 
+const lessonQueries = {
+  async create(payload) {
+    const { data, error } = await supabase
+      .from('lessons')
+      .insert({
+        module_name: payload.moduleName,
+        lesson_type: payload.lessonType,
+        lesson_label: payload.lessonLabel,
+        schema_version: payload.schemaVersion,
+        career_character_ref: payload.careerCharacterRef ?? null,
+        slides_json: payload.slidesJson,
+        default_voice_id: payload.defaultVoiceId ?? null,
+        default_voice_name: payload.defaultVoiceName ?? null
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return parseLessonRow(data);
+  },
+
+  async update(id, patch) {
+    const updateData = { updated_at: new Date().toISOString() };
+    if (patch.slidesJson !== undefined) updateData.slides_json = patch.slidesJson;
+    if (patch.careerCharacterRef !== undefined) updateData.career_character_ref = patch.careerCharacterRef;
+    if (patch.defaultVoiceId !== undefined) updateData.default_voice_id = patch.defaultVoiceId;
+    if (patch.defaultVoiceName !== undefined) updateData.default_voice_name = patch.defaultVoiceName;
+    if (patch.cmsPageMapping !== undefined) updateData.cms_page_mapping = patch.cmsPageMapping;
+
+    const { data, error } = await supabase
+      .from('lessons')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data ? parseLessonRow(data) : null;
+  },
+
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? parseLessonRow(data) : null;
+  },
+
+  async getByModuleAndLabel(moduleName, lessonType, lessonLabel) {
+    const { data, error } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('module_name', moduleName)
+      .eq('lesson_type', lessonType)
+      .eq('lesson_label', lessonLabel)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? parseLessonRow(data) : null;
+  },
+
+  async listByModule(moduleName) {
+    const { data, error } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('module_name', moduleName)
+      .order('lesson_type', { ascending: true })
+      .order('lesson_label', { ascending: true });
+
+    if (error) throw error;
+    return data.map(parseLessonRow);
+  },
+
+  async delete(id) {
+    const { data, error } = await supabase
+      .from('lessons')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return !!data;
+  }
+};
+
 // ==========================================
 // Parse Helper Functions
 // ==========================================
@@ -1802,6 +1941,7 @@ function parseGeneratedImageRow(row) {
     id: row.id,
     assetListId: row.asset_list_id,
     assessmentAssetId: row.assessment_asset_id,
+    lessonId: row.lesson_id,
     slideNumber: row.slide_number,
     assetType: row.asset_type,
     assetNumber: row.asset_number || 1,
@@ -1853,11 +1993,29 @@ function parseMGVideoRow(row) {
   };
 }
 
+function parseLessonRow(row) {
+  return {
+    id: row.id,
+    moduleName: row.module_name,
+    lessonType: row.lesson_type,
+    lessonLabel: row.lesson_label,
+    schemaVersion: row.schema_version,
+    careerCharacterRef: row.career_character_ref,
+    slidesJson: row.slides_json,
+    defaultVoiceId: row.default_voice_id,
+    defaultVoiceName: row.default_voice_name,
+    cmsPageMapping: row.cms_page_mapping || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function parseGeneratedAudioRow(row) {
   return {
     id: row.id,
     assetListId: row.asset_list_id,
     assessmentAssetId: row.assessment_asset_id,
+    lessonId: row.lesson_id,
     slideNumber: row.slide_number,
     questionNumber: row.question_number,
     narrationType: row.narration_type || 'slide_narration',
@@ -1887,5 +2045,6 @@ module.exports = {
   generationHistory: generationHistoryQueries,
   motionGraphicsVideos: motionGraphicsVideoQueries,
   generatedAudio: generatedAudioQueries,
-  assessmentAssets: assessmentAssetQueries
+  assessmentAssets: assessmentAssetQueries,
+  lessons: lessonQueries
 };

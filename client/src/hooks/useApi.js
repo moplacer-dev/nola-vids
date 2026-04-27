@@ -170,6 +170,19 @@ export function useApi(accessKey) {
     return request(`/asset-lists/${id}`, { method: 'DELETE' });
   }, [request]);
 
+  // v2 Lessons endpoints
+  const getLessonsByModule = useCallback(async (moduleName) => {
+    return request(`/lessons?module=${encodeURIComponent(moduleName)}`);
+  }, [request]);
+
+  const getLesson = useCallback(async (id) => {
+    return request(`/lessons/${id}`);
+  }, [request]);
+
+  const deleteLesson = useCallback(async (id) => {
+    return request(`/lessons/${id}`, { method: 'DELETE' });
+  }, [request]);
+
   const getCharacters = useCallback(async (moduleName) => {
     return request(`/characters/${encodeURIComponent(moduleName)}`);
   }, [request]);
@@ -638,6 +651,10 @@ export function useApi(accessKey) {
     getAssetList,
     importAssetList,
     deleteAssetList,
+    // v2 Lessons
+    getLessonsByModule,
+    getLesson,
+    deleteLesson,
     getCharacters,
     createCharacter,
     setCharacterAnchor,
