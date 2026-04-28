@@ -699,16 +699,22 @@ module.exports = (jobManager) => {
       if (allSlides && allSlides.length > 0) {
         const slideNumbers = allSlides.map(s => s.slideNumber ?? s.slide_number).filter(n => n != null);
         const minSlideNum = Math.min(...slideNumbers);
+        const maxSlideNum = Math.max(...slideNumbers);
+        const startsAboveOne = minSlideNum > 1;
+        const hasGap = slideNumbers.length !== (maxSlideNum - minSlideNum + 1);
 
-        if (minSlideNum > 1) {
-          console.log(`[import] Renumbering slides: starting at ${minSlideNum}, shifting to start at 1`);
+        if (startsAboveOne || hasGap) {
+          const reasons = [];
+          if (startsAboveOne) reasons.push(`starts at ${minSlideNum}`);
+          if (hasGap) reasons.push(`gap detected (${slideNumbers.length} slides span ${minSlideNum}..${maxSlideNum})`);
+          console.log(`[import] Renumbering slides: ${reasons.join(', ')}; remapping to 1..${slideNumbers.length}`);
 
           // Sort slides by original number
           const sortedSlides = [...allSlides].sort((a, b) =>
             (a.slideNumber ?? a.slide_number) - (b.slideNumber ?? b.slide_number)
           );
 
-          // Build renumber map
+          // Build renumber map (closes both leading offset and internal gaps)
           const renumberMap = {};
           sortedSlides.forEach((slide, index) => {
             const oldNum = slide.slideNumber ?? slide.slide_number;
