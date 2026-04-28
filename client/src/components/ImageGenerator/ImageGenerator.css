@@ -1841,6 +1841,9 @@
 /* Character Modal */
 .character-modal {
   max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .character-modal-body {
@@ -1848,6 +1851,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
 }
 
 /* Multi-image support in modal */
