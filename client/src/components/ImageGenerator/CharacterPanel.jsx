@@ -164,14 +164,6 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
                   </div>
                 )}
 
-                {viewingCharacter.appearsOnSlides && viewingCharacter.appearsOnSlides.length > 0 && (
-                  <div className="character-detail">
-                    <span className="detail-label">Appears on:</span>
-                    <span className="detail-value">
-                      {viewingCharacter.appearsOnSlides.join(', ')}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
