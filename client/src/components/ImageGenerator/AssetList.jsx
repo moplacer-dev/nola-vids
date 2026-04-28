@@ -56,6 +56,59 @@ export default function AssetList({
     return t.includes('video') || t.includes('motion_graphics') || t.includes('animation') || t.includes('time_lapse');
   };
 
+  // Slide-type → human label fallback when both onscreenText and slideTitle
+  // are empty. Covers default-template slide types so the slide list stays
+  // navigable on modules generated under the canonical-11 schema.
+  const SLIDE_TYPE_LABELS = {
+    goals: 'Goals',
+    safety: 'Safety',
+    gather: 'Gather Materials',
+    cleanup: 'Clean Up',
+    summary: 'Summary',
+    intro: 'Introduction',
+    activity_lead_in: 'Activity Lead-In',
+    rcp_recall: 'RCP Recall',
+    rcp_connect: 'RCP Connect',
+    rcp_predict: 'RCP Predict',
+    rcp_apply: 'RCP Apply',
+    recall: 'Recall',
+    connect: 'Connect',
+    predict: 'Predict',
+    apply: 'Apply',
+  };
+
+  // Resolve a navigable slide label. Prefer the first non-empty line of
+  // onscreen text (truncated), then the slide-type label, then the explicit
+  // slide_title, then 'Untitled'. The first-line approach is more reliable
+  // than slide_title because the canonical-11 MAL schema doesn't ask the
+  // generator to emit slide_title at all.
+  const SLIDE_LABEL_MAX = 70;
+  const resolveSlideLabel = (slide) => {
+    const onscreen = (slide.onscreenText || '').trim();
+    if (onscreen) {
+      const firstLine = onscreen.split('\n').find(l => l.trim().length > 0);
+      if (firstLine) {
+        const trimmed = firstLine.trim();
+        return trimmed.length > SLIDE_LABEL_MAX
+          ? `${trimmed.slice(0, SLIDE_LABEL_MAX - 1)}…`
+          : trimmed;
+      }
+    }
+    const typeLabel = SLIDE_TYPE_LABELS[(slide.slideType || '').toLowerCase()];
+    if (typeLabel) return typeLabel;
+    if (slide.slideTitle) return slide.slideTitle;
+    return 'Untitled';
+  };
+
+  // Map mediaOutputType → asset-free badge label. Slides with no asset rows
+  // (assetCount === 0) and one of these mediaOutputType values render an
+  // explicit indicator so the slide reads as intentionally asset-free rather
+  // than missing.
+  const ASSET_FREE_BADGES = {
+    default_template: 'DEFAULT TEMPLATE',
+    reused_asset: 'REUSED ASSET',
+  };
+
   // Build the data - key includes assetNumber for multi-asset slides
   const imageByKey = {};
   generatedImages?.forEach(img => {
@@ -160,6 +213,8 @@ export default function AssetList({
         slideNumber: slideNum,
         slideTitle: s.slideTitle || s.slide_title || s.title || '',
         slideType: s.slideType || s.slide_type || s.type || '',
+        mediaOutputType: s.mediaOutputType || s.media_output_type || '',
+        onscreenText: s.onscreenText || s.onscreen_text || '',
         assets: renderedAssets,
         hasMGAssets: hasMGFromDb || hasMGFromImports
       };
@@ -273,7 +328,12 @@ export default function AssetList({
               </button>
               <span className="slide-badge">{slide.slideNumber}</span>
               <div className="slide-info">
-                <span className="slide-title">{slide.slideTitle || 'Untitled'}</span>
+                <span className="slide-title">{resolveSlideLabel(slide)}</span>
+                {assetCount === 0 && ASSET_FREE_BADGES[slide.mediaOutputType] && (
+                  <span className="asset-type-badge asset-free-badge">
+                    {ASSET_FREE_BADGES[slide.mediaOutputType]}
+                  </span>
+                )}
                 {(() => {
                   // Get unique asset types for this slide
                   const types = [...new Set(dbAssets.map(a => a.assetType || 'image'))];
