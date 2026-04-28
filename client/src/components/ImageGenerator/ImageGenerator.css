@@ -1183,6 +1183,13 @@
   text-transform: uppercase;
 }
 
+.asset-type-badge.asset-free-badge {
+  background: #1a1a2a;
+  border-color: #3a3a5a;
+  color: #8a8aaa;
+  letter-spacing: 0.5px;
+}
+
 .mg-expand-btn {
   background: transparent;
   border: none;
