@@ -100,6 +100,8 @@ export default function App() {
     deleteAudio,
     setSessionDefaultVoice,
     setAssessmentDefaultVoice,
+    setSessionDefaultCharacter,
+    setAssessmentDefaultCharacter,
     // Assessment Assets
     getAssessmentAssets,
     getAssessmentAsset,
@@ -500,6 +502,8 @@ export default function App() {
             deleteAudio={deleteAudio}
             setSessionDefaultVoice={setSessionDefaultVoice}
             setAssessmentDefaultVoice={setAssessmentDefaultVoice}
+            setSessionDefaultCharacter={setSessionDefaultCharacter}
+            setAssessmentDefaultCharacter={setAssessmentDefaultCharacter}
             getAssessmentAssets={getAssessmentAssets}
             getAssessmentAsset={getAssessmentAsset}
             getAssessmentAudio={getAssessmentAudio}

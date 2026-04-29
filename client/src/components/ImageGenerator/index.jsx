@@ -40,6 +40,8 @@ export default function ImageGenerator({
   deleteAudio,
   setSessionDefaultVoice,
   setAssessmentDefaultVoice,
+  setSessionDefaultCharacter,
+  setAssessmentDefaultCharacter,
   // Assessment Assets
   getAssessmentAssets,
   getAssessmentAsset,
