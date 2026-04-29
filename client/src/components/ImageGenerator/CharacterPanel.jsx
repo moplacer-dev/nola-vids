@@ -87,7 +87,7 @@ export default function CharacterPanel({ characters, defaultCharacterId, onSetAn
                   onClick={() => fileInputRef.current[char.id]?.click()}
                   disabled={refImages.length >= 14}
                 >
-                  {refImages.length >= 14 ? 'Max 14' : refImages.length > 0 ? 'Add More' : 'Set Reference'}
+                  {refImages.length >= 14 ? 'Max 14' : refImages.length > 0 ? 'Add More' : 'Add Reference (optional)'}
                 </button>
                 <button
                   className="btn-view-anchor"
