@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { thumbnailUrl } from '../../utils/supabaseImage';
 import ImageGenForm from '../ImageGenForm';
 
 const SLOTS = [
@@ -18,8 +17,7 @@ const SLOT_FRAMING = {
 
 function resolveImageSrc(imagePath) {
   if (!imagePath) return null;
-  const url = imagePath.startsWith('http') ? imagePath : `/anchors/${imagePath}`;
-  return thumbnailUrl(url);
+  return imagePath.startsWith('http') ? imagePath : `/anchors/${imagePath}`;
 }
 
 // ImageGenForm caps reference URLs at 3 (the upper bound Gemini honors reliably
@@ -218,7 +216,7 @@ export default function CharacterViews({
           return (
             <div key={slot.key} className="view-slot">
               <div className="view-slot-label">{slot.label}</div>
-              <div className={src ? 'view-slot-frame' : 'view-slot-frame view-slot-frame--empty'}>
+              <div className="view-slot-frame">
                 {src ? (
                   <img
                     className="view-slot-image"
