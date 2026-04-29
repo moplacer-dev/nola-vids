@@ -8,7 +8,7 @@ const MODULE_CODE_MAP = {
   'Forces': 'FORC',
   'Matter': 'MATT',
   'Ecosystems': 'ECOS',
-  'Heat and Energy': 'ENER'
+  'Heat and Energy': 'HEAT'
 };
 
 /**
