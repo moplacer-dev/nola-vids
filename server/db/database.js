@@ -720,6 +720,7 @@ const assetListQueries = {
     if (updates.careerCharacter !== undefined) updateData.career_character_json = updates.careerCharacter;
     if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
     if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
+    if (updates.defaultCharacterId !== undefined) updateData.default_character_id = updates.defaultCharacterId;
     if (updates.cmsPageMapping !== undefined) updateData.cms_page_mapping = updates.cmsPageMapping;
 
     const { data, error } = await supabase
@@ -1739,6 +1740,7 @@ const assessmentAssetQueries = {
     if (updates.assetSummary !== undefined) updateData.asset_summary_json = updates.assetSummary;
     if (updates.defaultVoiceId !== undefined) updateData.default_voice_id = updates.defaultVoiceId;
     if (updates.defaultVoiceName !== undefined) updateData.default_voice_name = updates.defaultVoiceName;
+    if (updates.defaultCharacterId !== undefined) updateData.default_character_id = updates.defaultCharacterId;
     if (updates.cmsPageMapping !== undefined) updateData.cms_page_mapping = updates.cmsPageMapping;
 
     const { data, error } = await supabase
@@ -1932,6 +1934,7 @@ function parseAssetListRow(row) {
     careerCharacter: row.career_character_json,
     defaultVoiceId: row.default_voice_id,
     defaultVoiceName: row.default_voice_name,
+    defaultCharacterId: row.default_character_id ?? null,
     cmsPageMapping: row.cms_page_mapping || {},
     importedAt: row.imported_at
   };
@@ -1971,6 +1974,7 @@ function parseAssessmentAssetRow(row) {
     assetSummary: row.asset_summary_json,
     defaultVoiceId: row.default_voice_id,
     defaultVoiceName: row.default_voice_name,
+    defaultCharacterId: row.default_character_id ?? null,
     cmsPageMapping: row.cms_page_mapping || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at

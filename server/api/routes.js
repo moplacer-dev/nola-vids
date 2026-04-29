@@ -2679,6 +2679,22 @@ module.exports = (jobManager) => {
     }
   });
 
+  router.patch('/asset-lists/:id/character', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { characterId } = req.body;
+      if (characterId !== null && typeof characterId !== 'string') {
+        return res.status(400).json({ error: 'characterId must be a string or null' });
+      }
+      const ok = await assetListDb.update(id, { defaultCharacterId: characterId });
+      if (!ok) return res.status(404).json({ error: 'Asset list not found' });
+      res.json({ success: true, defaultCharacterId: characterId });
+    } catch (err) {
+      console.error('Set default character failed:', err);
+      res.status(500).json({ error: 'Failed to set default character' });
+    }
+  });
+
   router.get('/asset-lists/:id/audio', async (req, res) => {
     try {
       const assetList = await assetListDb.getById(req.params.id);
@@ -3046,6 +3062,22 @@ module.exports = (jobManager) => {
     } catch (error) {
       console.error('Error setting assessment default voice:', error);
       res.status(500).json({ error: 'Failed to set default voice' });
+    }
+  });
+
+  router.patch('/assessment-assets/:id/character', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { characterId } = req.body;
+      if (characterId !== null && typeof characterId !== 'string') {
+        return res.status(400).json({ error: 'characterId must be a string or null' });
+      }
+      const ok = await assessmentAssetDb.update(id, { defaultCharacterId: characterId });
+      if (!ok) return res.status(404).json({ error: 'Assessment asset not found' });
+      res.json({ success: true, defaultCharacterId: characterId });
+    } catch (err) {
+      console.error('Set assessment default character failed:', err);
+      res.status(500).json({ error: 'Failed to set default character' });
     }
   });
 
