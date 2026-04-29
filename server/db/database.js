@@ -586,13 +586,14 @@ const characterQueries = {
     if (viewImageIds.length > 0) {
       const { data: images, error: imgError } = await supabase
         .from('generated_images')
-        .select('id, image_path, asset_type')
+        .select('id, image_path, asset_type, created_at')
         .in('id', viewImageIds);
       if (imgError) throw imgError;
       viewImages = (images || []).map(img => ({
         id: img.id,
         imagePath: img.image_path,
-        assetType: img.asset_type
+        assetType: img.asset_type,
+        createdAt: img.created_at
       }));
     }
 
