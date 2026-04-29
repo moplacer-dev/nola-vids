@@ -1552,14 +1552,16 @@ module.exports = (jobManager) => {
       }
 
       // Verify the image has a valid parent (either asset list or assessment)
+      let parentAssetList = null;
+      let parentAssessment = null;
       if (genImage.assetListId) {
-        const assetList = await assetListDb.getById(genImage.assetListId);
-        if (!assetList) {
+        parentAssetList = await assetListDb.getById(genImage.assetListId);
+        if (!parentAssetList) {
           return res.status(404).json({ error: 'Asset list not found' });
         }
       } else if (genImage.assessmentAssetId) {
-        const assessment = await assessmentAssetDb.getById(genImage.assessmentAssetId);
-        if (!assessment) {
+        parentAssessment = await assessmentAssetDb.getById(genImage.assessmentAssetId);
+        if (!parentAssessment) {
           return res.status(404).json({ error: 'Assessment not found' });
         }
       } else {
@@ -1571,6 +1573,12 @@ module.exports = (jobManager) => {
         return res.status(400).json({ error: 'No prompt available for generation' });
       }
 
+      // Effective character: explicit on the image, or fall back to the session/assessment default
+      const effectiveCharacterId = genImage.characterId
+        || parentAssetList?.defaultCharacterId
+        || parentAssessment?.defaultCharacterId
+        || null;
+
       // Check if we should use character anchor
       let anchorImageUrls = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
@@ -1579,13 +1587,22 @@ module.exports = (jobManager) => {
                                    assetTypeLower.includes('intro') ||
                                    assetTypeLower.includes('motion_graphics');
 
-      if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
-        const character = await characterDb.getById(genImage.characterId);
+      if (useCharacterAnchor && isCharacterAssetType && effectiveCharacterId) {
+        const character = await characterDb.getById(effectiveCharacterId);
         if (character) {
           if (character.referenceImages && Array.isArray(character.referenceImages) && character.referenceImages.length > 0) {
             anchorImageUrls = character.referenceImages;
           } else if (character.anchorImagePath) {
             anchorImageUrls = [character.anchorImagePath];
+          }
+
+          // Prepend the canonical Front-view URL so slide gen anchors on it
+          const views = await characterDb.getViews(effectiveCharacterId);
+          if (views?.frontViewImageId) {
+            const frontImage = views.views.find(v => v.id === views.frontViewImageId);
+            if (frontImage?.imagePath) {
+              anchorImageUrls = [frontImage.imagePath, ...anchorImageUrls].slice(0, 3);
+            }
           }
         }
       }
@@ -1948,6 +1965,18 @@ module.exports = (jobManager) => {
 
       const finalPrompt = prompt || genImage.modifiedPrompt || genImage.originalPrompt;
 
+      // Effective character: explicit on the image, or fall back to the session/assessment default
+      let effectiveCharacterId = genImage.characterId || null;
+      if (!effectiveCharacterId) {
+        if (genImage.assetListId) {
+          const parentAssetList = await assetListDb.getById(genImage.assetListId);
+          effectiveCharacterId = parentAssetList?.defaultCharacterId || null;
+        } else if (genImage.assessmentAssetId) {
+          const parentAssessment = await assessmentAssetDb.getById(genImage.assessmentAssetId);
+          effectiveCharacterId = parentAssessment?.defaultCharacterId || null;
+        }
+      }
+
       let anchorImageUrls = [];
       const assetTypeLower = (genImage.assetType || '').toLowerCase();
       const isCharacterAssetType = assetTypeLower.includes('career') ||
@@ -1955,13 +1984,22 @@ module.exports = (jobManager) => {
                                    assetTypeLower.includes('intro') ||
                                    assetTypeLower.includes('motion_graphics');
 
-      if (useCharacterAnchor && isCharacterAssetType && genImage.characterId) {
-        const character = await characterDb.getById(genImage.characterId);
+      if (useCharacterAnchor && isCharacterAssetType && effectiveCharacterId) {
+        const character = await characterDb.getById(effectiveCharacterId);
         if (character) {
           if (character.referenceImages && Array.isArray(character.referenceImages) && character.referenceImages.length > 0) {
             anchorImageUrls = character.referenceImages;
           } else if (character.anchorImagePath) {
             anchorImageUrls = [character.anchorImagePath];
+          }
+
+          // Prepend the canonical Front-view URL so slide gen anchors on it
+          const views = await characterDb.getViews(effectiveCharacterId);
+          if (views?.frontViewImageId) {
+            const frontImage = views.views.find(v => v.id === views.frontViewImageId);
+            if (frontImage?.imagePath) {
+              anchorImageUrls = [frontImage.imagePath, ...anchorImageUrls].slice(0, 3);
+            }
           }
         }
       }
