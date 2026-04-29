@@ -26,6 +26,11 @@ const VISUAL_ASSET_TYPES = new Set([
   // 5B.1 — production_still_image: in-house photo capture, no AI generation.
   // Carl emits via nola_client.py production_still_image dispatch branch.
   'production_still_image',
+  // 5B.2 — default_template (safety / cleanup / robo_review). Pre-rendered
+  // images applied automatically by NOLA.vids' applyDefaultImage flow at
+  // routes.js:139-184 based on slide title. Carl now emits a wire row so
+  // that flow has a pending generated_images record to apply against.
+  'default_template',
 ]);
 
 function isVisualAssetType(asset) {
