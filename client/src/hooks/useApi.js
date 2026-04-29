@@ -464,6 +464,22 @@ export function useApi(accessKey) {
     });
   }, [request]);
 
+  const setSessionDefaultCharacter = useCallback(async (assetListId, characterId) => {
+    return request(`/asset-lists/${encodeURIComponent(assetListId)}/character`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characterId })
+    });
+  }, [request]);
+
+  const setAssessmentDefaultCharacter = useCallback(async (assessmentId, characterId) => {
+    return request(`/assessment-assets/${encodeURIComponent(assessmentId)}/character`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characterId })
+    });
+  }, [request]);
+
   // Assessment Assets endpoints
   const getAssessmentAssets = useCallback(async (moduleName) => {
     const params = moduleName ? `?moduleName=${encodeURIComponent(moduleName)}` : '';
@@ -671,6 +687,8 @@ export function useApi(accessKey) {
     deleteAudio,
     setSessionDefaultVoice,
     setAssessmentDefaultVoice,
+    setSessionDefaultCharacter,
+    setAssessmentDefaultCharacter,
     // Assessment Assets
     getAssessmentAssets,
     getAssessmentAsset,
