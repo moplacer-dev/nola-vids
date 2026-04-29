@@ -23,6 +23,9 @@ const VISUAL_ASSET_TYPES = new Set([
   'screen_recording',
   'interactive_element',
   'reused_asset',
+  // 5B.1 — production_still_image: in-house photo capture, no AI generation.
+  // Carl emits via nola_client.py production_still_image dispatch branch.
+  'production_still_image',
 ]);
 
 function isVisualAssetType(asset) {

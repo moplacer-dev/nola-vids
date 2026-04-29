@@ -27,6 +27,10 @@ test('isVisualAssetType returns true for reused_asset', () => {
   assert.equal(isVisualAssetType({ type: 'reused_asset' }), true);
 });
 
+test('isVisualAssetType returns true for production_still_image (5B.1)', () => {
+  assert.equal(isVisualAssetType({ type: 'production_still_image' }), true);
+});
+
 test('isVisualAssetType returns false for tts', () => {
   assert.equal(isVisualAssetType({ type: 'tts' }), false);
 });
@@ -52,7 +56,7 @@ test('isVisualAssetType returns false for null or undefined asset', () => {
   assert.equal(isVisualAssetType(undefined), false);
 });
 
-test('VISUAL_ASSET_TYPES contains exactly the six wire-format types', () => {
+test('VISUAL_ASSET_TYPES contains exactly the wire-format types Carl emits', () => {
   assert.deepEqual(
     [...VISUAL_ASSET_TYPES].sort(),
     [
@@ -60,6 +64,7 @@ test('VISUAL_ASSET_TYPES contains exactly the six wire-format types', () => {
       'ai_video_clip',
       'interactive_element',
       'procedure_video',
+      'production_still_image',  // 5B.1
       'reused_asset',
       'screen_recording',
     ]

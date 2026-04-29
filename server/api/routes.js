@@ -77,7 +77,11 @@ const ALLOWED_LESSON_TYPES = new Set(['session', 'session_rcp', 'pre_test', 'pos
 const ALLOWED_ASSET_KINDS = new Set([
   'diagram', 'realistic_photo', 'career_video', 'intro_video',
   'procedure_video', 'screen_recording', 'data_graph', 'data_table',
-  'interactive_element', 'default_template', 'reused_asset'
+  'interactive_element', 'default_template', 'reused_asset',
+  // 5B.1 — production_still_image: in-house photo capture (gather slides,
+  // some activity lead-ins). Sibling of default_template; both carry a
+  // default_asset.note brief on Carl's slide records.
+  'production_still_image'
 ]);
 const VIDEO_ASSET_KINDS = new Set(['career_video', 'intro_video', 'procedure_video', 'screen_recording']);
 const SKIP_ASSET_KINDS = new Set(['default_template', 'reused_asset']);
