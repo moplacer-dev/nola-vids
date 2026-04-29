@@ -190,6 +190,9 @@ When making changes, verify:
 - [ ] Motion graphics scenes can be added/deleted
 - [ ] Audio generation and preview works
 - [ ] Assessment (Pre/Post test) content displays
+- [ ] Default Character selector persists across reload
+- [ ] Secondary character views (3/4, side, back) are gated until Front exists
+- [ ] Slide image generation picks up the session's default character when none is attached
 
 ## Debugging Tips
 
