@@ -218,7 +218,7 @@ export default function CharacterViews({
           return (
             <div key={slot.key} className="view-slot">
               <div className="view-slot-label">{slot.label}</div>
-              <div className="view-slot-frame">
+              <div className={src ? 'view-slot-frame' : 'view-slot-frame view-slot-frame--empty'}>
                 {src ? (
                   <img
                     className="view-slot-image"

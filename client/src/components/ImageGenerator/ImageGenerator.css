@@ -1869,7 +1869,6 @@
 
 .character-modal-image-item {
   position: relative;
-  width: 72px;
   height: 72px;
   flex-shrink: 0;
   background: #0a0a0a;
@@ -1879,9 +1878,9 @@
 }
 
 .character-modal-image-item img {
-  width: 100%;
+  display: block;
   height: 100%;
-  object-fit: contain;
+  width: auto;
 }
 
 .btn-remove-modal-image {
@@ -1960,6 +1959,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+  align-items: start;
 }
 
 .view-slot {
@@ -1978,21 +1978,23 @@
 
 .view-slot-frame {
   position: relative;
-  aspect-ratio: 1;
   background: #0a0a0a;
   border: 1px solid #2a2a2a;
   border-radius: 4px;
   overflow: hidden;
+}
+
+.view-slot-frame--empty {
+  aspect-ratio: 3 / 4;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .view-slot-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
   display: block;
+  width: 100%;
+  height: auto;
 }
 
 .view-slot-empty {
