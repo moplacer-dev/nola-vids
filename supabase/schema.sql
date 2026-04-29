@@ -88,12 +88,14 @@ CREATE TABLE IF NOT EXISTS asset_lists (
   career_character_json JSONB,
   default_voice_id TEXT,
   default_voice_name TEXT,
+  default_character_id UUID REFERENCES characters(id) ON DELETE SET NULL,
   cms_page_mapping JSONB DEFAULT '{}',  -- Maps slide_number to CMS content_page id
   imported_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_asset_lists_module ON asset_lists(module_name);
 CREATE INDEX IF NOT EXISTS idx_asset_lists_session ON asset_lists(module_name, session_number);
+CREATE INDEX IF NOT EXISTS idx_asset_lists_default_character ON asset_lists(default_character_id);
 
 -- Unique constraint on module_name, session_number, session_type
 -- This allows "Session 2" and "Session 2 RCP" to coexist
@@ -236,6 +238,7 @@ CREATE TABLE IF NOT EXISTS assessment_assets (
   asset_summary_json JSONB NOT NULL DEFAULT '{}',
   default_voice_id TEXT,
   default_voice_name TEXT,
+  default_character_id UUID REFERENCES characters(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(module_name, assessment_type)
@@ -243,6 +246,7 @@ CREATE TABLE IF NOT EXISTS assessment_assets (
 
 CREATE INDEX IF NOT EXISTS idx_assessment_assets_module ON assessment_assets(module_name);
 CREATE INDEX IF NOT EXISTS idx_assessment_assets_type ON assessment_assets(assessment_type);
+CREATE INDEX IF NOT EXISTS idx_assessment_assets_default_character ON assessment_assets(default_character_id);
 
 -- Add assessment_asset_id to generated_images for assessment visuals
 ALTER TABLE generated_images
