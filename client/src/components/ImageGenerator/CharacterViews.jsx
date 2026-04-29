@@ -3,7 +3,7 @@ import { thumbnailUrl } from '../../utils/supabaseImage';
 import ImageGenForm from '../ImageGenForm';
 
 const SLOTS = [
-  { key: 'front', label: 'Front View', imageIdField: 'frontViewImageId' },
+  { key: 'front', label: 'Front View', imageIdField: 'frontViewImageId', primary: true },
   { key: 'three_quarter', label: 'Three-Quarter View', imageIdField: 'threeQuarterViewImageId' },
   { key: 'side', label: 'Side View', imageIdField: 'sideViewImageId' },
   { key: 'back', label: 'Back View', imageIdField: 'backViewImageId' }
@@ -27,17 +27,19 @@ function resolveImageSrc(imagePath) {
 // at the source instead of having extra references silently dropped inside the form.
 const MAX_REFERENCE_URLS = 3;
 
-function getReferenceUrls(character) {
+function getReferenceUrlsForSlot(character, slot, primaryViewUrl) {
   if (!character) return [];
-  const all = Array.isArray(character.referenceImages) && character.referenceImages.length > 0
-    ? character.referenceImages
-    : (character.anchorImagePath ? [character.anchorImagePath] : []);
-  return all.slice(0, MAX_REFERENCE_URLS);
+  if (slot?.primary) {
+    const uploads = Array.isArray(character.referenceImages) ? character.referenceImages : [];
+    return uploads.slice(0, MAX_REFERENCE_URLS);
+  }
+  return primaryViewUrl ? [primaryViewUrl] : [];
 }
 
 function SlotGenerateModal({
   slot,
   character,
+  primaryViewUrl,
   onClose,
   generateStandaloneImage,
   assignCharacterView,
@@ -56,7 +58,7 @@ function SlotGenerateModal({
     const prompt = [appearance, framing].filter(Boolean).join('\n\n').trim();
     formRef.current.setPrompt(prompt);
 
-    const refs = getReferenceUrls(character);
+    const refs = getReferenceUrlsForSlot(character, slot, primaryViewUrl);
     for (const url of refs) {
       if (!url) continue;
       const fullUrl = url.startsWith('http') ? url : `/anchors/${url}`;
@@ -182,6 +184,13 @@ export default function CharacterViews({
   if (!viewState) return null;
 
   const views = Array.isArray(viewState.views) ? viewState.views : [];
+  const primaryView = viewState.frontViewImageId
+    ? views.find(v => v.id === viewState.frontViewImageId)
+    : null;
+  const primaryViewUrl = primaryView?.imagePath
+    ? (primaryView.imagePath.startsWith('http') ? primaryView.imagePath : `/anchors/${primaryView.imagePath}`)
+    : null;
+  const primaryGeneratedAt = primaryView?.createdAt || null;
   // Deliberate fail-soft: when these props aren't threaded (e.g. a future caller
   // that only wants the read-only grid), the Generate button hides and the four
   // slots still render correctly. The read-only render is the load-bearing part.
@@ -200,6 +209,11 @@ export default function CharacterViews({
           const imageId = viewState[slot.imageIdField];
           const view = imageId ? views.find(v => v.id === imageId) : null;
           const src = view ? resolveImageSrc(view.imagePath) : null;
+          const slotCreatedAt = view?.createdAt || null;
+          const isStale = !slot.primary
+            && primaryGeneratedAt
+            && slotCreatedAt
+            && new Date(slotCreatedAt) < new Date(primaryGeneratedAt);
 
           return (
             <div key={slot.key} className="view-slot">
@@ -214,8 +228,16 @@ export default function CharacterViews({
                 ) : (
                   <div className="view-slot-empty">Not generated yet</div>
                 )}
+                {isStale && (
+                  <div
+                    className="view-slot-stale-badge"
+                    title="Front view was regenerated after this. Consider regenerating to keep the character consistent."
+                  >
+                    May not match
+                  </div>
+                )}
               </div>
-              {!src && canGenerate && (
+              {!src && canGenerate && (slot.primary || primaryViewUrl) && (
                 <button
                   type="button"
                   className="view-slot-generate-btn"
@@ -223,6 +245,9 @@ export default function CharacterViews({
                 >
                   Generate
                 </button>
+              )}
+              {!src && canGenerate && !slot.primary && !primaryViewUrl && (
+                <div className="view-slot-locked-hint">Generate front view first</div>
               )}
             </div>
           );
@@ -233,6 +258,7 @@ export default function CharacterViews({
         <SlotGenerateModal
           slot={activeSlot}
           character={character}
+          primaryViewUrl={activeSlot.primary ? null : primaryViewUrl}
           onClose={() => setActiveSlot(null)}
           generateStandaloneImage={generateStandaloneImage}
           assignCharacterView={assignCharacterView}
