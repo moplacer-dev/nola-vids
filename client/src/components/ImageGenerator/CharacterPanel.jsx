@@ -2,9 +2,13 @@ import { useRef, useState, useEffect } from 'react';
 import { thumbnailUrl } from '../../utils/supabaseImage';
 import CharacterViews from './CharacterViews';
 
-export default function CharacterPanel({ characters, onSetAnchor, onRemoveReferenceImage, getCharacterViews, assignCharacterView, generateStandaloneImage }) {
+export default function CharacterPanel({ characters, defaultCharacterId, onSetAnchor, onRemoveReferenceImage, getCharacterViews, assignCharacterView, generateStandaloneImage }) {
   const fileInputRef = useRef({});
   const [viewingCharacter, setViewingCharacter] = useState(null);
+
+  const visibleCharacters = defaultCharacterId
+    ? characters.filter(c => c.id === defaultCharacterId)
+    : characters;
 
   // Keep viewingCharacter in sync when characters prop updates
   useEffect(() => {
@@ -44,7 +48,7 @@ export default function CharacterPanel({ characters, onSetAnchor, onRemoveRefere
   return (
     <div className="character-panel">
       <h3>Career Character</h3>
-      {characters.map(char => {
+      {visibleCharacters.map(char => {
         const refImages = getReferenceImages(char);
         const firstImage = refImages[0];
 

@@ -1156,6 +1156,7 @@ export default function ImageGenerator({
         {selectedModule && characters.length > 0 && !selectedAssessment && (
           <CharacterPanel
             characters={characters}
+            defaultCharacterId={selectedAssetList?.defaultCharacterId || null}
             onSetAnchor={handleSetAnchor}
             onRemoveReferenceImage={handleRemoveReferenceImage}
             getCharacterViews={getCharacterViews}
