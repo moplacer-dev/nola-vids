@@ -81,9 +81,13 @@ const ALLOWED_ASSET_KINDS = new Set([
   // 5B.1 — production_still_image: in-house photo capture (gather slides,
   // some activity lead-ins). Sibling of default_template; both carry a
   // default_asset.note brief on Carl's slide records.
-  'production_still_image'
+  'production_still_image',
+  // 5B.3 — demo_video: in-house phenomenon-observation video capture
+  // ('watch this demonstration' slides). Wire shape mirrors procedure_video
+  // / screen_recording (videographer-handled, narrated, no AI generation).
+  'demo_video'
 ]);
-const VIDEO_ASSET_KINDS = new Set(['career_video', 'intro_video', 'procedure_video', 'screen_recording']);
+const VIDEO_ASSET_KINDS = new Set(['career_video', 'intro_video', 'procedure_video', 'screen_recording', 'demo_video']);
 const SKIP_ASSET_KINDS = new Set(['default_template', 'reused_asset']);
 
 function validateLessonPayload(body) {

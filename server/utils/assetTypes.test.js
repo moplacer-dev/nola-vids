@@ -35,6 +35,10 @@ test('isVisualAssetType returns true for default_template (5B.2)', () => {
   assert.equal(isVisualAssetType({ type: 'default_template' }), true);
 });
 
+test('isVisualAssetType returns true for demo_video (5B.3)', () => {
+  assert.equal(isVisualAssetType({ type: 'demo_video' }), true);
+});
+
 test('isVisualAssetType returns false for tts', () => {
   assert.equal(isVisualAssetType({ type: 'tts' }), false);
 });
@@ -67,6 +71,7 @@ test('VISUAL_ASSET_TYPES contains exactly the wire-format types Carl emits', () 
       'ai_image',
       'ai_video_clip',
       'default_template',         // 5B.2
+      'demo_video',               // 5B.3
       'interactive_element',
       'procedure_video',
       'production_still_image',   // 5B.1

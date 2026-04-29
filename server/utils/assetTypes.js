@@ -31,6 +31,10 @@ const VISUAL_ASSET_TYPES = new Set([
   // routes.js:139-184 based on slide title. Carl now emits a wire row so
   // that flow has a pending generated_images record to apply against.
   'default_template',
+  // 5B.3 — demo_video: in-house phenomenon-observation video capture,
+  // mirrors procedure_video on the wire. Used for "watch this demonstration"
+  // slides where the student observes rather than performs. No AI generation.
+  'demo_video',
 ]);
 
 function isVisualAssetType(asset) {
