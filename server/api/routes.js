@@ -549,7 +549,7 @@ module.exports = (jobManager) => {
   // Receive asset list from Carl v7
   router.post('/asset-lists', async (req, res) => {
     try {
-      const { moduleName, sessionNumber, sessionTitle, sessionType: providedSessionType, assets, slides, careerCharacter } = req.body;
+      const { moduleName, moduleAcronym, sessionNumber, sessionTitle, sessionType: providedSessionType, assets, slides, careerCharacter } = req.body;
 
       if (!moduleName) {
         return res.status(400).json({ error: 'moduleName is required' });
@@ -643,6 +643,7 @@ module.exports = (jobManager) => {
         if (regularAssets.length > 0) {
           regularResult = await processAssetList({
             moduleName,
+            moduleAcronym,
             sessionNumber,
             sessionTitle,
             sessionType: 'regular',
@@ -661,6 +662,7 @@ module.exports = (jobManager) => {
         if (rcpAssets.length > 0) {
           rcpResult = await processAssetList({
             moduleName,
+            moduleAcronym,
             sessionNumber,
             sessionTitle: `${sessionTitle || `Session ${sessionNumber}`} RCP`,
             sessionType: 'rcp',
@@ -890,13 +892,13 @@ module.exports = (jobManager) => {
               type: 'existing',
               record: existing,
               slideTitle,
-              cmsFilename: existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType),
+              cmsFilename: existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType, moduleAcronym),
               asset
             });
           }
         } else {
           // Queue creation for new record
-          const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
+          const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType, moduleAcronym);
           const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
           toCreate.push({
             assetListId: assetList.id,
@@ -1004,8 +1006,8 @@ module.exports = (jobManager) => {
 
           for (const r of records) {
             const cmsFilename = sessionType === 'rcp'
-              ? generateRcpAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType)
-              : generateAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType);
+              ? generateRcpAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType, moduleAcronym)
+              : generateAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType, moduleAcronym);
             narrationRecords.push({
               slideNumber: slideNum,
               narrationType: r.narrationType,
@@ -2661,7 +2663,7 @@ module.exports = (jobManager) => {
   // Receive assessment data from Carl v7
   router.post('/assessment-assets', async (req, res) => {
     try {
-      const { moduleName, assessmentType, subject, gradeLevel, questions, assetSummary } = req.body;
+      const { moduleName, moduleAcronym, assessmentType, subject, gradeLevel, questions, assetSummary } = req.body;
 
       // Validate required fields
       if (!moduleName) {
@@ -2739,7 +2741,8 @@ module.exports = (jobManager) => {
           moduleName,
           assessmentType,
           question.questionNumber,
-          question.visual.type
+          question.visual.type,
+          moduleAcronym
         );
 
         // Build prompt from visual description
@@ -2814,7 +2817,7 @@ module.exports = (jobManager) => {
               questionNumber: qNum,
               narrationType: r.narrationType,
               narrationText: r.narrationText,
-              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, r.narrationType),
+              cmsFilename: generateAssessmentAudioFilename(moduleName, assessmentType, qNum, r.narrationType, moduleAcronym),
               status: 'pending'
             });
             audioCreated++;
@@ -4778,8 +4781,8 @@ module.exports = (jobManager) => {
 };
 
 // Helper functions
-function generateAudioFilename(moduleName, sessionNumber, slideNumber, narrationType) {
-  const moduleCode = getModuleCode(moduleName);
+function generateAudioFilename(moduleName, sessionNumber, slideNumber, narrationType, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   // If narrationType is provided (for structured narration slides), use type code
   if (narrationType) {
     const typeCode = narrationTypeToCode(narrationType);
@@ -4789,13 +4792,13 @@ function generateAudioFilename(moduleName, sessionNumber, slideNumber, narration
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.NAR1.mp3`;
 }
 
-function generateMGVideoFilename(moduleName, sessionNumber, slideNumber) {
-  const moduleCode = getModuleCode(moduleName);
+function generateMGVideoFilename(moduleName, sessionNumber, slideNumber, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.VID1.mp4`;
 }
 
-function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNumber) {
-  const moduleCode = getModuleCode(moduleName);
+function generateMGSceneFilename(moduleName, sessionNumber, slideNumber, sceneNumber, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   return `MOD.${moduleCode}.${sessionNumber}.${slideNumber}.MG.${sceneNumber}.png`;
 }
 
@@ -4850,6 +4853,7 @@ function isRcpSlideType(slideType) {
 // Helper function to process a single asset list (used for splitting RCP sessions)
 async function processAssetList({
   moduleName,
+  moduleAcronym,
   sessionNumber,
   sessionTitle,
   sessionType,
@@ -5007,7 +5011,7 @@ async function processAssetList({
         const slideTitle = slideTitleMap[String(asset.slideNumber)] || asset.slideTitle || '';
         const defaultImage = await getDefaultImageForSlide(slideTitle);
         if (defaultImage) {
-          const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
+          const cmsFilename = existing.cmsFilename || generateCmsFilename(moduleName, sessionNumber, asset, sessionType, moduleAcronym);
           const result = await applyDefaultImage(existing.id, defaultImage, cmsFilename);
           existing.status = 'default';
           existing.imagePath = result.outputPath;
@@ -5020,7 +5024,7 @@ async function processAssetList({
       kept++;
     } else {
       // Create new pending record
-      const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType);
+      const cmsFilename = generateCmsFilename(moduleName, sessionNumber, asset, sessionType, moduleAcronym);
       const image = await generatedImageDb.create({
         assetListId: assetList.id,
         slideNumber: asset.slideNumber,
@@ -5073,8 +5077,8 @@ async function processAssetList({
 
       for (const r of records) {
         const cmsFilename = sessionType === 'rcp'
-          ? generateRcpAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType)
-          : generateAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType);
+          ? generateRcpAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType, moduleAcronym)
+          : generateAudioFilename(moduleName, sessionNumber, slideNum, r.narrationType, moduleAcronym);
         narrationRecords.push({
           slideNumber: slideNum,
           narrationType: r.narrationType,
@@ -5119,8 +5123,8 @@ async function processAssetList({
   };
 }
 
-function generateCmsFilename(moduleName, sessionNumber, asset, sessionType = 'regular') {
-  const moduleCode = getModuleCode(moduleName);
+function generateCmsFilename(moduleName, sessionNumber, asset, sessionType = 'regular', acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   // Add 'R' suffix for RCP sessions (matching audio filename pattern)
   const sessionCode = sessionType === 'rcp' ? `${sessionNumber}R` : (sessionNumber || 0);
   const slide = asset.slideNumber || 0;
@@ -5143,8 +5147,8 @@ function generateCmsFilename(moduleName, sessionNumber, asset, sessionType = 're
 
 // Generate CMS filename for assessment visuals
 // Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>1.png
-function generateAssessmentCmsFilename(moduleName, assessmentType, questionNumber, visualType) {
-  const moduleCode = getModuleCode(moduleName);
+function generateAssessmentCmsFilename(moduleName, assessmentType, questionNumber, visualType, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
   const qNum = String(questionNumber).padStart(2, '0');
 
@@ -5170,8 +5174,8 @@ function getAssessmentAssetType(assessmentType, visualType) {
 
 // Generate CMS filename for assessment audio
 // Format: MOD.<CODE>.<PRE|POST>.Q<NUM>.<TYPE>.mp3
-function generateAssessmentAudioFilename(moduleName, assessmentType, questionNumber, narrationType) {
-  const moduleCode = getModuleCode(moduleName);
+function generateAssessmentAudioFilename(moduleName, assessmentType, questionNumber, narrationType, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   const testType = assessmentType === 'pre_test' ? 'PRE' : 'POST';
   const qNum = String(questionNumber).padStart(2, '0');
   const typeCode = narrationTypeToCode(narrationType);
@@ -5181,8 +5185,8 @@ function generateAssessmentAudioFilename(moduleName, assessmentType, questionNum
 
 // Generate CMS filename for RCP audio
 // Format: MOD.<CODE>.<SESSION>R.<SLIDE>.<TYPE>.mp3
-function generateRcpAudioFilename(moduleName, sessionNumber, slideNumber, narrationType) {
-  const moduleCode = getModuleCode(moduleName);
+function generateRcpAudioFilename(moduleName, sessionNumber, slideNumber, narrationType, acronymOverride) {
+  const moduleCode = getModuleCode(moduleName, acronymOverride);
   const typeCode = narrationTypeToCode(narrationType);
 
   return `MOD.${moduleCode}.${sessionNumber}R.${slideNumber}.${typeCode}.mp3`;
