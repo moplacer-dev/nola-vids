@@ -23,10 +23,12 @@ const ImageGenForm = forwardRef(function ImageGenForm({ onGenerate, disabled }, 
   // Expose methods for external control
   useImperativeHandle(ref, () => ({
     addReferenceUrl: (url) => {
-      const totalRefs = referenceImages.length + referenceUrls.length;
-      if (totalRefs < 3 && url) {
-        setReferenceUrls(prev => [...prev, url]);
-      }
+      if (!url) return;
+      setReferenceUrls(prev => {
+        if (prev.includes(url)) return prev;
+        if (referenceImages.length + prev.length >= 3) return prev;
+        return [...prev, url];
+      });
     },
     setPrompt: (text) => {
       setPrompt(text || '');
