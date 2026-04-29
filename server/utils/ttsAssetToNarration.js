@@ -10,11 +10,13 @@
 //
 // NOLA.vids generated_audio.narrationType vocabulary this mapper produces:
 //   slide_narration | question | answer_a | answer_b | ... | correct_response |
-//   incorrect_1 | incorrect_2 | ...
+//   incorrect_1 | incorrect_2 | popup_1 | popup_2 | ...
 //   For two-part assessments: part_a_question, part_a_answer_a, part_b_question, ...
 //
-// popup_narration chunks are skipped because NOLA.vids does not yet support a
-// popup_N narrationType. When that lands, emit `popup_${asset.ttsOrder}`.
+// popup_narration chunks come from `Pop-up N:` markers in the slide
+// narration. Carl's helper sets ttsLabel to the popup index ("1", "2", ...);
+// this mapper turns that into the popup_N narrationType the multi-part
+// narration panel + cmsFilename generator already understand.
 //
 // main_narration disambiguation: maps to 'question' when answer_choice siblings
 // exist (or when explicitly an assessment), else 'slide_narration'. Carl's
@@ -74,7 +76,9 @@ function mapTtsAssetsToNarrations(ttsAssets, options = {}) {
         break;
 
       case 'popup_narration':
-        // Skip until NOLA.vids supports popup_N narrationType.
+        if (asset.ttsLabel) {
+          narrationType = `popup_${asset.ttsLabel}`;
+        }
         break;
 
       default:

@@ -136,14 +136,24 @@ test('two-part assessment prefixes question and answer_* with part_a_/part_b_', 
 
 // ---- skip / defensive cases ----------------------------------------------
 
-test('popup_narration is skipped (no popup_N support yet)', () => {
+test('popup_narration maps ttsLabel to popup_N narrationType', () => {
   const out = mapTtsAssetsToNarrations([
     { type: 'tts', ttsType: 'main_narration', ttsText: 'Lead in', ttsOrder: 1 },
     { type: 'tts', ttsType: 'popup_narration', ttsLabel: '1', ttsText: 'Popup 1 body', ttsOrder: 2 },
+    { type: 'tts', ttsType: 'popup_narration', ttsLabel: '2', ttsText: 'Popup 2 body', ttsOrder: 3 },
   ]);
   assert.deepEqual(out, [
     { narrationType: 'slide_narration', narrationText: 'Lead in' },
+    { narrationType: 'popup_1', narrationText: 'Popup 1 body' },
+    { narrationType: 'popup_2', narrationText: 'Popup 2 body' },
   ]);
+});
+
+test('popup_narration without ttsLabel is skipped', () => {
+  const out = mapTtsAssetsToNarrations([
+    { type: 'tts', ttsType: 'popup_narration', ttsText: 'orphan popup', ttsOrder: 1 },
+  ]);
+  assert.deepEqual(out, []);
 });
 
 test('non-tts rows are ignored (visual ingest is a separate path)', () => {
