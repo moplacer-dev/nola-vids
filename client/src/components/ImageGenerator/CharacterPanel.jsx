@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from 'react';
-import { thumbnailUrl } from '../../utils/supabaseImage';
 import CharacterViews from './CharacterViews';
 
 export default function CharacterPanel({ characters, defaultCharacterId, onSetAnchor, onRemoveReferenceImage, getCharacterViews, assignCharacterView, generateStandaloneImage }) {
@@ -121,7 +120,7 @@ export default function CharacterPanel({ characters, defaultCharacterId, onSetAn
                         {refImages.map((imgPath, index) => (
                           <div key={index} className="character-modal-image-item">
                             <img
-                              src={thumbnailUrl(imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`)}
+                              src={imgPath.startsWith('http') ? imgPath : `/anchors/${imgPath}`}
                               alt={`${viewingCharacter.characterName} ref ${index + 1}`}
                             />
                             {onRemoveReferenceImage && (
