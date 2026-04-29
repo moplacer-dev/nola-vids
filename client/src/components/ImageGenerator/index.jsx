@@ -637,6 +637,26 @@ export default function ImageGenerator({
     }
   };
 
+  const handleSetDefaultCharacter = async (characterId) => {
+    if (!setSessionDefaultCharacter || !selectedAssetList?.id) return;
+    try {
+      await setSessionDefaultCharacter(selectedAssetList.id, characterId || null);
+      setSelectedAssetList(prev => prev ? { ...prev, defaultCharacterId: characterId || null } : prev);
+    } catch (err) {
+      console.error('Failed to set default character:', err);
+    }
+  };
+
+  const handleSetAssessmentDefaultCharacter = async (characterId) => {
+    if (!setAssessmentDefaultCharacter || !selectedAssessment?.id) return;
+    try {
+      await setAssessmentDefaultCharacter(selectedAssessment.id, characterId || null);
+      setSelectedAssessment(prev => prev ? { ...prev, defaultCharacterId: characterId || null } : prev);
+    } catch (err) {
+      console.error('Failed to set assessment default character:', err);
+    }
+  };
+
   // Assessment audio handlers - use optimistic updates
   const handleGenerateAssessmentAudio = async (audioId, options = {}) => {
     if (!generateAssessmentAudio) return;
@@ -1093,6 +1113,27 @@ export default function ImageGenerator({
                 <option key={v.voice_id} value={v.voice_id}>
                   {v.name}
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="selector-group">
+            <label>Default Character</label>
+            <select
+              value={selectedAssessment?.defaultCharacterId || selectedAssetList?.defaultCharacterId || ''}
+              onChange={(e) => {
+                const value = e.target.value || null;
+                if (selectedAssessment) {
+                  handleSetAssessmentDefaultCharacter(value);
+                } else {
+                  handleSetDefaultCharacter(value);
+                }
+              }}
+              disabled={(!selectedAssetList && !selectedAssessment) || characters.length === 0}
+            >
+              <option value="">Select Character...</option>
+              {characters.map(c => (
+                <option key={c.id} value={c.id}>{c.characterName}</option>
               ))}
             </select>
           </div>
