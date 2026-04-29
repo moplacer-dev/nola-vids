@@ -30,7 +30,10 @@ app.use(cors(corsOrigins && corsOrigins !== '*'
   ? { origin: corsOrigins.split(',').map(o => o.trim()) }
   : {}
 ));
-app.use(express.json());
+// 25mb covers Carl asset-list pushes for large modules (41+ slide
+// sessions with tts fan-out, AI prompts, and interactive component
+// metadata). Express defaults to 100kb which trips on bigger sessions.
+app.use(express.json({ limit: '25mb' }));
 
 // Access key authentication
 const ACCESS_KEY = process.env.ACCESS_KEY;
