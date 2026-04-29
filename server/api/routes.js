@@ -58,6 +58,7 @@ const {
 
 const { getModuleCode } = require('../utils/moduleConfig');
 const { chunkedPromiseAll } = require('../utils/chunkedPromise');
+const { isVisualAssetType } = require('../utils/assetTypes');
 
 const router = express.Router();
 
@@ -736,8 +737,10 @@ module.exports = (jobManager) => {
         }
       }
 
-      // Keep all assets (now potentially renumbered)
-      const filteredAssets = processedAssets;
+      // Drop non-visual assets (e.g. tts rows) so the visual-image loop
+      // below only creates generated_images records for actual visual work.
+      // Whitelist lives in server/utils/assetTypes.js.
+      const filteredAssets = processedAssets.filter(isVisualAssetType);
 
       // Check if asset list already exists for this module+session+type
       let assetList = await assetListDb.getByModuleSessionAndType(moduleName, sessionNumber, sessionType);
@@ -5115,9 +5118,14 @@ async function processAssetList({
   // Helper to get assetNumber from either camelCase or snake_case field
   const getAssetNumber = (asset) => asset.assetNumber ?? asset.asset_number ?? 1;
 
-  // Build set of new slide keys from assets
+  // Drop non-visual assets (e.g. tts rows) so the visual-image loop and the
+  // delete-reconciliation key set only consider actual visual work. Whitelist
+  // lives in server/utils/assetTypes.js.
+  const visualAssets = assets.filter(isVisualAssetType);
+
+  // Build set of new slide keys from visual assets
   const newSlideKeys = new Set(
-    assets.map(a => `${a.slideNumber}-${a.type}-${getAssetNumber(a)}`)
+    visualAssets.map(a => `${a.slideNumber}-${a.type}-${getAssetNumber(a)}`)
   );
 
   // Find images to delete (slides that were removed from asset list)
@@ -5147,7 +5155,7 @@ async function processAssetList({
   let kept = 0;
   let defaultsApplied = 0;
 
-  for (const asset of assets) {
+  for (const asset of visualAssets) {
     const assetNum = getAssetNumber(asset);
     const key = `${asset.slideNumber}-${asset.type}-${assetNum}`;
     const existing = existingByKey[key];
